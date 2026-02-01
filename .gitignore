@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# Private files (if any skills generate them)
+memory/
+.memory/
+*.session.json

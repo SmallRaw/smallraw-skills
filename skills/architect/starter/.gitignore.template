@@ -1,0 +1,82 @@
+# ============================================
+# AI Agent 私有文件（不应提交到仓库）
+# ============================================
+
+# Agent 记忆（私有）
+memory/
+.memory/
+*.memory.md
+MEMORY.md
+
+# Agent 身份（私有）
+IDENTITY.md
+USER.md
+
+# 本地环境配置（私有）
+TOOLS.md
+.tools/
+
+# Session 日志
+.sessions/
+*.session.json
+*.jsonl
+
+# ============================================
+# 敏感文件
+# ============================================
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# 密钥和凭证
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+
+# ============================================
+# 依赖和构建产物
+# ============================================
+
+# Node.js
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ============================================
+# 编辑器和系统文件
+# ============================================
+
+# macOS
+.DS_Store
+*.swp
+
+# VSCode（可选保留 .vscode/settings.json）
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# JetBrains
+.idea/
+
+# ============================================
+# 日志和临时文件
+# ============================================
+
+*.log
+logs/
+tmp/
+temp/
+.cache/

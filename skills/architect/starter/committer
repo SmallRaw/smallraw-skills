@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+#
+# committer - 安全提交脚本
+#
+# 用法: scripts/committer "commit message" file1 [file2 ...]
+#
+# 功能:
+# - 禁止 "." 参数（防止 git add .）
+# - 禁止 node_modules 路径
+# - 强制指定要提交的文件
+# - 自动清理暂存区再添加指定文件
+#
+
+set -euo pipefail
+set -f  # 禁用 glob 展开
+
+usage() {
+  printf 'Usage: %s "commit message" file1 [file2 ...]\n' "$(basename "$0")" >&2
+  printf '\nExamples:\n' >&2
+  printf '  %s "feat: add login" src/auth.ts src/auth.test.ts\n' "$(basename "$0")" >&2
+  printf '  %s "fix: typo" README.md\n' "$(basename "$0")" >&2
+  exit 2
+}
+
+# 至少需要 message 和一个文件
+if [ "$#" -lt 2 ]; then
+  usage
+fi
+
+commit_message=$1
+shift
+
+# 检查 message 不为空
+if [[ "$commit_message" != *[![:space:]]* ]]; then
+  printf 'Error: commit message must not be empty\n' >&2
+  exit 1
+fi
+
+# 检查第一个参数不是文件路径（防止忘记 message）
+if [ -e "$commit_message" ]; then
+  printf 'Error: first argument looks like a file path ("%s")\n' "$commit_message" >&2
+  printf 'Provide the commit message first.\n' >&2
+  exit 1
+fi
+
+# 至少需要一个文件
+if [ "$#" -eq 0 ]; then
+  usage
+fi
+
+files=("$@")
+
+# 检查禁止的路径
+for file in "${files[@]}"; do
+  # 禁止 "."
+  if [ "$file" = "." ]; then
+    printf 'Error: "." is not allowed. List specific files instead.\n' >&2
+    printf 'Reason: Using "." may accidentally commit sensitive files.\n' >&2
+    exit 1
+  fi
+
+  # 禁止 node_modules
+  case "$file" in
+    *node_modules* | */node_modules | */node_modules/* | node_modules)
+      printf 'Error: node_modules paths are not allowed: %s\n' "$file" >&2
+      printf 'Reason: Changes to node_modules will be lost on next install.\n' >&2
+      exit 1
+      ;;
+  esac
+done
+
+# 检查文件是否存在（或在 git 中已跟踪）
+for file in "${files[@]}"; do
+  if [ ! -e "$file" ]; then
+    if ! git ls-files --error-unmatch -- "$file" >/dev/null 2>&1; then
+      printf 'Error: file not found: %s\n' "$file" >&2
+      exit 1
+    fi
+  fi
+done
+
+# 清理暂存区，只添加指定文件
+git restore --staged :/ 2>/dev/null || true
+git add --force -- "${files[@]}"
+
+# 检查是否有内容可提交
+if git diff --staged --quiet; then
+  printf 'Warning: no changes to commit in: %s\n' "${files[*]}" >&2
+  exit 1
+fi
+
+# 提交
+if git commit -m "$commit_message" -- "${files[@]}"; then
+  printf '\n✓ Committed "%s" with %d file(s)\n' "$commit_message" "${#files[@]}"
+else
+  printf '\n✗ Commit failed\n' >&2
+  exit 1
+fi
