@@ -59,6 +59,40 @@ Features:
 
 ---
 
+## Recommended Companion Tools
+
+### Ralph - Autonomous Development Loop
+
+如果你需要让 AI **自主循环开发**（自动提交、自动验证、自动修复），推荐使用 [Ralph](https://github.com/frankbria/ralph-claude-code)。
+
+**architect-skill** 和 **Ralph** 是互补的：
+
+| 工具 | 解决的问题 |
+|------|-----------|
+| **architect-skill** | 规则该怎么写、何时加、如何演进 |
+| **Ralph** | 循环该怎么跑、何时停止、失败如何处理 |
+
+**Ralph 核心特性：**
+- 熔断器机制（防止无限循环）
+- 速率限制（防止 API 滥用）
+- 双重退出验证（防止误报完成）
+- Session 管理（跨循环保持上下文）
+
+```bash
+# 安装 Ralph
+git clone https://github.com/frankbria/ralph-claude-code.git
+cd ralph-claude-code && ./install.sh
+
+# 在项目中启用
+cd your-project
+ralph-enable
+
+# 启动自主开发循环
+ralph
+```
+
+---
+
 ## Creating Your Own Skills
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on creating and contributing skills.
