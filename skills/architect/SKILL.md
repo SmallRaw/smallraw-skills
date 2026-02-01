@@ -171,7 +171,7 @@ disable-model-invocation: false
 
 | 文件 | 用途 |
 |------|------|
-| `knowledge/problem-rule-map.md` | 问题-规则映射表（56 条规则，8 个类别） |
+| `knowledge/problem-rule-map.md` | 问题-规则映射表（54 条规则，8 个类别） |
 | `knowledge/rule-templates.md` | 7 种规则模板写法 |
 | `starter/AGENTS.starter.md` | 起始模板（10 条核心规则） |
 | `starter/committer` | 安全提交脚本 |
