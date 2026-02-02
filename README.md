@@ -6,18 +6,8 @@ A collection of AI development skills compatible with [Claude Code](https://code
 
 ## Installation
 
-### Claude Code (推荐)
+### Claude Code
 
-**通过 Marketplace 安装**：
-```bash
-# 添加 marketplace（只需一次）
-/plugin marketplace add smallraw/smallraw-skills
-
-# 安装 architect skill
-/plugin install architect@smallraw-skills
-```
-
-**手动安装**：
 ```bash
 # 个人级别（所有项目可用）
 mkdir -p ~/.claude/skills
@@ -28,6 +18,8 @@ cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
 mkdir -p .claude/skills
 cp -r /tmp/smallraw-skills/skills/architect .claude/skills/
 ```
+
+安装后直接使用 `/architect` 调用。
 
 ### OpenCode
 
