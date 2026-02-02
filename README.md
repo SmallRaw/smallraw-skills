@@ -9,15 +9,8 @@ A collection of AI development skills compatible with [Claude Code](https://code
 ### Claude Code (Marketplace)
 
 ```bash
-# 一键安装（添加 marketplace + 安装 + 启用）
-/plugin marketplace add smallraw/smallraw-skills && /plugin install architect@smallraw-skills && /plugin enable architect@smallraw-skills
-```
-
-或分步执行：
-```bash
 /plugin marketplace add smallraw/smallraw-skills
 /plugin install architect@smallraw-skills
-/plugin enable architect@smallraw-skills
 ```
 
 安装后使用 `/architect:architect` 调用。
@@ -28,11 +21,11 @@ A collection of AI development skills compatible with [Claude Code](https://code
 # Claude Code
 mkdir -p ~/.claude/skills
 git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
-cp -r /tmp/smallraw-skills/architect-plugin/skills/architect ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
-cp -r /tmp/smallraw-skills/architect-plugin/skills/architect ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
 ```
 
 手动安装后使用 `/architect` 调用。
@@ -43,7 +36,7 @@ cp -r /tmp/smallraw-skills/architect-plugin/skills/architect ~/.config/opencode/
 
 | Skill | Description | Status |
 |-------|-------------|--------|
-| [architect](architect-plugin/skills/architect/) | AI Development Architect - 帮助建立和维护项目规范 | ✅ Ready |
+| [architect](skills/architect/) | AI Development Architect - 帮助建立和维护项目规范 | ✅ Ready |
 
 ---
 
