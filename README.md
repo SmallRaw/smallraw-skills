@@ -9,13 +9,14 @@ A collection of AI development skills compatible with [Claude Code](https://code
 ### Claude Code (Marketplace)
 
 ```bash
-# 添加 marketplace（只需一次）
+# 一键安装（添加 marketplace + 安装 + 启用）
+/plugin marketplace add smallraw/smallraw-skills && /plugin install architect@smallraw-skills && /plugin enable architect@smallraw-skills
+```
+
+或分步执行：
+```bash
 /plugin marketplace add smallraw/smallraw-skills
-
-# 安装 architect plugin
 /plugin install architect@smallraw-skills
-
-# 启用 plugin
 /plugin enable architect@smallraw-skills
 ```
 
