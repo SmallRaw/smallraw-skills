@@ -1,29 +1,45 @@
 # Smallraw Skills Collection
 
-A collection of AI development skills for Claude Code.
+A collection of AI development skills compatible with [Claude Code](https://code.claude.com/) and [OpenCode](https://opencode.ai/).
 
 ---
 
 ## Installation
 
-### Claude Code
+### Claude Code (推荐)
 
+**通过 Marketplace 安装**：
 ```bash
-# Add marketplace (only once)
+# 添加 marketplace（只需一次）
 /plugin marketplace add smallraw/smallraw-skills
 
-# Install a skill
+# 安装 architect skill
 /plugin install architect@smallraw-skills
 ```
 
-### Manual Installation
+**手动安装**：
+```bash
+# 个人级别（所有项目可用）
+mkdir -p ~/.claude/skills
+git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
+cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
+
+# 或项目级别（仅当前项目）
+mkdir -p .claude/skills
+cp -r /tmp/smallraw-skills/skills/architect .claude/skills/
+```
+
+### OpenCode
 
 ```bash
-# Clone to your skills directory
-git clone https://github.com/smallraw/smallraw-skills.git ~/.claude/skills/smallraw-skills
+# 全局安装
+mkdir -p ~/.config/opencode/skills
+git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
+cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
 
-# Or copy individual skills
-cp -r smallraw-skills/skills/architect ~/.claude/skills/
+# 或项目级别
+mkdir -p .opencode/skills
+cp -r /tmp/smallraw-skills/skills/architect .opencode/skills/
 ```
 
 ---

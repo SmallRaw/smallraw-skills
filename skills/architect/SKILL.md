@@ -1,13 +1,11 @@
 ---
 name: architect
 description: AI 开发架构师 - 帮助建立和维护项目规范，规则是长出来的，不是设计出来的
+license: MIT
+compatibility: claude-code, opencode
 metadata:
-  openclaw:
-    requires:
-      bins: []
-      env: []
-      config: []
-    homepage: https://github.com/smallraw/smallraw-skills
+  homepage: https://github.com/smallraw/smallraw-skills
+  author: smallraw
 user-invocable: true
 disable-model-invocation: false
 ---
