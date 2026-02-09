@@ -69,6 +69,8 @@ Features:
 
 如果你需要让 AI **自主循环开发**（自动提交、自动验证、自动修复），推荐使用 [Ralph](https://github.com/frankbria/ralph-claude-code)。
 
+[Ralph Loop](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-loop)
+
 **architect-skill** 和 **Ralph** 是互补的：
 
 | 工具 | 解决的问题 |
