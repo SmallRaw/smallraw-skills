@@ -11,9 +11,10 @@ A collection of AI development skills compatible with [Claude Code](https://code
 ```bash
 /plugin marketplace add smallraw/smallraw-skills
 /plugin install architect@smallraw-skills
+/plugin install fractal-docs@smallraw-skills
 ```
 
-安装后使用 `/architect:architect` 调用。
+安装后使用 `/architect:architect` 或 `/fractal-docs` 调用。
 
 ### 手动安装
 
@@ -22,10 +23,12 @@ A collection of AI development skills compatible with [Claude Code](https://code
 mkdir -p ~/.claude/skills
 git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
 cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
 cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
 ```
 
 手动安装后使用 `/architect` 调用。
@@ -37,6 +40,7 @@ cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
 | Skill | Description | Status |
 |-------|-------------|--------|
 | [architect](skills/architect/) | AI Development Architect - 帮助建立和维护项目规范 | ✅ Ready |
+| [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | ✅ Ready |
 
 ---
 
@@ -59,6 +63,23 @@ Features:
 /architect problem "..."     # 识别问题并推荐规则
 /architect extend workflow   # 添加流程规则包
 /architect review            # 回顾规则健康度
+```
+
+### /fractal-docs
+
+**分形文档协议** - 三层自描述文档体系，让 AI Agent 快速理解任意模块。
+
+核心理念：**代码即文档，文档即协议。每一级目录自包含地描述自身。**
+
+Features:
+- 三行头部注释：每个源码文件的 INPUT/OUTPUT/POS
+- 目录级 AGENTS.md：模块职责、逻辑、约束、业务域清单
+- 级联更新：文件变更自动向上传播文档更新
+
+```bash
+/fractal-docs init     # 为项目建立完整文档体系
+/fractal-docs update   # 文件变更后级联更新文档
+/fractal-docs check    # 验证文档一致性
 ```
 
 ---
