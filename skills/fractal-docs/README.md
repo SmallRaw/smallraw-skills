@@ -19,7 +19,7 @@
 
 ```
 Layer 1  源码文件       // INPUT: / OUTPUT: / POS:  三行头注释
-Layer 2  目录 CLAUDE.md  # 模块名 > 地位 > 逻辑 > 约束 > 业务域清单
+Layer 2  目录 AGENTS.md  # 模块名 > 地位 > 逻辑 > 约束 > 业务域清单 (CLAUDE.md → AGENTS.md 软链接)
 Layer 3  级联规则        新增/删除/修改 → 自动向上传播
 ```
 

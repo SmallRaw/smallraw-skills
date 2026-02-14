@@ -44,9 +44,9 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 - 放在文件最前面（shebang 行之后），在任何 `use`/`#include`/`import` 之前
 - 现有描述性注释保留，移到三行注释之后
 
-### 第二层：目录级 CLAUDE.md
+### 第二层：目录级 AGENTS.md
 
-每个源码目录放一个 `CLAUDE.md`，格式统一：
+每个源码目录放一个 `AGENTS.md`，格式统一：
 
 ```markdown
 # {模块名}
@@ -59,15 +59,15 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 | 名称 | 文件/子目录 | 职责 |
 ```
 
-Claude Code 的懒加载机制会在搜索到某目录时自动加载该目录的 `CLAUDE.md`。
+同时创建 `CLAUDE.md → AGENTS.md` 软链接，兼容 Claude Code 的懒加载机制（搜索到某目录时自动加载该目录的 `CLAUDE.md`）。`AGENTS.md` 是通用协议，其他 AI Code 工具也能直接识别。
 
 ### 第三层：级联更新规则
 
 | 触发事件 | 文件级 | 目录级 | 上级目录级 |
 |----------|--------|--------|-----------|
-| 新增文件 | 添加三行注释 | 更新 CLAUDE.md 清单 | 更新上级清单 |
-| 删除文件 | — | 更新 CLAUDE.md 清单 | 更新上级清单 |
-| 修改接口/职责 | 更新三行注释 | 更新 CLAUDE.md | 如影响则更新上级 |
+| 新增文件 | 添加三行注释 | 更新 AGENTS.md 清单 | 更新上级清单 |
+| 删除文件 | — | 更新 AGENTS.md 清单 | 更新上级清单 |
+| 修改接口/职责 | 更新三行注释 | 更新 AGENTS.md | 如影响则更新上级 |
 | 仅改内部实现 | 检查注释准确性 | 不更新 | 不更新 |
 
 ---
@@ -79,8 +79,8 @@ Claude Code 的懒加载机制会在搜索到某目录时自动加载该目录�
 扫描项目，生成完整的三层文档体系：
 
 1. 分析项目结构和技术栈
-2. 创建根 `CLAUDE.md`（项目概览 + 协议定义 + 业务域清单）
-3. 为每个源码目录创建 `CLAUDE.md`
+2. 创建根 `AGENTS.md`（项目概览 + 协议定义 + 业务域清单）+ `CLAUDE.md` 软链接
+3. 为每个源码目录创建 `AGENTS.md` + `CLAUDE.md` 软链接
 4. 为每个源码文件添加三行头部注释
 5. 验证编译/构建不被破坏
 
@@ -107,8 +107,8 @@ Claude Code 的懒加载机制会在搜索到某目录时自动加载该目录�
 
 检查项：
 - 每个源码文件是否有三行头部注释
-- 每个源码目录是否有 CLAUDE.md
-- CLAUDE.md 业务域清单与实际文件是否一一对应
+- 每个源码目录是否有 AGENTS.md（+ CLAUDE.md 软链接）
+- AGENTS.md 业务域清单与实际文件是否一一对应
 - 从叶子到根的级联链路是否完整
 
 ---
@@ -123,8 +123,8 @@ Claude Code 的懒加载机制会在搜索到某目录时自动加载该目录�
 
 自动完成：
 - 检测项目语言和构建系统
-- 生成根 CLAUDE.md（合并已有 AGENTS.md 内容，如果存在）
-- 递归生成目录 CLAUDE.md
+- 生成根 AGENTS.md（合并已有 CLAUDE.md 内容，如果存在）+ CLAUDE.md 软链接
+- 递归生成目录 AGENTS.md + CLAUDE.md 软链接
 - 为所有源码文件添加三行注释
 - 运行构建验证
 
@@ -153,8 +153,8 @@ Claude Code 的懒加载机制会在搜索到某目录时自动加载该目录�
 | 文件 | 用途 |
 |------|------|
 | `knowledge/header-patterns.md` | 各语言三行注释格式 + 放置规则 |
-| `starter/root-claude.starter.md` | 根 CLAUDE.md 模板 |
-| `starter/dir-claude.starter.md` | 目录级 CLAUDE.md 模板 |
+| `starter/root-agents.starter.md` | 根 AGENTS.md 模板 |
+| `starter/dir-agents.starter.md` | 目录级 AGENTS.md 模板 |
 | `prompts/init.md` | 全量初始化 SOP |
 | `prompts/update.md` | 级联更新 SOP |
 | `prompts/check.md` | 一致性检查 SOP |
@@ -166,14 +166,14 @@ Claude Code 的懒加载机制会在搜索到某目录时自动加载该目录�
 | 维度 | /architect | /fractal-docs |
 |------|-----------|---------------|
 | 关注点 | 行为规范（怎么做） | 代码导航（怎么理解） |
-| 产出物 | AGENTS.md / CLAUDE.md 规则段 | 三行注释 + 目录 CLAUDE.md |
+| 产出物 | AGENTS.md / CLAUDE.md 规则段 | 三行注释 + 目录 AGENTS.md |
 | 触发场景 | 流程出错、重复犯错 | 新项目、新模块、AI 理解困难 |
 | 演进方式 | 从问题中长出规则 | 从代码结构中提取文档 |
 
 两者互补：
 - `/architect init` 建立行为规范
 - `/fractal-docs init` 建立导航地图
-- 根 CLAUDE.md 可以同时包含两者的内容
+- 根 AGENTS.md 可以同时包含两者的内容（CLAUDE.md 通过软链接指向它）
 
 ---
 

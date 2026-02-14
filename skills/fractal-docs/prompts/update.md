@@ -35,14 +35,14 @@ git diff --name-status --cached
 
 1. 阅读新文件内容
 2. 添加三行头部注释（参考 `knowledge/header-patterns.md`）
-3. 更新所在目录的 `CLAUDE.md` 业务域清单（添加一行）
-4. 检查上级目录的 `CLAUDE.md` 是否需要更新
+3. 更新所在目录的 `AGENTS.md` 业务域清单（添加一行）
+4. 检查上级目录的 `AGENTS.md` 是否需要更新
 
 #### 删除文件 (D)
 
-1. 更新所在目录的 `CLAUDE.md` 业务域清单（删除对应行）
-2. 如果目录为空（所有源码文件被删除），删除该目录的 `CLAUDE.md`
-3. 检查上级目录的 `CLAUDE.md` 是否需要更新
+1. 更新所在目录的 `AGENTS.md` 业务域清单（删除对应行）
+2. 如果目录为空（所有源码文件被删除），删除该目录的 `AGENTS.md`
+3. 检查上级目录的 `AGENTS.md` 是否需要更新
 
 #### 修改文件 (M)
 
@@ -53,23 +53,23 @@ git diff --name-status --cached
    - 模块职责变了？→ 更新 POS
 3. 如果只是内部实现变更：
    - 检查三行注释是否仍然准确
-   - 不更新目录级 CLAUDE.md
+   - 不更新目录级 AGENTS.md
 4. 如果接口/职责变了：
    - 更新三行注释
-   - 更新所在目录的 CLAUDE.md（职责描述）
+   - 更新所在目录的 AGENTS.md（职责描述）
    - 检查上级是否需要更新
 
 #### 重命名文件 (R)
 
-1. 更新所在目录 CLAUDE.md 清单中的文件名
-2. 如果跨目录移动：更新旧目录和新目录的 CLAUDE.md
+1. 更新所在目录 AGENTS.md 清单中的文件名
+2. 如果跨目录移动：更新旧目录和新目录的 AGENTS.md
 3. 检查文件内三行注释是否仍准确
 
 ### 3. 级联向上检查
 
-对每个被更新的 `CLAUDE.md`，检查其父目录的 `CLAUDE.md`：
+对每个被更新的 `AGENTS.md`，检查其父目录的 `AGENTS.md`：
 - 业务域清单中该子目录的描述是否需要更新
-- 递归直到根 `CLAUDE.md`
+- 递归直到根 `AGENTS.md`
 
 ### 4. 验证
 
@@ -82,8 +82,8 @@ git diff --name-status --cached
 ```
 已更新：
 - src/new_module.rs          (添加三行注释)
-- src/CLAUDE.md              (更新业务域清单：+new_module)
-- CLAUDE.md                  (更新业务域清单：src/ 描述调整)
+- src/AGENTS.md              (更新业务域清单：+new_module)
+- AGENTS.md                  (更新业务域清单：src/ 描述调整)
 ```
 
 ## 注意事项

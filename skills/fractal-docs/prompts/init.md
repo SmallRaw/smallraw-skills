@@ -25,13 +25,13 @@ description: Initialize Fractal Documentation Protocol for a project
    - 识别入口文件、配置文件、测试文件
 
 4. **检查已有文档**
-   - 是否存在 `CLAUDE.md`？→ 合并而非覆盖
-   - 是否存在 `AGENTS.md`？→ 内容合并进 `CLAUDE.md`，完成后删除
+   - 是否存在 `AGENTS.md`？→ 合并而非覆盖
+   - 是否存在 `CLAUDE.md`（非软链接的实体文件）？→ 内容合并进 `AGENTS.md`，替换为软链接
    - 是否已有头部注释？→ 保留，补充缺失的字段
 
-### 阶段 2：创建根 CLAUDE.md
+### 阶段 2：创建根 AGENTS.md
 
-基于 `starter/root-claude.starter.md` 模板，填充：
+基于 `starter/root-agents.starter.md` 模板，填充：
 
 1. 项目名称和一句话描述
 
@@ -78,18 +78,19 @@ description: Initialize Fractal Documentation Protocol for a project
    ```
    ````
 
-3. 如果有 `AGENTS.md`，合并其中的：
+3. 如果有旧的 `CLAUDE.md`（非软链接的实体文件），合并其中的：
    - Build & Dev Commands
    - Git Safety 规则
    - Code Style 规则
    - Testing 规则
    - 其他项目特定规则
+   合并后删除旧实体文件，后续会创建软链接。
 
 4. 顶层业务域清单（每个一级目录/文件一行）
 
-### 阶段 3：创建目录级 CLAUDE.md
+### 阶段 3：创建目录级 AGENTS.md
 
-**对每个包含源码文件的目录**，基于 `starter/dir-claude.starter.md` 模板创建 `CLAUDE.md`：
+**对每个包含源码文件的目录**，基于 `starter/dir-agents.starter.md` 模板创建 `AGENTS.md`：
 
 1. 阅读目录下所有源码文件（至少前 30-50 行）
 2. 理解模块职责和内部分工
@@ -101,7 +102,13 @@ description: Initialize Fractal Documentation Protocol for a project
    - **约束**：技术限制、编码规范
    - **业务域清单**：每个文件/子目录一行
 
-**目录遍历顺序**：自底向上。先处理叶子目录，再处理父目录，确保父目录的清单引用子目录时子目录已有 CLAUDE.md。
+**目录遍历顺序**：自底向上。先处理叶子目录，再处理父目录，确保父目录的清单引用子目录时子目录已有 AGENTS.md。
+
+**创建软链接**：每个 `AGENTS.md` 创建完成后，在同目录创建 `CLAUDE.md → AGENTS.md` 软链接：
+```bash
+ln -s AGENTS.md CLAUDE.md
+```
+这样 Claude Code 的懒加载机制能自动识别，其他 AI Code 工具也能通过 `AGENTS.md` 直接读取。
 
 ### 阶段 4：添加三行头部注释
 
@@ -130,7 +137,8 @@ description: Initialize Fractal Documentation Protocol for a project
 
 ### 阶段 6：清理
 
-- 如果 `AGENTS.md` 内容已合并进 `CLAUDE.md`，删除 `AGENTS.md`
+- 如果旧的 `CLAUDE.md` 实体文件内容已合并进 `AGENTS.md`，确认已删除旧文件并替换为软链接
+- 确认每个 `AGENTS.md` 旁边都有 `CLAUDE.md → AGENTS.md` 软链接
 - 确认 git status，告知用户变更的文件列表
 
 ## 注意事项
@@ -139,5 +147,5 @@ description: Initialize Fractal Documentation Protocol for a project
 - **阅读优先**：写注释前必须阅读文件（至少前 50 行 + 公开 API 部分）
 - **保守原则**：不确定的接口宁可不列，也不要列错
 - **不破坏代码**：三行注释是纯注释，绝对不能改变任何代码逻辑
-- **并行加速**：文件多时使用 Team 机制并行处理，一个 Agent 处理 CLAUDE.md，其他处理头部注释
-- **只放相关语言**：根 CLAUDE.md 中的示例只包含项目实际使用的语言，不要放全量语言列表
+- **并行加速**：文件多时使用 Team 机制并行处理，一个 Agent 处理 AGENTS.md，其他处理头部注释
+- **只放相关语言**：根 AGENTS.md 中的示例只包含项目实际使用的语言，不要放全量语言列表

@@ -33,11 +33,12 @@ description: Check fractal documentation consistency
 - src/utils/helper.py
 ```
 
-### 3. 检查第二层：目录级 CLAUDE.md
+### 3. 检查第二层：目录级 AGENTS.md
 
 对每个包含源码文件的目录检查：
 
-- [ ] 是否存在 `CLAUDE.md`
+- [ ] 是否存在 `AGENTS.md`
+- [ ] 是否存在 `CLAUDE.md → AGENTS.md` 软链接
 - [ ] 是否包含必要章节（地位、逻辑、约束、业务域清单）
 - [ ] 业务域清单是否与目录内实际文件一一对应：
   - 清单中列出但实际不存在的文件 → **幽灵条目**
@@ -46,25 +47,26 @@ description: Check fractal documentation consistency
 输出不一致列表：
 
 ```
-CLAUDE.md 不一致：
-- src/CLAUDE.md:
+AGENTS.md 不一致：
+- src/AGENTS.md:
   - 幽灵条目: old_module.rs（文件已删除）
   - 遗漏条目: new_module.rs（文件未登记）
-- src/menu/CLAUDE.md: OK
+- src/menu/AGENTS.md: OK
+- src/: CLAUDE.md 软链接缺失
 ```
 
 ### 4. 检查第三层：级联完整性
 
 从叶子目录到根目录，检查引用链：
 
-- [ ] 每个子目录在其父目录的 CLAUDE.md 业务域清单中有对应条目
-- [ ] 根 CLAUDE.md 的业务域清单覆盖所有一级源码目录
+- [ ] 每个子目录在其父目录的 AGENTS.md 业务域清单中有对应条目
+- [ ] 根 AGENTS.md 的业务域清单覆盖所有一级源码目录
 
 输出断链列表：
 
 ```
 级联断链：
-- src/utils/ 未在 src/CLAUDE.md 的业务域清单中登记
+- src/utils/ 未在 src/AGENTS.md 的业务域清单中登记
 ```
 
 ### 5. 生成报告
@@ -78,11 +80,13 @@ CLAUDE.md 不一致：
 - 源码文件：{N} 个
 - 有头部注释：{M} 个（{M/N*100}%）
 - 源码目录：{D} 个
-- 有 CLAUDE.md：{C} 个（{C/D*100}%）
+- 有 AGENTS.md：{C} 个（{C/D*100}%）
+- 有 CLAUDE.md 软链接：{L} 个（{L/D*100}%）
 
 ### 问题
 - 缺少头部注释：{count} 个文件
-- 缺少 CLAUDE.md：{count} 个目录
+- 缺少 AGENTS.md：{count} 个目录
+- 缺少 CLAUDE.md 软链接：{count} 个目录
 - 幽灵条目：{count} 条
 - 遗漏条目：{count} 条
 - 级联断链：{count} 处
@@ -102,7 +106,8 @@ CLAUDE.md 不一致：
 如果用户同意自动修复：
 
 - **缺少头部注释**：阅读文件 → 添加注释
-- **缺少 CLAUDE.md**：分析目录 → 生成 CLAUDE.md
+- **缺少 AGENTS.md**：分析目录 → 生成 AGENTS.md + CLAUDE.md 软链接
+- **缺少 CLAUDE.md 软链接**：创建 `ln -s AGENTS.md CLAUDE.md`
 - **幽灵条目**：从清单中删除
 - **遗漏条目**：阅读文件 → 添加到清单
 - **级联断链**：添加缺失的父级条目
