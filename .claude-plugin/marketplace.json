@@ -16,6 +16,15 @@
       "skills": [
         "./skills/architect"
       ]
+    },
+    {
+      "name": "fractal-docs",
+      "description": "分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/fractal-docs"
+      ]
     }
   ]
 }
