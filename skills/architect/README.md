@@ -28,16 +28,7 @@ cp architect-skill/starter/committer your-project/scripts/
 chmod +x your-project/scripts/committer
 ```
 
-### 2. 配置 Claude
-
-创建 CLAUDE.md 软链接（让 Claude Code 自动加载规范）：
-
-```bash
-cd your-project
-ln -s AGENTS.md CLAUDE.md
-```
-
-### 3. 按需扩展
+### 2. 按需扩展
 
 当项目成长到需要更多规则时：
 

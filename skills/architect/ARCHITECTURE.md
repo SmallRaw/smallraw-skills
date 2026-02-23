@@ -16,7 +16,7 @@
                               ↓ 继承
 ┌─────────────────────────────────────────────────────────────────┐
 │  Layer 1: 项目规范                                               │
-│  位置: {project}/AGENTS.md (或 CLAUDE.md)                       │
+│  位置: {project}/AGENTS.md                                      │
 │  性质: 法律，可扩展全局规则，可添加项目特定规则                      │
 │  加载: 进入项目时自动加载                                         │
 └─────────────────────────────────────────────────────────────────┘
@@ -203,8 +203,7 @@
 ### 项目规则
 ```
 {project}/
-├── AGENTS.md            # 主规范文件
-├── CLAUDE.md -> AGENTS.md  # 软链接（让 Claude 自动加载）
+├── AGENTS.md            # 主规范文件（跨工具通用）
 └── .pi/
     └── prompts/
         ├── pr.md        # PR 审查
@@ -245,7 +244,6 @@ TOOLS.md
 
 - [ ] 全局规则已配置 (`~/.claude/rules/`)
 - [ ] AGENTS.md 已创建
-- [ ] CLAUDE.md 软链接已创建
 - [ ] scripts/committer 已安装
 - [ ] .gitignore 已排除私有文件
 - [ ] Rules Evolution 表已初始化
