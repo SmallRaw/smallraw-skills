@@ -16,7 +16,7 @@
 
 ### 第二层：目录级 AGENTS.md
 
-每个源码目录的 `AGENTS.md` 格式（同时有 `CLAUDE.md → AGENTS.md` 软链接）：
+每个源码目录的 `AGENTS.md` 格式：
 
 ```markdown
 # {模块名}

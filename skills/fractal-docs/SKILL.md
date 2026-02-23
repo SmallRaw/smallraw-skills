@@ -59,7 +59,7 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 | 名称 | 文件/子目录 | 职责 |
 ```
 
-同时创建 `CLAUDE.md → AGENTS.md` 软链接，兼容 Claude Code 的懒加载机制（搜索到某目录时自动加载该目录的 `CLAUDE.md`）。`AGENTS.md` 是通用协议，其他 AI Code 工具也能直接识别。
+`AGENTS.md` 是跨工具通用协议，Claude Code、Cursor、Windsurf、OpenCode 等 AI Code 工具均可直接识别。只保留一份 `AGENTS.md`，避免同时存在 `CLAUDE.md` 导致重复读取浪费 context。
 
 ### 第三层：级联更新规则
 
@@ -79,8 +79,8 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 扫描项目，生成完整的三层文档体系：
 
 1. 分析项目结构和技术栈
-2. 创建根 `AGENTS.md`（项目概览 + 协议定义 + 业务域清单）+ `CLAUDE.md` 软链接
-3. 为每个源码目录创建 `AGENTS.md` + `CLAUDE.md` 软链接
+2. 创建根 `AGENTS.md`（项目概览 + 协议定义 + 业务域清单）
+3. 为每个源码目录创建 `AGENTS.md`
 4. 为每个源码文件添加三行头部注释
 5. 验证编译/构建不被破坏
 
@@ -107,7 +107,8 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 
 检查项：
 - 每个源码文件是否有三行头部注释
-- 每个源码目录是否有 AGENTS.md（+ CLAUDE.md 软链接）
+- 每个源码目录是否有 AGENTS.md
+- 是否存在多余的 CLAUDE.md（应删除以避免重复读取）
 - AGENTS.md 业务域清单与实际文件是否一一对应
 - 从叶子到根的级联链路是否完整
 
@@ -123,8 +124,8 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 
 自动完成：
 - 检测项目语言和构建系统
-- 生成根 AGENTS.md（合并已有 CLAUDE.md 内容，如果存在）+ CLAUDE.md 软链接
-- 递归生成目录 AGENTS.md + CLAUDE.md 软链接
+- 生成根 AGENTS.md（合并已有 CLAUDE.md 内容后删除旧文件，如果存在）
+- 递归生成目录 AGENTS.md
 - 为所有源码文件添加三行注释
 - 运行构建验证
 
@@ -166,14 +167,14 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 | 维度 | /architect | /fractal-docs |
 |------|-----------|---------------|
 | 关注点 | 行为规范（怎么做） | 代码导航（怎么理解） |
-| 产出物 | AGENTS.md / CLAUDE.md 规则段 | 三行注释 + 目录 AGENTS.md |
+| 产出物 | AGENTS.md 规则段 | 三行注释 + 目录 AGENTS.md |
 | 触发场景 | 流程出错、重复犯错 | 新项目、新模块、AI 理解困难 |
 | 演进方式 | 从问题中长出规则 | 从代码结构中提取文档 |
 
 两者互补：
 - `/architect init` 建立行为规范
 - `/fractal-docs init` 建立导航地图
-- 根 AGENTS.md 可以同时包含两者的内容（CLAUDE.md 通过软链接指向它）
+- 根 AGENTS.md 可以同时包含两者的内容
 
 ---
 
