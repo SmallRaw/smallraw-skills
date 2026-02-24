@@ -26,7 +26,9 @@ description: Initialize Fractal Documentation Protocol for a project
 
 4. **检查已有文档**
    - 是否存在 `AGENTS.md`？→ 合并而非覆盖
-   - 是否存在 `CLAUDE.md`（实体文件）？→ 内容合并进 `AGENTS.md`，然后删除 `CLAUDE.md`（避免重复）
+   - 是否存在 `CLAUDE.md`？→ 需要区分处理：
+     - 如果仅包含对 `AGENTS.md` 的引用/软链接 → 直接删除
+     - 如果包含用户自定义的项目约束 → **不要动它**，用户自己维护的文件保持原样
    - 是否已有头部注释？→ 保留，补充缺失的字段
 
 ### 阶段 2：创建根 AGENTS.md
@@ -78,13 +80,9 @@ description: Initialize Fractal Documentation Protocol for a project
    ```
    ````
 
-3. 如果有旧的 `CLAUDE.md`（实体文件），合并其中的：
-   - Build & Dev Commands
-   - Git Safety 规则
-   - Code Style 规则
-   - Testing 规则
-   - 其他项目特定规则
-   合并后删除旧 `CLAUDE.md` 文件，统一使用 `AGENTS.md`。
+3. 如果有旧的 `CLAUDE.md`，按以下策略处理：
+   - **仅包含 AGENTS.md 引用/软链接**：直接删除
+   - **包含用户自定义内容**：**不要动它**，保持原样。用户自己维护的约束文件不属于本协议的管理范围。
 
 4. 顶层业务域清单（每个一级目录/文件一行）
 
@@ -133,8 +131,8 @@ description: Initialize Fractal Documentation Protocol for a project
 
 ### 阶段 6：清理
 
-- 如果旧的 `CLAUDE.md` 实体文件内容已合并进 `AGENTS.md`，确认旧文件已删除
-- 确认项目中不存在多余的 `CLAUDE.md` 文件或软链接（避免重复读取）
+- 如果 `CLAUDE.md` 仅是 AGENTS.md 的引用/软链接，确认已删除
+- 如果 `CLAUDE.md` 包含用户自定义内容，确认未被修改
 - 确认 git status，告知用户变更的文件列表
 
 ## 注意事项

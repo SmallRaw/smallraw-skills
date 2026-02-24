@@ -59,7 +59,7 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 | 名称 | 文件/子目录 | 职责 |
 ```
 
-`AGENTS.md` 是跨工具通用协议，Claude Code、Cursor、Windsurf、OpenCode 等 AI Code 工具均可直接识别。只保留一份 `AGENTS.md`，避免同时存在 `CLAUDE.md` 导致重复读取浪费 context。
+`AGENTS.md` 是跨工具通用协议，Claude Code、Cursor、Windsurf、OpenCode 等 AI Code 工具均可直接识别。优先使用 `AGENTS.md`。如果项目中存在 `CLAUDE.md`，需区分处理：仅引用 AGENTS.md 的可以删除；包含用户自定义约束的不要动它。
 
 ### 第三层：级联更新规则
 
@@ -108,7 +108,7 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 检查项：
 - 每个源码文件是否有三行头部注释
 - 每个源码目录是否有 AGENTS.md
-- 是否存在多余的 CLAUDE.md（应删除以避免重复读取）
+- 是否存在 CLAUDE.md（仅引用 AGENTS.md 的可删除；含用户自定义约束的不要动）
 - AGENTS.md 业务域清单与实际文件是否一一对应
 - 从叶子到根的级联链路是否完整
 
@@ -124,7 +124,7 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 
 自动完成：
 - 检测项目语言和构建系统
-- 生成根 AGENTS.md（合并已有 CLAUDE.md 内容后删除旧文件，如果存在）
+- 生成根 AGENTS.md（如已有 CLAUDE.md：仅引用 AGENTS.md 则删除，含用户自定义约束则不要动）
 - 递归生成目录 AGENTS.md
 - 为所有源码文件添加三行注释
 - 运行构建验证

@@ -38,7 +38,9 @@ description: Check fractal documentation consistency
 对每个包含源码文件的目录检查：
 
 - [ ] 是否存在 `AGENTS.md`
-- [ ] 是否存在多余的 `CLAUDE.md`（实体文件或软链接）→ 应删除以避免重复读取
+- [ ] 是否存在 `CLAUDE.md`？→ 需区分处理：
+  - 仅包含 AGENTS.md 引用/软链接 → 应删除
+  - 包含用户自定义约束 → 不要动它，保持原样
 - [ ] 是否包含必要章节（地位、逻辑、约束、业务域清单）
 - [ ] 业务域清单是否与目录内实际文件一一对应：
   - 清单中列出但实际不存在的文件 → **幽灵条目**
@@ -52,7 +54,8 @@ AGENTS.md 不一致：
   - 幽灵条目: old_module.rs（文件已删除）
   - 遗漏条目: new_module.rs（文件未登记）
 - src/menu/AGENTS.md: OK
-- src/: 存在多余的 CLAUDE.md（应删除）
+- src/: 存在 CLAUDE.md（仅引用 AGENTS.md，可删除）
+- lib/: 存在 CLAUDE.md（包含用户自定义约束，不要动）
 ```
 
 ### 4. 检查第三层：级联完整性
@@ -85,7 +88,8 @@ AGENTS.md 不一致：
 ### 问题
 - 缺少头部注释：{count} 个文件
 - 缺少 AGENTS.md：{count} 个目录
-- 多余的 CLAUDE.md：{count} 个（应删除）
+- CLAUDE.md 仅引用 AGENTS.md：{count} 个（可删除）
+- CLAUDE.md 含用户自定义约束：{count} 个（保持原样）
 - 幽灵条目：{count} 条
 - 遗漏条目：{count} 条
 - 级联断链：{count} 处
@@ -106,7 +110,8 @@ AGENTS.md 不一致：
 
 - **缺少头部注释**：阅读文件 → 添加注释
 - **缺少 AGENTS.md**：分析目录 → 生成 AGENTS.md
-- **多余的 CLAUDE.md**：删除（内容先合并进 AGENTS.md，如有差异）
+- **CLAUDE.md 仅引用 AGENTS.md**：直接删除
+- **CLAUDE.md 含用户自定义约束**：不要动，保持原样
 - **幽灵条目**：从清单中删除
 - **遗漏条目**：阅读文件 → 添加到清单
 - **级联断链**：添加缺失的父级条目
