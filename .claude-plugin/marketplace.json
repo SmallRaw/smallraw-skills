@@ -13,18 +13,21 @@
       "description": "AI 开发架构师 - 帮助建立和维护项目规范，规则是长出来的，不是设计出来的",
       "source": "./",
       "strict": false,
-      "skills": [
-        "./skills/architect"
-      ]
+      "skills": ["./skills/architect"]
     },
     {
       "name": "fractal-docs",
       "description": "分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块",
       "source": "./",
       "strict": false,
-      "skills": [
-        "./skills/fractal-docs"
-      ]
+      "skills": ["./skills/fractal-docs"]
+    },
+    {
+      "name": "excel-analyst",
+      "description": "Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出新文件",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/excel-analyst"]
     }
   ]
 }

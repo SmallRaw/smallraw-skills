@@ -12,9 +12,10 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin marketplace add smallraw/smallraw-skills
 /plugin install architect@smallraw-skills
 /plugin install fractal-docs@smallraw-skills
+/plugin install excel-analyst@smallraw-skills
 ```
 
-安装后使用 `/architect:architect` 或 `/fractal-docs` 调用。
+安装后使用 `/architect:architect`、`/fractal-docs`、`/excel-analyst` 调用。
 
 ### 手动安装
 
@@ -24,11 +25,13 @@ mkdir -p ~/.claude/skills
 git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
 cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/excel-analyst ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
 cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/excel-analyst ~/.config/opencode/skills/
 ```
 
 手动安装后使用 `/architect` 调用。
@@ -41,6 +44,7 @@ cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
 |-------|-------------|--------|
 | [architect](skills/architect/) | AI Development Architect - 帮助建立和维护项目规范 | ✅ Ready |
 | [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | ✅ Ready |
+| [excel-analyst](skills/excel-analyst/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | ✅ Ready |
 
 ---
 
@@ -80,6 +84,30 @@ Features:
 /fractal-docs init     # 为项目建立完整文档体系
 /fractal-docs update   # 文件变更后级联更新文档
 /fractal-docs check    # 验证文档一致性
+```
+
+### /excel-analyst
+
+**Excel 报表分析与数据清洗** - 读取 Excel → 自动清洗脏字符 → 查询/清洗/加工 → 导出新文件。
+
+专为弱模型和浅上下文优化：工具自动推荐配置、输出完整命令、校验规则格式。
+
+Features:
+- 自动侦察表结构并推荐配置（表头位置、序号列检测）
+- 13 种内置清洗操作（trim, replace, filter, aggregate, pivot 等）
+- steps 文件 schema 校验，写错参数精确报错
+- 每一步输出带绝对路径的下一步命令，弱模型照抄即可
+- 内置操作不够时，export 导出干净 csv 供自定义 Python 脚本处理
+
+```bash
+# 依赖：pip install openpyxl pandas
+python scripts/excel_tool.py auto 报表.xlsx              # 自动侦察 + 推荐配置
+python scripts/excel_tool.py auto 报表.xlsx headers       # 查看列名
+python scripts/excel_tool.py auto 报表.xlsx query \
+  --where-col "销量" --where-op ">" --where-val "100"     # 条件查询
+python scripts/excel_tool.py clean 报表.xlsx --preview     # 预览清洗结果
+python scripts/excel_tool.py clean 报表.xlsx -o out.xlsx   # 导出
+python scripts/excel_tool.py help filter                   # 按需查看操作格式
 ```
 
 ---
