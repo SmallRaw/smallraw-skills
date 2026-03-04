@@ -40,7 +40,7 @@ disable-model-invocation: false
 ├─────────────────────────────────────────────────┤
 │  Layer 2 — 任务状态协议                          │
 │  .tmux-agents.json 状态文件读写                   │
-│  → knowledge/state-file-schema.md                │
+│  → knowledge/state-protocol.md                │
 ├─────────────────────────────────────────────────┤
 │  Layer 1 — tmux 原语                             │
 │  new-session / new-window / send-keys /          │
@@ -258,5 +258,5 @@ jq '.agents | to_entries[] | "\(.key): \(.value.status)"' .tmux-agents.json
 | 文件 | 用途 |
 |------|------|
 | `knowledge/tmux-primitives.md` | tmux 命令原语参考（new-session、send-keys、capture-pane 等用法与参数） |
-| `knowledge/state-file-schema.md` | `.tmux-agents.json` 状态文件的 JSON Schema 与字段说明 |
+| `knowledge/state-protocol.md` | `.tmux-agents.json` 状态文件的 JSON Schema 与字段说明 |
 | `knowledge/lifecycle-management.md` | Agent 生命周期管理详解（重启、回收、清理、异常处理策略） |
