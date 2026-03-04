@@ -1,5 +1,5 @@
 ---
-name: tmux-agent
+name: openclaw-tmux-agent
 description: 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作
 license: MIT
 compatibility: claude-code, opencode, gemini-cli, codex
@@ -15,7 +15,7 @@ user-invocable: false
 disable-model-invocation: false
 ---
 
-# tmux-agent — 多 AI CLI 工具调度协议
+# openclaw-tmux-agent — 多 AI CLI 工具调度协议
 
 > 通过 tmux 实现 AI Agent 对其他 AI CLI 工具的持久化调度。专为 OpenClaw 设计。
 

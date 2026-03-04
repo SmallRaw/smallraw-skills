@@ -1,4 +1,4 @@
-# tmux-agent Skill
+# openclaw-tmux-agent Skill
 
 > 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作
 

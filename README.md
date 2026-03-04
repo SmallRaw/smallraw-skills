@@ -13,7 +13,7 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin install architect@smallraw-skills
 /plugin install fractal-docs@smallraw-skills
 /plugin install excel-analyst@smallraw-skills
-/plugin install tmux-agent@smallraw-skills
+/plugin install openclaw-tmux-agent@smallraw-skills
 ```
 
 安装后使用 `/architect:architect`、`/fractal-docs`、`/excel-analyst` 调用。
@@ -27,14 +27,14 @@ git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
 cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/excel-analyst ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/tmux-agent ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
 cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/excel-analyst ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/tmux-agent ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.config/opencode/skills/
 ```
 
 手动安装后使用 `/architect` 调用。
@@ -48,7 +48,7 @@ cp -r /tmp/smallraw-skills/skills/tmux-agent ~/.config/opencode/skills/
 | [architect](skills/architect/) | AI Development Architect - 帮助建立和维护项目规范 | ✅ Ready |
 | [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | ✅ Ready |
 | [excel-analyst](skills/excel-analyst/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | ✅ Ready |
-| [tmux-agent](skills/tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | ✅ Ready |
+| [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | ✅ Ready |
 
 ---
 
@@ -114,7 +114,7 @@ python scripts/excel_tool.py clean 报表.xlsx -o out.xlsx   # 导出
 python scripts/excel_tool.py help filter                   # 按需查看操作格式
 ```
 
-### tmux-agent
+### openclaw-tmux-agent
 
 **多 AI CLI 工具调度协议** - 通过 tmux 实现持久化的多 Agent 协作。
 
