@@ -253,6 +253,66 @@ jq '.agents | to_entries[] | "\(.key): \(.value.status)"' .tmux-agents.json
 
 ---
 
+## 实战技巧
+
+### TUI 应用的命令发送
+
+Claude Code、Codex 等 TUI 应用会将快速的 "文本+回车" 序列当成粘贴/多行输入，导致命令不被提交。**必须将文本和 Enter 分开发送，中间加短暂延迟：**
+
+```bash
+# ❌ 错误：TUI 可能不识别
+tmux send-keys -t openclaw-agents:task-refactor "Fix the auth bug" Enter
+
+# ✅ 正确：文本和 Enter 分开发送
+tmux send-keys -t openclaw-agents:task-refactor -l -- "Fix the auth bug" && sleep 0.1 && tmux send-keys -t openclaw-agents:task-refactor Enter
+```
+
+- `-l`：字面模式（literal），避免 tmux 解释特殊字符
+- `--`：防止后续内容被当作 tmux 选项
+- `sleep 0.1`：给 TUI 应用处理时间
+
+> **规则**：向 AI CLI 工具发送 prompt 时，一律使用 `-l` + 分离 Enter 的方式。
+
+### Session 命名防冲突
+
+使用 `oc-<项目>-<功能>` 前缀命名 session，避免与用户手动创建的 session 冲突：
+
+```bash
+# 命名规范
+tmux new-session -d -s oc-myproject-auth-refactor
+
+# 快速列出所有 OpenClaw 管理的 session
+tmux ls -F '#{session_name}' | grep '^oc-'
+
+# 一键清理所有 OpenClaw session
+tmux ls -F '#{session_name}' | grep '^oc-' | xargs -n1 tmux kill-session -t
+```
+
+### Shell Prompt 完成检测
+
+除了 pid 检测外，还可以通过检查 shell 提示符判断工具是否执行完毕（工具退出后会回到 shell）：
+
+```bash
+# 检查最近几行是否包含 shell 提示符
+if tmux capture-pane -p -t openclaw-agents:task-refactor -S -3 | grep -qE '[\$❯#] ?$'; then
+  echo "工具已完成，回到 shell"
+else
+  echo "工具仍在运行"
+fi
+```
+
+> 此方法作为 pid 检测的补充，不可替代 pid 检测。
+
+### Python REPL 兼容
+
+启动 Python 相关工具时，设置环境变量避免高级 REPL 破坏 send-keys 流程：
+
+```bash
+tmux send-keys -t openclaw-agents:task-python -l -- "PYTHON_BASIC_REPL=1 python script.py" && sleep 0.1 && tmux send-keys -t openclaw-agents:task-python Enter
+```
+
+---
+
 ## 知识库文件
 
 | 文件 | 用途 |

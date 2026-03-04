@@ -147,6 +147,19 @@ check_agent_health() {
 | pid 不存在 | `ps -p <pid>` 返回非零 | 直接检查进程表 |
 | shell 存活但无子进程 | `pgrep -P <pane_pid>` 无输出 | shell 还在，但 Agent 工具已退出 |
 
+### 补充判据：Shell Prompt 检测
+
+作为 pid 检测的补充，可以检查 pane 输出是否回到了 shell 提示符：
+
+```bash
+# 检查最近几行是否包含 shell 提示符（$、❯、#）
+if tmux capture-pane -p -t openclaw-agents:task-refactor -S -3 | grep -qE '[\$❯#] ?$'; then
+  echo "工具已退出，回到 shell"
+fi
+```
+
+> 此方法不可替代 pid 检测，仅作为辅助手段。某些工具的输出中可能包含类似提示符的字符。
+
 ### 重要区分：完成 ≠ 成功
 
 完成（completed）仅表示进程不再运行，不代表任务成功。进程退出后需要进一步判断：

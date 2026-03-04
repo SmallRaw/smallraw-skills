@@ -140,7 +140,7 @@ tmux list-windows -t openclaw-agents -F '#{window_index} #{window_name}'
 
 通过 `send-keys` 向指定 window 的 pane 发送按键序列，等同于在终端中输入。
 
-### 发送命令
+### 发送命令（基础）
 
 ```bash
 tmux send-keys -t <session>:<window> '<command>' Enter
@@ -153,6 +153,35 @@ tmux send-keys -t <session>:<window> '<command>' Enter
 # 示例：在指定 window 中启动 claude-code
 tmux send-keys -t openclaw-agents:task-refactor "claude-code --task '重构 utils 模块'" Enter
 ```
+
+### 字面发送（推荐）
+
+```bash
+tmux send-keys -t <session>:<window> -l -- '<text>'
+```
+
+- `-l`：字面模式（literal），不将文本中的字符解释为 tmux 特殊键
+- `--`：后续内容不作为选项解析，防止文本以 `-` 开头时出错
+
+```bash
+# 示例：安全发送包含特殊字符的文本
+tmux send-keys -t openclaw-agents:task-refactor -l -- "Fix the bug in src/auth.rs"
+tmux send-keys -t openclaw-agents:task-refactor Enter
+```
+
+### 向 TUI 应用发送命令（Claude Code、Codex 等）
+
+Claude Code、Codex 等 TUI 应用会将快速的 "文本+Enter" 序列当成粘贴/多行输入。**必须分开发送，中间加延迟：**
+
+```bash
+# ❌ 错误：TUI 可能将文本+回车视为粘贴
+tmux send-keys -t target "Fix the auth bug" Enter
+
+# ✅ 正确：文本和 Enter 分开，中间 sleep
+tmux send-keys -t target -l -- "Fix the auth bug" && sleep 0.1 && tmux send-keys -t target Enter
+```
+
+> **规则**：向 AI CLI 工具发送 prompt 时，一律使用 `-l` + 分离 Enter 的方式。
 
 ### 特殊按键
 
