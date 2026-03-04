@@ -111,7 +111,7 @@ PANE_PID=$(tmux display-message -t openclaw-agents:task-refactor -p '#{pane_pid}
 echo "pane_pid: $PANE_PID"
 
 # 找到实际子进程 pid
-CHILD_PID=$(ps --ppid "$PANE_PID" -o pid= 2>/dev/null | head -1 | tr -d ' ')
+CHILD_PID=$(pgrep -P "$PANE_PID" | head -1)
 echo "child_pid: $CHILD_PID"
 ```
 
@@ -170,7 +170,7 @@ tmux send-keys -t openclaw-agents:task-refactor "claude-code --task '重构 util
 # 等待并更新 pid
 sleep 2
 PANE_PID=$(tmux display-message -t openclaw-agents:task-refactor -p '#{pane_pid}')
-CHILD_PID=$(ps --ppid "$PANE_PID" -o pid= 2>/dev/null | head -1 | tr -d ' ')
+CHILD_PID=$(pgrep -P "$PANE_PID" | head -1)
 
 jq --arg pid "$CHILD_PID" '.agents["task-refactor"].pid = ($pid | tonumber) | .agents["task-refactor"].status = "running"' \
   .tmux-agents.json > .tmux-agents.json.tmp && mv .tmux-agents.json.tmp .tmux-agents.json
