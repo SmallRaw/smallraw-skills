@@ -28,6 +28,13 @@
       "source": "./",
       "strict": false,
       "skills": ["./skills/excel-analyst"]
+    },
+    {
+      "name": "openclaw-tmux-agent",
+      "description": "通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/openclaw-tmux-agent"]
     }
   ]
 }
