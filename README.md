@@ -14,10 +14,10 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin install fractal-docs@smallraw-skills
 /plugin install excel-lite-cli@smallraw-skills
 /plugin install openclaw-tmux-agent@smallraw-skills
-/plugin install mcp-cli@smallraw-skills
+/plugin install mcp-lazy-cli@smallraw-skills
 ```
 
-安装后使用 `/architect:architect`、`/fractal-docs`、`/excel-lite-cli`、`/mcp-cli` 调用。
+安装后使用 `/architect:architect`、`/fractal-docs`、`/excel-lite-cli`、`/mcp-lazy-cli` 调用。
 
 ### 手动安装
 
@@ -29,7 +29,7 @@ cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/mcp-cli ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
@@ -37,7 +37,7 @@ cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/mcp-cli ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.config/opencode/skills/
 ```
 
 手动安装后使用 `/architect` 调用。
@@ -52,7 +52,7 @@ cp -r /tmp/smallraw-skills/skills/mcp-cli ~/.config/opencode/skills/
 | [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | ✅ Ready |
 | [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | ✅ Ready |
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | ✅ Ready |
-| [mcp-cli](skills/mcp-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | ✅ Ready |
+| [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | ✅ Ready |
 
 ---
 
@@ -118,7 +118,7 @@ python scripts/excel_tool.py clean 报表.xlsx -o out.xlsx   # 导出
 python scripts/excel_tool.py help filter                   # 按需查看操作格式
 ```
 
-### /mcp-cli
+### /mcp-lazy-cli
 
 **MCP Skill System** — 像 skill 按需加载一样使用 MCP servers。
 
@@ -133,11 +133,11 @@ Features:
 
 ```bash
 # 查看项目注册了哪些 MCP servers
-node .claude/skills/mcp-cli/script/mcp-cli.cjs --registry
+node .claude/skills/mcp-lazy-cli/script/mcp-lazy-client.cjs --registry
 
 # 按需调用
-node .claude/skills/mcp-cli/script/mcp-cli.cjs --server pencil tools
-node .claude/skills/mcp-cli/script/mcp-cli.cjs --server pencil call get_editor_state '{"include_schema":false}'
+node .claude/skills/mcp-lazy-cli/script/mcp-lazy-client.cjs --server pencil tools
+node .claude/skills/mcp-lazy-cli/script/mcp-lazy-client.cjs --server pencil call get_editor_state '{"include_schema":false}'
 ```
 
 安装后在项目 `.claude/mcp-registry.json` 中注册你的 MCP servers：

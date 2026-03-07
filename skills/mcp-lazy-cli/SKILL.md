@@ -1,5 +1,5 @@
 ---
-name: mcp-cli
+name: mcp-lazy-cli
 description: MCP Skill System — 按需调用 MCP servers，不预加载。通过 registry 索引知道有什么能力，用 CLI 按需连接、调用、断开。当需要与外部工具交互（设计工具、数据库、API 等）但该工具未预加载为 MCP 时使用。
 allowed-tools:
   - Bash
@@ -15,7 +15,7 @@ allowed-tools:
 ## CLI
 
 ```bash
-node .claude/skills/mcp-cli/script/mcp-cli.cjs <options> <command>
+node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs <options> <command>
 ```
 
 ## 工作流
@@ -23,7 +23,7 @@ node .claude/skills/mcp-cli/script/mcp-cli.cjs <options> <command>
 ### 1. 查看可用 servers
 
 ```bash
-node .claude/skills/mcp-cli/script/mcp-cli.cjs --registry
+node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --registry
 ```
 
 输出 `.claude/mcp-registry.json`：每个 server 的名称、描述、`when` 触发条件、工具概要。
@@ -33,7 +33,7 @@ node .claude/skills/mcp-cli/script/mcp-cli.cjs --registry
 ### 2. 查看完整 tool schema（按需）
 
 ```bash
-node .claude/skills/mcp-cli/script/mcp-cli.cjs --server <name> tools
+node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --server <name> tools
 ```
 
 只在需要知道参数细节时调用。
@@ -41,7 +41,7 @@ node .claude/skills/mcp-cli/script/mcp-cli.cjs --server <name> tools
 ### 3. 调用 tool
 
 ```bash
-node .claude/skills/mcp-cli/script/mcp-cli.cjs --server <name> call <tool-name> '<json-args>'
+node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --server <name> call <tool-name> '<json-args>'
 ```
 
 ### 4. 其他命令
@@ -91,6 +91,6 @@ node .claude/skills/mcp-cli/script/mcp-cli.cjs --server <name> call <tool-name> 
 ## 重新编译
 
 ```bash
-cd .claude/skills/mcp-cli/sources && npm install && npm run build
-cp dist/mcp-core.cjs ../script/mcp-cli.cjs
+cd .claude/skills/mcp-lazy-cli/sources && npm install && npm run build
+cp dist/mcp-core.cjs ../script/mcp-client.cjs
 ```

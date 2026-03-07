@@ -37,11 +37,11 @@
       "skills": ["./skills/openclaw-tmux-agent"]
     },
     {
-      "name": "mcp-cli",
+      "name": "mcp-lazy-cli",
       "description": "MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/mcp-cli"]
+      "skills": ["./skills/mcp-lazy-cli"]
     }
   ]
 }
