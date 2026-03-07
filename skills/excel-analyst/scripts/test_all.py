@@ -112,78 +112,36 @@ def step2_test_scout(test_file):
     )
 
 
-def step3_test_auto_no_config(test_file):
-    """测试自动模式（无配置，应触发侦察）"""
-    # 确保无配置
-    cfg = os.path.splitext(test_file)[0] + ".excel-config.json"
-    if os.path.exists(cfg):
-        os.remove(cfg)
-
-    return run(
-        [PYTHON, TOOL, "auto", test_file, "preview"],
-        "auto preview - 无配置时自动侦察"
-    )
-
-
-def step4_generate_config(test_file):
-    """手动生成结构配置"""
-    print(f"\n{'='*60}")
-    print("步骤 4: 生成结构配置")
-    print("=" * 60)
-
-    config = {
-        "sheets": {
-            "销售月报": {
-                "header_row": 3,
-                "data_start_row": 4,
-                "columns": {
-                    "产品型号": "型号"
-                },
-                "skip_cols": [0],
-                "notes": "前3行是标题，第0列序号跳过"
-            }
-        }
-    }
-
-    cfg_path = os.path.splitext(test_file)[0] + ".excel-config.json"
-    with open(cfg_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
-
-    print(f"已生成: {cfg_path}")
-    print(json.dumps(config, ensure_ascii=False, indent=2))
-    return True
-
-
-def step5_test_auto_with_config(test_file):
-    """测试有配置的各种查询"""
+def step3_test_auto(test_file):
+    """测试自动模式（自动检测结构，无需配置文件）"""
     ok = True
     ok &= run(
-        [PYTHON, TOOL, "auto", test_file, "headers"],
+        [PYTHON, TOOL, "auto", test_file, "headers", "--sheet", "销售月报"],
         "auto headers - 查看表头"
     )
     ok &= run(
-        [PYTHON, TOOL, "auto", test_file, "preview", "-n", "5"],
+        [PYTHON, TOOL, "auto", test_file, "preview", "-n", "5", "--sheet", "销售月报"],
         "auto preview - 预览前5行"
     )
     ok &= run(
-        [PYTHON, TOOL, "auto", test_file, "query",
+        [PYTHON, TOOL, "auto", test_file, "query", "--sheet", "销售月报",
          "--where-col", "类别", "--where-op", "==", "--where-val", "笔记本",
          "-s", "desc:销量", "-t", "5"],
         "auto query - 筛选笔记本按销量降序取前5"
     )
     ok &= run(
-        [PYTHON, TOOL, "auto", test_file, "query",
+        [PYTHON, TOOL, "auto", test_file, "query", "--sheet", "销售月报",
          "--where-col", "销量", "--where-op", ">", "--where-val", "300",
-         "-c", "区域,型号,销量"],
+         "-c", "区域,产品型号,销量"],
         "auto query - 销量>300，只看区域/型号/销量"
     )
     return ok
 
 
-def step6_test_clean(test_file):
+def step4_test_clean(test_file):
     """测试数据清洗"""
     print(f"\n{'='*60}")
-    print("步骤 6: 生成清洗规则并测试")
+    print("步骤 4: 生成清洗规则并测试")
     print("=" * 60)
 
     rules = {
@@ -200,7 +158,7 @@ def step6_test_clean(test_file):
             },
             {"action": "fill_empty", "column": "销量", "value": 0},
             {"action": "fill_empty", "column": "营收", "value": 0},
-            {"action": "dedup", "columns": ["区域", "型号", "销量"]},
+            {"action": "dedup", "columns": ["区域", "产品型号", "销量"]},
             {
                 "action": "filter",
                 "conditions": [
@@ -229,28 +187,28 @@ def step6_test_clean(test_file):
 
     # 预览
     ok &= run(
-        [PYTHON, TOOL, "clean", test_file, rules_path, "--preview"],
+        [PYTHON, TOOL, "clean", test_file, rules_path, "--preview", "--sheet", "销售月报"],
         "clean --preview - 预览清洗结果"
     )
 
     # 导出 CSV
     csv_out = os.path.join(TEST_DIR, "清洗结果.csv")
     ok &= run(
-        [PYTHON, TOOL, "clean", test_file, rules_path, "-o", csv_out],
+        [PYTHON, TOOL, "clean", test_file, rules_path, "-o", csv_out, "--sheet", "销售月报"],
         "clean -o csv - 导出CSV"
     )
 
     # 导出 JSON
     json_out = os.path.join(TEST_DIR, "清洗结果.json")
     ok &= run(
-        [PYTHON, TOOL, "clean", test_file, rules_path, "-o", json_out],
+        [PYTHON, TOOL, "clean", test_file, rules_path, "-o", json_out, "--sheet", "销售月报"],
         "clean -o json - 导出JSON"
     )
 
     # 导出 Excel
     xlsx_out = os.path.join(TEST_DIR, "清洗结果.xlsx")
     ok &= run(
-        [PYTHON, TOOL, "clean", test_file, rules_path, "-o", xlsx_out],
+        [PYTHON, TOOL, "clean", test_file, rules_path, "-o", xlsx_out, "--sheet", "销售月报"],
         "clean -o xlsx - 导出Excel"
     )
 
@@ -276,10 +234,8 @@ def main():
     results = {}
 
     results["scout"] = step2_test_scout(test_file)
-    results["auto_no_config"] = step3_test_auto_no_config(test_file)
-    results["gen_config"] = step4_generate_config(test_file)
-    results["auto_headers"] = step5_test_auto_with_config(test_file)
-    results["clean"] = step6_test_clean(test_file)
+    results["auto"] = step3_test_auto(test_file)
+    results["clean"] = step4_test_clean(test_file)
 
     print(f"\n\n{'='*60}")
     print("  测试汇总")

@@ -36,31 +36,6 @@ if READ_ENGINE is None:
 
 TOOL_PATH = os.path.abspath(__file__)
 
-CONFIG_TEMPLATE = """{
-  "sheets": {
-    "Sheet名称": {
-      "header_row": 0,
-      "data_start_row": 1,
-      "columns": {"原始列名": "标准化名称"},
-      "skip_cols": [],
-      "notes": "一句话说明"
-    }
-  }
-}"""
-
-STEPS_TEMPLATE = """{
-  "steps": [
-    {"action": "trim"},
-    {"action": "dedup"}
-  ]
-}"""
-
-
-def get_config_path(excel_path):
-    abs_path = os.path.abspath(excel_path)
-    name = os.path.splitext(abs_path)[0]
-    return f"{name}.excel-config.json"
-
 
 def get_steps_pattern(excel_path):
     """返回匹配该 Excel 所有 steps 文件的 glob 模式"""
@@ -82,30 +57,6 @@ def discover_steps_files(excel_path):
     return sorted(glob.glob(pattern))
 
 
-def _load_config(config_path):
-    """加载配置文件"""
-    with open(config_path, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _get_excel_sheet_names(file_path):
-    """获取 Excel 文件中所有 Sheet 名称"""
-    if READ_ENGINE == "pywin32":
-        excel = win32com.client.Dispatch("Excel.Application")
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        try:
-            wb = excel.Workbooks.Open(os.path.abspath(file_path))
-            names = [wb.Sheets(i).Name for i in range(1, wb.Sheets.Count + 1)]
-            wb.Close(False)
-            return names
-        finally:
-            excel.Quit()
-    else:
-        wb = openpyxl.load_workbook(file_path, read_only=True)
-        names = wb.sheetnames
-        wb.close()
-        return names
 
 
 # ==================== 文本统一清洗 ====================
@@ -212,14 +163,11 @@ def do_scout(file_path, rows=8, sheet=None):
               f"起始:R{info['start_row']}C{info['start_col']}) ===")
         for idx, row in enumerate(info["preview"]):
             display_row = info['start_row'] + idx
-            config_row = display_row - 1
-            print(f"  行{display_row}(config:{config_row}): {' | '.join(str(v) for v in row)}")
+            print(f"  行{display_row}: {' | '.join(str(v) for v in row)}")
     if sheet and not found:
         available = list(result.keys())
         print(f"\n[错误] Sheet '{sheet}' 不存在")
         print(f"[可用 Sheet] {', '.join(available)}")
-    elif found:
-        print(f"\n[行号说明] 括号中 config:N 的值可直接用于配置文件的 header_row / data_start_row")
     return result
 
 
@@ -301,6 +249,18 @@ def _guess_config(scout_data):
         }
 
     return config
+
+
+def _scout_raw(file_path, rows=8):
+    """侦察原始结构，返回 dict"""
+    return scout_pywin32(file_path, rows) if READ_ENGINE == "pywin32" else scout_openpyxl(file_path, rows)
+
+
+def _auto_detect_sheets(file_path):
+    """自动侦察并推断所有 Sheet 的配置，返回 sheets dict"""
+    scout_data = _scout_raw(file_path, 8)
+    config = _guess_config(scout_data)
+    return config["sheets"]
 
 
 # ==================== 读取为 DataFrame：openpyxl / pywin32 读原始数据 → pandas ====================
@@ -392,61 +352,17 @@ def _read_openpyxl_to_df(file_path, sheet_name, cfg):
 # ==================== auto 命令：pandas 查询 ====================
 
 def do_auto(file_path, action="preview", sheet=None, **kwargs):
-    config_path = get_config_path(file_path)
+    sheets = _auto_detect_sheets(file_path)
 
-    if not os.path.exists(config_path):
-        print(f"[引擎] {READ_ENGINE}")
-        print(f"[状态] 首次分析该文件，需要先确定表格结构\n")
-        scout_data = do_scout(file_path, sheet=sheet)
-
-        # 自动推荐配置
-        target_data = {k: v for k, v in scout_data.items() if k == sheet} if sheet else scout_data
-        recommended = _guess_config(target_data)
-        config_json = json.dumps(recommended, ensure_ascii=False, indent=2)
-
-        abs_file = os.path.abspath(file_path)
-        print(f"\n{'='*60}")
-        print(f"[推荐配置] 工具已自动分析，请确认后保存")
-        print(f"用 Write 工具将以下 JSON 保存到：{config_path}\n")
-        print(config_json)
-        first_sheet = list(recommended["sheets"].keys())[0] if recommended["sheets"] else ""
-        sheet_opt = f' --sheet "{first_sheet}"' if first_sheet else ""
-        print(f"\n[下一步] 保存配置后执行：")
-        print(f"  python {TOOL_PATH} auto {abs_file} headers{sheet_opt}")
+    if not sheets:
+        print("[错误] 未检测到有效的 Sheet")
         return
-
-    cfg = _load_config(config_path)
-    sheets = cfg["sheets"]
 
     # 确定要操作的 sheet
     if sheet:
         if sheet not in sheets:
-            excel_sheets = _get_excel_sheet_names(file_path)
-            if sheet not in excel_sheets:
-                print(f"[错误] Sheet '{sheet}' 在 Excel 文件中不存在")
-                print(f"[Excel 中的 Sheet] {', '.join(excel_sheets)}")
-                print(f"[已配置的 Sheet] {', '.join(sheets.keys())}")
-            else:
-                print(f"[状态] Sheet '{sheet}' 存在但尚未配置，以下是侦察结果：\n")
-                scout_data = do_scout(file_path, sheet=sheet)
-
-                # 自动推荐该 Sheet 的配置
-                target_data = {k: v for k, v in scout_data.items() if k == sheet}
-                recommended = _guess_config(target_data)
-                sheet_cfg_rec = recommended["sheets"].get(sheet, {})
-                sheet_json = json.dumps(sheet_cfg_rec, ensure_ascii=False, indent=2)
-
-                abs_file = os.path.abspath(file_path)
-                print(f"\n{'='*60}")
-                print(f"[推荐配置] 工具已自动分析 Sheet '{sheet}'")
-                print(f"[操作步骤]")
-                print(f"  1. 读取现有配置文件：{config_path}")
-                print(f'  2. 在 "sheets" 中添加以下内容：')
-                print(f'     "{sheet}": {sheet_json}')
-                print(f"  3. 用 Write 工具保存配置文件")
-                print(f"\n[下一步] 保存后执行：")
-                print(f'  python {TOOL_PATH} auto {abs_file} headers --sheet "{sheet}"')
-                print(f"\n[已配置的 Sheet] {', '.join(sheets.keys())}")
+            print(f"[错误] Sheet '{sheet}' 不存在")
+            print(f"[可用 Sheet] {', '.join(sheets.keys())}")
             return
         target_sheets = {sheet: sheets[sheet]}
     else:
@@ -462,7 +378,6 @@ def do_auto(file_path, action="preview", sheet=None, **kwargs):
             target_sheets = sheets
 
     print(f"[引擎] 读取={READ_ENGINE}, 处理=pandas")
-    print(f"[配置] {config_path}")
 
     # 提示已有的 steps 文件
     steps_files = discover_steps_files(file_path)
@@ -558,11 +473,10 @@ def _do_query(df, **kwargs):
 # ==================== clean 命令：pandas 清洗 ====================
 
 def do_clean(file_path, rules_path=None, output_path=None, preview_only=False, sheet=None):
-    config_path = get_config_path(file_path)
-    if not os.path.exists(config_path):
-        abs_file = os.path.abspath(file_path)
-        print(f"[错误] 请先执行 auto 命令生成结构配置")
-        print(f"  python {TOOL_PATH} auto {abs_file}")
+    sheets = _auto_detect_sheets(file_path)
+
+    if not sheets:
+        print("[错误] 未检测到有效的 Sheet")
         return
 
     # 确定清洗规则路径
@@ -607,22 +521,11 @@ def do_clean(file_path, rules_path=None, output_path=None, preview_only=False, s
                 print(f"  python {TOOL_PATH} clean {abs_file} {f}{sheet_opt} --preview")
             return
 
-    cfg = _load_config(config_path)
-    sheets = cfg["sheets"]
-
     # 确定 sheet
     if sheet:
         if sheet not in sheets:
-            excel_sheets = _get_excel_sheet_names(file_path)
-            if sheet not in excel_sheets:
-                print(f"[错误] Sheet '{sheet}' 在 Excel 文件中不存在")
-                print(f"[Excel 中的 Sheet] {', '.join(excel_sheets)}")
-                print(f"[已配置的 Sheet] {', '.join(sheets.keys())}")
-            else:
-                abs_file = os.path.abspath(file_path)
-                print(f"[错误] Sheet '{sheet}' 尚未配置")
-                print(f"[操作步骤] 先执行 auto 命令触发侦察并获取推荐配置：")
-                print(f'  python {TOOL_PATH} auto {abs_file} headers --sheet "{sheet}"')
+            print(f"[错误] Sheet '{sheet}' 不存在")
+            print(f"[可用 Sheet] {', '.join(sheets.keys())}")
             return
         sheet_name = sheet
         sheet_cfg = sheets[sheet]
@@ -660,7 +563,6 @@ def do_clean(file_path, rules_path=None, output_path=None, preview_only=False, s
 
     df = read_to_dataframe(file_path, sheet_name, sheet_cfg)
     print(f"[引擎] 读取={READ_ENGINE}, 处理=pandas")
-    print(f"[规则] {rules_path}")
     print(f"[Sheet] {sheet_name}")
     print(f"[清洗前] {len(df)} 行 × {len(df.columns)} 列")
 
@@ -836,20 +738,16 @@ def do_clean(file_path, rules_path=None, output_path=None, preview_only=False, s
 # ==================== export 命令：直接导出干净数据（供自定义脚本使用）====================
 
 def do_export(file_path, output_path, sheet=None):
-    config_path = get_config_path(file_path)
-    if not os.path.exists(config_path):
-        abs_file = os.path.abspath(file_path)
-        print(f"[错误] 请先执行 auto 命令生成结构配置")
-        print(f"  python {TOOL_PATH} auto {abs_file}")
-        return
+    sheets = _auto_detect_sheets(file_path)
 
-    cfg = _load_config(config_path)
-    sheets = cfg["sheets"]
+    if not sheets:
+        print("[错误] 未检测到有效的 Sheet")
+        return
 
     if sheet:
         if sheet not in sheets:
-            print(f"[错误] Sheet '{sheet}' 未配置")
-            print(f"[已配置的 Sheet] {', '.join(sheets.keys())}")
+            print(f"[错误] Sheet '{sheet}' 不存在")
+            print(f"[可用 Sheet] {', '.join(sheets.keys())}")
             return
         sheet_name = sheet
         sheet_cfg = sheets[sheet]
@@ -1146,9 +1044,6 @@ def main():
     p_export.add_argument("-o", "--output", required=True, help="输出路径（.csv/.json/.xlsx）")
     p_export.add_argument("--sheet", help="指定 Sheet 名称")
 
-    p_cfg = sub.add_parser("config-path")
-    p_cfg.add_argument("file")
-
     p_steps = sub.add_parser("steps-path", help="查看清洗规则文件的命名模式和已有文件")
     p_steps.add_argument("file")
 
@@ -1170,8 +1065,6 @@ def main():
         do_clean(args.file, args.rules, args.output, args.preview, sheet=args.sheet)
     elif args.command == "export":
         do_export(args.file, args.output, sheet=args.sheet)
-    elif args.command == "config-path":
-        print(get_config_path(args.file))
     elif args.command == "steps-path":
         prefix = get_steps_prefix(args.file)
         print(f"[命名规则] {os.path.basename(prefix)}-<操作描述>.excel-steps.json")
