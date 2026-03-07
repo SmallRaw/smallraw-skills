@@ -1,5 +1,5 @@
 ---
-name: excel-analyst
+name: excel-lite-cli
 description: Excel 报表分析、数据清洗与导出。处理复杂/乱序报表（表头不在首行、合并单元格、各种脏字符均自动处理）。当用户需要读取、查询、分析、清洗 Excel/xlsx/xls 文件，或需要对报表数据做批量替换、去重、聚合、筛选、新增计算列、透视、导出新文件时触发。不修改原始文件，结果导出为新的 .xlsx/.csv/.json。不用于从零创建 Excel 或原地编辑 Excel。
 ---
 

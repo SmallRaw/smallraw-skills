@@ -12,12 +12,12 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin marketplace add smallraw/smallraw-skills
 /plugin install architect@smallraw-skills
 /plugin install fractal-docs@smallraw-skills
-/plugin install excel-analyst@smallraw-skills
+/plugin install excel-lite-cli@smallraw-skills
 /plugin install openclaw-tmux-agent@smallraw-skills
 /plugin install mcp-cli@smallraw-skills
 ```
 
-安装后使用 `/architect:architect`、`/fractal-docs`、`/excel-analyst`、`/mcp-cli` 调用。
+安装后使用 `/architect:architect`、`/fractal-docs`、`/excel-lite-cli`、`/mcp-cli` 调用。
 
 ### 手动安装
 
@@ -27,7 +27,7 @@ mkdir -p ~/.claude/skills
 git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
 cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/excel-analyst ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/mcp-cli ~/.claude/skills/
 
@@ -35,7 +35,7 @@ cp -r /tmp/smallraw-skills/skills/mcp-cli ~/.claude/skills/
 mkdir -p ~/.config/opencode/skills
 cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/excel-analyst ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/mcp-cli ~/.config/opencode/skills/
 ```
@@ -50,7 +50,7 @@ cp -r /tmp/smallraw-skills/skills/mcp-cli ~/.config/opencode/skills/
 |-------|-------------|--------|
 | [architect](skills/architect/) | AI Development Architect - 帮助建立和维护项目规范 | ✅ Ready |
 | [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | ✅ Ready |
-| [excel-analyst](skills/excel-analyst/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | ✅ Ready |
+| [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | ✅ Ready |
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | ✅ Ready |
 | [mcp-cli](skills/mcp-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | ✅ Ready |
 
@@ -94,7 +94,7 @@ Features:
 /fractal-docs check    # 验证文档一致性
 ```
 
-### /excel-analyst
+### /excel-lite-cli
 
 **Excel 报表分析与数据清洗** - 读取 Excel → 自动清洗脏字符 → 查询/清洗/加工 → 导出新文件。
 

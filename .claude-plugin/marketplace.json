@@ -23,11 +23,11 @@
       "skills": ["./skills/fractal-docs"]
     },
     {
-      "name": "excel-analyst",
+      "name": "excel-lite-cli",
       "description": "Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出新文件",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/excel-analyst"]
+      "skills": ["./skills/excel-lite-cli"]
     },
     {
       "name": "openclaw-tmux-agent",
