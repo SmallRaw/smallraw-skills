@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/mcp-core.cjs",
-    "start": "node dist/mcp-core.cjs"
+    "build": "esbuild index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/mcp-client.cjs",
+    "start": "node dist/mcp-client.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0"

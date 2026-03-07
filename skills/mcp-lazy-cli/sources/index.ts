@@ -115,8 +115,10 @@ class McpClient {
     console.log(JSON.stringify(result.tools, null, 2));
   }
 
-  async callTool(name: string, args: Record<string, unknown> = {}): Promise<void> {
-    const result = await this.client.callTool({ name, arguments: args });
+  async callTool(name: string, args?: Record<string, unknown>): Promise<void> {
+    const params: { name: string; arguments?: Record<string, unknown> } = { name };
+    if (args && Object.keys(args).length > 0) params.arguments = args;
+    const result = await this.client.callTool(params);
     if (result.isError) {
       const content = result.content as ContentItem[] | undefined;
       const msg = content?.[0]?.text ?? "Unknown error";
@@ -291,8 +293,8 @@ function parseCliArgs(): ParsedArgs {
   return result;
 }
 
-function parseJsonArg(arg: string | undefined): Record<string, unknown> {
-  if (!arg) return {};
+function parseJsonArg(arg: string | undefined): Record<string, unknown> | undefined {
+  if (!arg) return undefined;
   try {
     return JSON.parse(arg);
   } catch {
