@@ -79,10 +79,11 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 扫描项目，生成完整的三层文档体系：
 
 1. 分析项目结构和技术栈
-2. 创建根 `AGENTS.md`（项目概览 + 协议定义 + 业务域清单）
-3. 为每个源码目录创建 `AGENTS.md`
-4. 为每个源码文件添加三行头部注释
-5. 验证编译/构建不被破坏
+2. 创建根 `FRACTAL-DOCS.md`（协议定义 + 头部注释示例）
+3. 创建根 `AGENTS.md`（项目概览 + 协议引用 + 业务域清单）
+4. 为每个源码目录创建 `AGENTS.md`
+5. 为每个源码文件添加三行头部注释
+6. 验证编译/构建不被破坏
 
 ```
 /fractal-docs init
@@ -124,7 +125,8 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 
 自动完成：
 - 检测项目语言和构建系统
-- 生成根 AGENTS.md（如已有 CLAUDE.md：仅引用 AGENTS.md 则删除，含用户自定义约束则不要动）
+- 生成根 FRACTAL-DOCS.md（协议定义）+ 根 AGENTS.md（项目导航）
+- 如已有 CLAUDE.md：仅引用 AGENTS.md 则删除，含用户自定义约束则不要动
 - 递归生成目录 AGENTS.md
 - 为所有源码文件添加三行注释
 - 运行构建验证
@@ -154,7 +156,8 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 | 文件 | 用途 |
 |------|------|
 | `knowledge/header-patterns.md` | 各语言三行注释格式 + 放置规则 |
-| `starter/root-agents.starter.md` | 根 AGENTS.md 模板 |
+| `starter/fractal-protocol.starter.md` | 根 FRACTAL-DOCS.md 模板（协议定义） |
+| `starter/root-agents.starter.md` | 根 AGENTS.md 模板（项目导航） |
 | `starter/dir-agents.starter.md` | 目录级 AGENTS.md 模板 |
 | `prompts/init.md` | 全量初始化 SOP |
 | `prompts/update.md` | 级联更新 SOP |

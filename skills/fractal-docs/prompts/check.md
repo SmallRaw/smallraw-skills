@@ -58,7 +58,22 @@ AGENTS.md 不一致：
 - lib/: 存在 CLAUDE.md（包含用户自定义约束，不要动）
 ```
 
-### 4. 检查第三层：级联完整性
+### 4. 检查根目录 FRACTAL-DOCS.md
+
+- [ ] 根目录是否存在 `FRACTAL-DOCS.md`
+- [ ] 根 `AGENTS.md` 是否包含指向 `FRACTAL-DOCS.md` 的引用行
+- [ ] `FRACTAL-DOCS.md` 中的头部注释示例是否与项目实际使用的语言一致
+
+输出不一致列表：
+
+```
+FRACTAL-DOCS.md 检查：
+- 缺少 FRACTAL-DOCS.md（需创建）
+- 根 AGENTS.md 缺少协议引用行
+- FRACTAL-DOCS.md 包含未使用的语言示例: Shell
+```
+
+### 5. 检查级联完整性
 
 从叶子目录到根目录，检查引用链：
 
@@ -72,7 +87,7 @@ AGENTS.md 不一致：
 - src/utils/ 未在 src/AGENTS.md 的业务域清单中登记
 ```
 
-### 5. 生成报告
+### 6. 生成报告
 
 汇总所有检查结果：
 
@@ -88,6 +103,7 @@ AGENTS.md 不一致：
 ### 问题
 - 缺少头部注释：{count} 个文件
 - 缺少 AGENTS.md：{count} 个目录
+- 缺少 FRACTAL-DOCS.md：{yes/no}
 - CLAUDE.md 仅引用 AGENTS.md：{count} 个（可删除）
 - CLAUDE.md 含用户自定义约束：{count} 个（保持原样）
 - 幽灵条目：{count} 条
@@ -110,6 +126,8 @@ AGENTS.md 不一致：
 
 - **缺少头部注释**：阅读文件 → 添加注释
 - **缺少 AGENTS.md**：分析目录 → 生成 AGENTS.md
+- **缺少 FRACTAL-DOCS.md**：基于 `starter/fractal-protocol.starter.md` 模板创建
+- **根 AGENTS.md 缺少协议引用**：添加指向 FRACTAL-DOCS.md 的引用行
 - **CLAUDE.md 仅引用 AGENTS.md**：直接删除
 - **CLAUDE.md 含用户自定义约束**：不要动，保持原样
 - **幽灵条目**：从清单中删除

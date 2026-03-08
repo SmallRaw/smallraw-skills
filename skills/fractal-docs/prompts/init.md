@@ -31,13 +31,11 @@ description: Initialize Fractal Documentation Protocol for a project
      - 如果包含用户自定义的项目约束 → **不要动它**，用户自己维护的文件保持原样
    - 是否已有头部注释？→ 保留，补充缺失的字段
 
-### 阶段 2：创建根 AGENTS.md
+### 阶段 2：创建根目录 FRACTAL-DOCS.md
 
-基于 `starter/root-agents.starter.md` 模板，填充：
+基于 `starter/fractal-protocol.starter.md` 模板，创建独立的协议定义文件 `FRACTAL-DOCS.md`：
 
-1. 项目名称和一句话描述
-
-2. **拼装头部注释示例**（关键步骤）
+1. **拼装头部注释示例**（关键步骤）
    根据阶段 1 检测到的语言列表，从 `knowledge/header-patterns.md` 的"语言示例库"中，
    挑选对应语言的示例块，拼装替换模板中的 `{HEADER_EXAMPLES}` 占位符。
 
@@ -80,13 +78,19 @@ description: Initialize Fractal Documentation Protocol for a project
    ```
    ````
 
-3. 如果有旧的 `CLAUDE.md`，按以下策略处理：
+### 阶段 3：创建根 AGENTS.md
+
+基于 `starter/root-agents.starter.md` 模板，填充：
+
+1. 项目名称和一句话描述
+2. 协议引用行（模板已包含，指向 `FRACTAL-DOCS.md`）
+3. 顶层业务域清单（每个一级目录/文件一行）
+
+4. 如果有旧的 `CLAUDE.md`，按以下策略处理：
    - **仅包含 AGENTS.md 引用/软链接**：直接删除
    - **包含用户自定义内容**：**不要动它**，保持原样。用户自己维护的约束文件不属于本协议的管理范围。
 
-4. 顶层业务域清单（每个一级目录/文件一行）
-
-### 阶段 3：创建目录级 AGENTS.md
+### 阶段 4：创建目录级 AGENTS.md
 
 **对每个包含源码文件的目录**，基于 `starter/dir-agents.starter.md` 模板创建 `AGENTS.md`：
 
@@ -104,7 +108,7 @@ description: Initialize Fractal Documentation Protocol for a project
 
 **注意**：只创建 `AGENTS.md`，不创建 `CLAUDE.md`。`AGENTS.md` 是跨工具通用协议，Claude Code、Cursor、Windsurf、OpenCode 等工具均可直接识别。避免同时存在多个文档文件导致重复读取浪费 context。
 
-### 阶段 4：添加三行头部注释
+### 阶段 5：添加三行头部注释
 
 **对每个源码文件**添加 INPUT/OUTPUT/POS 三行注释。
 
@@ -120,7 +124,7 @@ description: Initialize Fractal Documentation Protocol for a project
 
 **并行化**：不同目录的文件可以并行处理。推荐使用 Team 机制，每个 Agent 处理一个目录或一种语言。
 
-### 阶段 5：验证
+### 阶段 6：验证
 
 1. **编译验证**：运行项目的构建/检查命令
    - Rust: `cargo check`
@@ -129,7 +133,7 @@ description: Initialize Fractal Documentation Protocol for a project
    - Python: `python -m py_compile` 或 `mypy`
 2. **一致性验证**：运行 `/fractal-docs check`（参见 check.md）
 
-### 阶段 6：清理
+### 阶段 7：清理
 
 - 如果 `CLAUDE.md` 仅是 AGENTS.md 的引用/软链接，确认已删除
 - 如果 `CLAUDE.md` 包含用户自定义内容，确认未被修改
