@@ -129,15 +129,15 @@ Features:
 - 按需连接：需要时连、用完就断，零常驻进程
 - 全协议支持：tools / resources / prompts 完整 MCP 协议
 - 三种传输：stdio（本地进程）、Streamable HTTP、SSE（legacy）
-- 单文件分发：798KB 独立 .cjs，只需 Node.js
+- npm 分发：`npx mcp-client-utils` 即用，只需 Node.js
 
 ```bash
 # 查看项目注册了哪些 MCP servers
-node .claude/skills/mcp-lazy-cli/script/mcp-lazy-client.cjs --registry
+npx mcp-client-utils --registry
 
 # 按需调用
-node .claude/skills/mcp-lazy-cli/script/mcp-lazy-client.cjs --server pencil tools
-node .claude/skills/mcp-lazy-cli/script/mcp-lazy-client.cjs --server pencil call get_editor_state '{"include_schema":false}'
+npx mcp-client-utils --server pencil tools
+npx mcp-client-utils --server pencil call get_editor_state '{"include_schema":false}'
 ```
 
 安装后在项目 `.claude/mcp-registry.json` 中注册你的 MCP servers：

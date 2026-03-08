@@ -4,7 +4,7 @@ import { realpathSync } from "fs";
 import { homedir } from "os";
 
 function daemonDir(): string {
-  return join(homedir(), ".mcp-utils", "daemon");
+  return join(homedir(), ".mcp-client-utils", "daemon");
 }
 
 function normalizeRegistryPath(registryPath: string): string {
@@ -21,7 +21,7 @@ function configKey(registryPath: string): string {
 
 export function getSocketPath(registryPath: string): string {
   if (process.platform === "win32") {
-    return `\\\\.\\pipe\\mcp-utils-daemon-${configKey(registryPath)}`;
+    return `\\\\.\\pipe\\mcp-client-utils-daemon-${configKey(registryPath)}`;
   }
   return join(daemonDir(), `daemon-${configKey(registryPath)}.sock`);
 }

@@ -6,107 +6,46 @@ allowed-tools:
   - Read
 ---
 
-# MCP CLI — MCP Skill System
+# MCP CLI — 按需调用 MCP Servers
 
-像 skill 按需加载一样使用 MCP servers：registry 是索引，CLI 是执行器。
+不预加载 tool definitions，通过 registry 知道有什么能力，按需调用。
 
-不预加载 MCP server 的 tool definitions（节省上下文），通过 registry 知道有什么能力，按需调用。
-
-## CLI
+先 `--registry` 看有什么，根据 `when` 字段判断是否需要，不需要就不调用。
 
 ```bash
-npx mcp-utils <options> <command>
+# 查看所有可用 servers（读 .claude/mcp-registry.json）
+npx mcp-client-utils --registry
+
+# 查看某个 server 的完整 tool schema（参数不确定时才用）
+npx mcp-client-utils --server <name> tools
+
+# 调用 tool
+npx mcp-client-utils --server <name> call <tool-name> '<json-args>'
+
+# 其他命令
+npx mcp-client-utils --server <name> info
+npx mcp-client-utils --server <name> resources
+npx mcp-client-utils --server <name> read <uri>
+npx mcp-client-utils --server <name> prompts
+npx mcp-client-utils --server <name> prompt <prompt-name> '<json-args>'
+npx mcp-client-utils --server <name> templates
+
+# Ad-hoc 直连（不经过 registry）
+npx mcp-client-utils --stdio "<cmd> [args]" -- <command>
+npx mcp-client-utils --http <url> -- <command>
+npx mcp-client-utils --sse <url> -- <command>
+
+# Daemon 管理
+npx mcp-client-utils daemon status
+npx mcp-client-utils daemon start
+npx mcp-client-utils daemon stop
 ```
 
-## 工作流
+## lifecycle
 
-### 1. 查看可用 servers
+Registry 中每个 server 可配置 `"lifecycle"` 字段：
 
-```bash
-npx mcp-utils --registry
-```
+- **`"ephemeral"`**（默认）— 无状态，每次调用独立连接，用完即断。Ad-hoc 直连也是这个模式。
+- **`"keep-alive"`** — 有状态，通过后台 daemon 保持连接，多次调用复用同一会话。适用于设计工具、数据库等需要维持上下文的 server。
 
-输出 `.claude/mcp-registry.json`：每个 server 的名称、描述、`when` 触发条件、工具概要。
-
-根据 `when` 字段判断当前任务是否需要某个 server。不需要就不调用。
-
-### 2. 查看完整 tool schema（按需）
-
-```bash
-npx mcp-utils --server <name> tools
-```
-
-只在需要知道参数细节时调用。
-
-### 3. 调用 tool
-
-```bash
-npx mcp-utils --server <name> call <tool-name> '<json-args>'
-```
-
-### 4. 其他命令
-
-```bash
---server <name> info                    # Server 信息
---server <name> resources               # 列出 resources
---server <name> read <uri>              # 读取 resource
---server <name> prompts                 # 列出 prompts
---server <name> prompt <name> '<json>' # 获取 prompt
---server <name> templates               # Resource templates
-```
-
-## 决策规则
-
-- **不需要就不调用** — registry 的 `when` 字段已经说清楚了
-- **先看概要再看 schema** — registry 里的一行描述通常够判断用哪个 tool，参数不确定时才 `tools` 拿完整 schema
-- **每次调用是独立连接** — 没有常驻进程，用完即断
-- **stderr 是 server 日志** — 正常输出在 stdout，用 `2>/dev/null` 过滤
-
-## Daemon (keep-alive servers)
-
-Registry 中标记 `"lifecycle": "keep-alive"` 的 server 会通过后台 daemon 保持连接。
-
-- 首次调用 keep-alive server 时 daemon 自动启动
-- 后续调用复用同一连接，不重新握手
-- 闲置超过 5 分钟的 server 自动断开
-
-管理命令：
-
-```bash
-npx mcp-utils daemon status    # 查看 daemon 状态
-npx mcp-utils daemon start     # 手动启动
-npx mcp-utils daemon stop      # 停止
-```
-
-## Registry
-
-配置文件：`.claude/mcp-registry.json`
-
-添加新 server：
-
-```json
-{
-  "servers": {
-    "my-server": {
-      "description": "一句话说明",
-      "when": "什么时候用",
-      "transport": {
-        "type": "stdio | http | sse",
-        "target": "/path/to/server 或 http://host:port/mcp",
-        "args": ["--flag", "value"]
-      },
-      "tools": [
-        { "name": "tool_name", "description": "一句话" }
-      ],
-      "lifecycle": "keep-alive | ephemeral",
-      "notes": "前置条件或注意事项"
-    }
-  }
-}
-```
-
-## 重新编译
-
-```bash
-cd packages/mcp-utils && npm install && npm run build
-```
+Registry 配置：`.claude/mcp-registry.json`，schema 见 `skills/mcp-lazy-cli/mcp-registry.schema.json`。

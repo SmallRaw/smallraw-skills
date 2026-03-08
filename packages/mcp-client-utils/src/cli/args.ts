@@ -34,7 +34,7 @@ export function parseCliArgs(): ParsedArgs {
       if (sub === "start" || sub === "stop" || sub === "status") {
         result.daemonCommand = sub;
       } else {
-        console.error("Usage: mcp-utils daemon [start|stop|status]");
+        console.error("Usage: mcp-client-utils daemon [start|stop|status]");
         process.exit(1);
       }
       i++;

@@ -24,7 +24,7 @@ export class McpClient {
   private connected = false;
 
   constructor() {
-    this.client = new Client({ name: "mcp-utils", version: "1.0.0" });
+    this.client = new Client({ name: "mcp-client-utils", version: "1.0.0" });
   }
 
   async connect(transport: Transport): Promise<void> {

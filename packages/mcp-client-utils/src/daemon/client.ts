@@ -76,7 +76,7 @@ export class DaemonClient {
       if (await this.isResponsive()) return;
       await delay(100);
     }
-    throw new Error("Timeout waiting for mcp-utils daemon to start.");
+    throw new Error("Timeout waiting for mcp-client-utils daemon to start.");
   }
 
   private async isResponsive(): Promise<boolean> {
