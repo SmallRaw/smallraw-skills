@@ -77,6 +77,30 @@ disable-model-invocation: false
 
 **注意：** 会话隔离 = 上下文隔离。切换会话后重新计数，不跨会话检测。
 
+### 6. 跨会话分析（项目级）
+
+**突破单会话限制**，读取项目的所有历史会话记录，从中发现当前会话无法观察到的长期模式。
+
+**数据源：** Claude Code 的 JSONL 会话文件，存储在 `~/.claude/projects/{project-path-hash}/`。
+
+**分析维度：**
+
+| 维度 | 说明 | 产出 |
+|------|------|------|
+| 重复问题 | 多个会话中出现相似的错误/抱怨 | 守护规则 |
+| 重复指令 | 跨会话的相同偏好指令 | 偏好规则 |
+| 工作流模式 | 用户习惯的工具/流程 | 工作流规则 |
+| 知识缺口 | AI 反复被纠正的地方 | 项目约定规则 |
+| 热点文件 | 被反复修改/讨论的文件 | 架构优化建议 |
+
+**执行流程：**
+1. 定位项目会话目录（路径 `/` → `-` 映射）
+2. 用 Python 脚本提取用户消息（过滤 meta/progress/snapshot）
+3. 分析模式并生成报告
+4. 将发现转化为具体的规则建议
+
+详细方法论参见 `knowledge/session-analysis.md`。
+
 ---
 
 ## 使用方式
@@ -121,6 +145,22 @@ disable-model-invocation: false
 ```
 
 检查当前 AGENTS.md 的规则健康度。
+
+### 分析会话历史
+
+```
+/architect analyze              # 分析最近 10 个会话
+/architect analyze --recent 5   # 分析最近 5 个会话
+/architect analyze --all        # 分析所有会话（慎用，可能数据量大）
+```
+
+读取当前项目的所有 Claude Code 会话记录，跨会话发现：
+- 反复出现的问题 → 需要加守护规则
+- 反复给出的指令 → 需要加偏好规则
+- 高频修改的文件 → 可能需要架构优化
+- AI 被反复纠正的点 → 需要加项目约定
+
+输出一份分析报告，包含具体的规则建议，可直接添加到 AGENTS.md。
 
 ---
 
@@ -171,6 +211,8 @@ disable-model-invocation: false
 |------|------|
 | `knowledge/problem-rule-map.md` | 问题-规则映射表（54 条规则，8 个类别） |
 | `knowledge/rule-templates.md` | 7 种规则模板写法 |
+| `knowledge/session-analysis.md` | 跨会话分析方法论（JSONL 解析、模式识别） |
+| `knowledge/cc-switch-providers-reference.md` | 多 Provider 会话路径参考（未来扩展用） |
 | `starter/AGENTS.starter.md` | 起始模板（10 条核心规则） |
 | `starter/committer` | 安全提交脚本 |
 | `starter/.gitignore.template` | Git 忽略模板 |
