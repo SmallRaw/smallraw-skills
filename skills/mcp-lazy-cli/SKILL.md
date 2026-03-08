@@ -15,7 +15,7 @@ allowed-tools:
 ## CLI
 
 ```bash
-node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs <options> <command>
+npx mcp-utils <options> <command>
 ```
 
 ## 工作流
@@ -23,7 +23,7 @@ node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs <options> <command>
 ### 1. 查看可用 servers
 
 ```bash
-node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --registry
+npx mcp-utils --registry
 ```
 
 输出 `.claude/mcp-registry.json`：每个 server 的名称、描述、`when` 触发条件、工具概要。
@@ -33,7 +33,7 @@ node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --registry
 ### 2. 查看完整 tool schema（按需）
 
 ```bash
-node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --server <name> tools
+npx mcp-utils --server <name> tools
 ```
 
 只在需要知道参数细节时调用。
@@ -41,7 +41,7 @@ node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --server <name> tools
 ### 3. 调用 tool
 
 ```bash
-node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --server <name> call <tool-name> '<json-args>'
+npx mcp-utils --server <name> call <tool-name> '<json-args>'
 ```
 
 ### 4. 其他命令
@@ -61,6 +61,22 @@ node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --server <name> call <too
 - **先看概要再看 schema** — registry 里的一行描述通常够判断用哪个 tool，参数不确定时才 `tools` 拿完整 schema
 - **每次调用是独立连接** — 没有常驻进程，用完即断
 - **stderr 是 server 日志** — 正常输出在 stdout，用 `2>/dev/null` 过滤
+
+## Daemon (keep-alive servers)
+
+Registry 中标记 `"lifecycle": "keep-alive"` 的 server 会通过后台 daemon 保持连接。
+
+- 首次调用 keep-alive server 时 daemon 自动启动
+- 后续调用复用同一连接，不重新握手
+- 闲置超过 5 分钟的 server 自动断开
+
+管理命令：
+
+```bash
+npx mcp-utils daemon status    # 查看 daemon 状态
+npx mcp-utils daemon start     # 手动启动
+npx mcp-utils daemon stop      # 停止
+```
 
 ## Registry
 
@@ -82,6 +98,7 @@ node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --server <name> call <too
       "tools": [
         { "name": "tool_name", "description": "一句话" }
       ],
+      "lifecycle": "keep-alive | ephemeral",
       "notes": "前置条件或注意事项"
     }
   }
@@ -91,6 +108,5 @@ node .claude/skills/mcp-lazy-cli/script/mcp-client.cjs --server <name> call <too
 ## 重新编译
 
 ```bash
-cd .claude/skills/mcp-lazy-cli/sources && npm install && npm run build
-cp dist/mcp-core.cjs ../script/mcp-client.cjs
+cd packages/mcp-utils && npm install && npm run build
 ```

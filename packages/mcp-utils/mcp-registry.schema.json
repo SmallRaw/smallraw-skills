@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MCP Registry",
+  "description": "Describes MCP servers available to this project. AI reads this file to understand capabilities without preloading full tool schemas.",
+  "type": "object",
+  "required": ["servers"],
+  "properties": {
+    "servers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/server"
+      }
+    }
+  },
+  "$defs": {
+    "server": {
+      "type": "object",
+      "required": ["description", "transport", "tools"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "One-line description of what this server does"
+        },
+        "when": {
+          "type": "string",
+          "description": "When should AI use this server (trigger condition)"
+        },
+        "lifecycle": {
+          "type": "string",
+          "enum": ["keep-alive", "ephemeral"],
+          "default": "ephemeral",
+          "description": "keep-alive: daemon holds connection open. ephemeral (default): connect per call."
+        },
+        "transport": {
+          "$ref": "#/$defs/transport"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolSummary"
+          },
+          "description": "Brief tool summaries — just enough for AI to know what's available"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resourceSummary"
+          }
+        },
+        "prompts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/promptSummary"
+          }
+        },
+        "notes": {
+          "type": "string",
+          "description": "Extra context for AI (e.g. prerequisites, gotchas)"
+        }
+      }
+    },
+    "transport": {
+      "type": "object",
+      "required": ["type", "target"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["stdio", "http", "sse"]
+        },
+        "target": {
+          "type": "string",
+          "description": "For stdio: executable path. For http/sse: URL"
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Arguments for stdio transport"
+        }
+      }
+    },
+    "toolSummary": {
+      "type": "object",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string",
+          "description": "One-line summary — AI calls `mcp-core tools` for full schema when needed"
+        }
+      }
+    },
+    "resourceSummary": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "promptSummary": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    }
+  }
+}
