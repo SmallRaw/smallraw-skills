@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { McpClient } from "./core/client.js";
