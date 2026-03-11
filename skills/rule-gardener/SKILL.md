@@ -1,6 +1,6 @@
 ---
-name: architect
-description: AI 开发架构师 - 帮助建立和维护项目规范，规则是长出来的，不是设计出来的
+name: rule-gardener
+description: 项目规则园丁 - 从问题和重复指令中发现、推荐、植入 AGENTS.md 规则，培育项目规范有机生长。当用户遇到重复犯错（"又..."、"总是..."）、想初始化项目规范、回顾规则健康度、或分析历史会话模式时使用。这不是软件架构师，不做系统设计或技术选型。
 license: MIT
 compatibility: claude-code, opencode
 metadata:
@@ -10,7 +10,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-# /architect - AI 开发架构师 Skill
+# /rule-gardener - 项目规则园丁 Skill
 
 > 核心理念：**规范是长出来的，不是设计出来的。**
 
@@ -108,7 +108,7 @@ disable-model-invocation: false
 ### 初始化新项目
 
 ```
-/architect init
+/rule-gardener init
 ```
 
 创建：
@@ -120,7 +120,7 @@ disable-model-invocation: false
 ### 遇到问题时
 
 ```
-/architect problem "我又把 .env 文件提交了"
+/rule-gardener problem "我又把 .env 文件提交了"
 ```
 
 1. 识别这是"安全规则"类问题
@@ -131,9 +131,9 @@ disable-model-invocation: false
 ### 扩展规则
 
 ```
-/architect extend quality    # 添加质量规则（测试、代码风格）
-/architect extend workflow   # 添加流程规则（PR、发布）
-/architect extend collab     # 添加协作规则（多 Agent）
+/rule-gardener extend quality    # 添加质量规则（测试、代码风格）
+/rule-gardener extend workflow   # 添加流程规则（PR、发布）
+/rule-gardener extend collab     # 添加协作规则（多 Agent）
 ```
 
 从 `growth/level-*.md` 文件获取规则扩展包。
@@ -141,7 +141,7 @@ disable-model-invocation: false
 ### 回顾规则
 
 ```
-/architect review
+/rule-gardener review
 ```
 
 检查当前 AGENTS.md 的规则健康度。
@@ -149,9 +149,9 @@ disable-model-invocation: false
 ### 分析会话历史
 
 ```
-/architect analyze              # 分析最近 10 个会话
-/architect analyze --recent 5   # 分析最近 5 个会话
-/architect analyze --all        # 分析所有会话（慎用，可能数据量大）
+/rule-gardener analyze              # 分析最近 10 个会话
+/rule-gardener analyze --recent 5   # 分析最近 5 个会话
+/rule-gardener analyze --all        # 分析所有会话（慎用，可能数据量大）
 ```
 
 读取当前项目的所有 Claude Code 会话记录，跨会话发现：

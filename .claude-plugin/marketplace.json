@@ -9,11 +9,11 @@
   },
   "plugins": [
     {
-      "name": "architect",
-      "description": "AI 开发架构师 - 帮助建立和维护项目规范，规则是长出来的，不是设计出来的",
+      "name": "rule-gardener",
+      "description": "项目规则园丁 - 从问题和重复指令中发现、推荐、植入 AGENTS.md 规则，培育项目规范有机生长",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/architect"]
+      "skills": ["./skills/rule-gardener"]
     },
     {
       "name": "fractal-docs",

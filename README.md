@@ -10,14 +10,14 @@ A collection of AI development skills compatible with [Claude Code](https://code
 
 ```bash
 /plugin marketplace add smallraw/smallraw-skills
-/plugin install architect@smallraw-skills
+/plugin install rule-gardener@smallraw-skills
 /plugin install fractal-docs@smallraw-skills
 /plugin install excel-lite-cli@smallraw-skills
 /plugin install openclaw-tmux-agent@smallraw-skills
 /plugin install mcp-lazy-cli@smallraw-skills
 ```
 
-安装后使用 `/architect:architect`、`/fractal-docs`、`/excel-lite-cli`、`/mcp-lazy-cli` 调用。
+安装后使用 `/rule-gardener:rule-gardener`、`/fractal-docs`、`/excel-lite-cli`、`/mcp-lazy-cli` 调用。
 
 ### 手动安装
 
@@ -25,7 +25,7 @@ A collection of AI development skills compatible with [Claude Code](https://code
 # Claude Code
 mkdir -p ~/.claude/skills
 git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
-cp -r /tmp/smallraw-skills/skills/architect ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.claude/skills/
@@ -33,14 +33,14 @@ cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
-cp -r /tmp/smallraw-skills/skills/architect ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.config/opencode/skills/
 ```
 
-手动安装后使用 `/architect` 调用。
+手动安装后使用 `/rule-gardener` 调用。
 
 ---
 
@@ -48,7 +48,7 @@ cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.config/opencode/skills/
 
 | Skill | Description | Status |
 |-------|-------------|--------|
-| [architect](skills/architect/) | AI Development Architect - 帮助建立和维护项目规范 | ✅ Ready |
+| [rule-gardener](skills/rule-gardener/) | 项目规则园丁 - 培育项目规范有机生长 | ✅ Ready |
 | [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | ✅ Ready |
 | [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | ✅ Ready |
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | ✅ Ready |
@@ -58,9 +58,9 @@ cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.config/opencode/skills/
 
 ## Skills Overview
 
-### /architect
+### /rule-gardener
 
-**AI 开发架构师** - 帮助 AI 和人类建立、维护项目规范。
+**项目规则园丁** - 从问题和重复指令中培育项目规范有机生长。
 
 核心理念：**规范是长出来的，不是设计出来的。**
 
@@ -71,10 +71,10 @@ Features:
 - 规则回顾：检查规则健康度
 
 ```bash
-/architect init              # 初始化新项目
-/architect problem "..."     # 识别问题并推荐规则
-/architect extend workflow   # 添加流程规则包
-/architect review            # 回顾规则健康度
+/rule-gardener init              # 初始化新项目
+/rule-gardener problem "..."     # 识别问题并推荐规则
+/rule-gardener extend workflow   # 添加流程规则包
+/rule-gardener review            # 回顾规则健康度
 ```
 
 ### /fractal-docs
@@ -179,11 +179,11 @@ Features:
 
 [Ralph Loop](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-loop)
 
-**architect-skill** 和 **Ralph** 是互补的：
+**rule-gardener** 和 **Ralph** 是互补的：
 
 | 工具 | 解决的问题 |
 |------|-----------|
-| **architect-skill** | 规则该怎么写、何时加、如何演进 |
+| **rule-gardener** | 规则该怎么写、何时加、如何演进 |
 | **Ralph** | 循环该怎么跑、何时停止、失败如何处理 |
 
 **Ralph 核心特性：**

@@ -165,9 +165,9 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 
 ---
 
-## 与 /architect 的关系
+## 与 /rule-gardener 的关系
 
-| 维度 | /architect | /fractal-docs |
+| 维度 | /rule-gardener | /fractal-docs |
 |------|-----------|---------------|
 | 关注点 | 行为规范（怎么做） | 代码导航（怎么理解） |
 | 产出物 | AGENTS.md 规则段 | 三行注释 + 目录 AGENTS.md |
@@ -175,7 +175,7 @@ AI Agent 进入一个新项目时，需要花大量时间"摸底"：
 | 演进方式 | 从问题中长出规则 | 从代码结构中提取文档 |
 
 两者互补：
-- `/architect init` 建立行为规范
+- `/rule-gardener init` 建立行为规范
 - `/fractal-docs init` 建立导航地图
 - 根 AGENTS.md 可以同时包含两者的内容
 

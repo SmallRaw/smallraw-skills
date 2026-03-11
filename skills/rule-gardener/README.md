@@ -1,6 +1,6 @@
-# Architect Skill
+# Rule Gardener Skill
 
-> AI 开发架构师 Skill - 帮助建立和维护项目规范
+> 项目规则园丁 Skill - 培育项目规范有机生长
 
 ---
 
@@ -20,11 +20,11 @@
 
 ```bash
 # 复制 AGENTS.md 模板
-cp architect-skill/starter/AGENTS.starter.md your-project/AGENTS.md
+cp rule-gardener-skill/starter/AGENTS.starter.md your-project/AGENTS.md
 
 # 复制 committer 脚本
 mkdir -p your-project/scripts
-cp architect-skill/starter/committer your-project/scripts/
+cp rule-gardener-skill/starter/committer your-project/scripts/
 chmod +x your-project/scripts/committer
 ```
 
@@ -34,10 +34,10 @@ chmod +x your-project/scripts/committer
 
 ```bash
 # 查看可用的扩展包
-ls architect-skill/growth/
+ls rule-gardener-skill/growth/
 
 # 阅读扩展包，将需要的规则复制到 AGENTS.md
-cat architect-skill/growth/level-1-quality.md
+cat rule-gardener-skill/growth/level-1-quality.md
 ```
 
 ---
@@ -45,7 +45,7 @@ cat architect-skill/growth/level-1-quality.md
 ## 文件结构
 
 ```
-architect-skill/
+rule-gardener-skill/
 ├── README.md               # 本文件
 ├── SKILL.md                # Skill 能力描述
 ├── knowledge/
