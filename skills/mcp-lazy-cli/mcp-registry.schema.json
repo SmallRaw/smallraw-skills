@@ -15,7 +15,7 @@
   "$defs": {
     "server": {
       "type": "object",
-      "required": ["description", "transport", "tools"],
+      "required": ["description", "transport"],
       "properties": {
         "description": {
           "type": "string",
@@ -33,7 +33,7 @@
           "items": {
             "$ref": "#/$defs/toolSummary"
           },
-          "description": "Brief tool summaries — just enough for AI to know what's available"
+          "description": "Optional tool summaries — helps AI decide without connecting. If omitted, use `--server <name> tools` to discover at runtime."
         },
         "resources": {
           "type": "array",
@@ -46,6 +46,12 @@
           "items": {
             "$ref": "#/$defs/promptSummary"
           }
+        },
+        "lifecycle": {
+          "type": "string",
+          "enum": ["ephemeral", "keep-alive"],
+          "default": "ephemeral",
+          "description": "ephemeral: stateless, connect per call, disconnect after. keep-alive: stateful, daemon maintains connection across calls."
         },
         "notes": {
           "type": "string",

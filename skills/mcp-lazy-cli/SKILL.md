@@ -1,51 +1,109 @@
 ---
 name: mcp-lazy-cli
-description: MCP Skill System — 按需调用 MCP servers，不预加载。通过 registry 索引知道有什么能力，用 CLI 按需连接、调用、断开。当需要与外部工具交互（设计工具、数据库、API 等）但该工具未预加载为 MCP 时使用。
+description: "Lazy MCP proxy — call MCP servers on-demand without preloading. Use when the user wants to invoke MCP tools, connect to MCP servers, check the mcp-registry, or manage the MCP daemon."
 allowed-tools:
   - Bash
   - Read
 ---
 
-# MCP CLI — 按需调用 MCP Servers
+# MCP Lazy CLI — On-Demand MCP Server Invocation
 
-不预加载 tool definitions，通过 registry 知道有什么能力，按需调用。
+## Why this exists
 
-先 `--registry` 看有什么，根据 `when` 字段判断是否需要，不需要就不调用。
+Registering MCP servers in Claude Code (or any AI tool) makes them preload into memory — every server, all the time, whether you need them or not. This wastes resources and slows everything down.
+
+**Do NOT register MCP servers via `claude mcp add`, settings files, or any other built-in registration mechanism.** That defeats the entire purpose. Instead, declare servers in `mcp-registry.json` and invoke them through this CLI — connect on demand, use, disconnect. Zero background resource consumption.
+
+Think of the registry as a "skill index" for MCP servers — each entry has a `when` field that describes exactly when to use that server, and tool summaries so you know what's available without connecting. This CLI is the bridge between the registry and the actual server.
+
+## Workflow
+
+```
+1. Read registry    →  npx mcp-client-utils --registry
+2. Match task       →  Find server whose `when` field matches the current task
+3. Call tool        →  npx mcp-client-utils --server <name> call <tool> '<json>'
+4. Done             →  Connection closes automatically (ephemeral) or stays in daemon (keep-alive)
+```
+
+**Early exit**: If you read the registry and no server matches the task, AND the user hasn't provided a URL for ad-hoc connection — stop here. This skill can't help. Don't try to install packages, use `curl` with raw JSON-RPC, or find alternative approaches. Just tell the user the requested MCP server isn't in the registry.
+
+If the server you need is NOT in the registry but the user provided a URL, use ad-hoc mode to connect directly.
+
+## Registry format
+
+The registry lives at `.claude/mcp-registry.json` (searched upward from cwd). Example:
+
+```json
+{
+  "servers": {
+    "figma": {
+      "description": "Figma design file access",
+      "when": "User needs design files, assets, tokens, or Figma data",
+      "transport": { "type": "stdio", "target": "npx", "args": ["-y", "figma-mcp-server"] },
+      "lifecycle": "keep-alive",
+      "tools": [
+        { "name": "get_design_tokens", "description": "Extract design tokens (colors, typography, spacing)" },
+        { "name": "export_assets", "description": "Export assets (PNG, SVG, PDF) from a Figma file" }
+      ]
+    },
+    "screenshot": {
+      "description": "Take screenshots of URLs",
+      "when": "User wants to capture a screenshot of a webpage",
+      "transport": { "type": "stdio", "target": "npx", "args": ["-y", "screenshot-mcp-server"] },
+      "tools": [
+        { "name": "take_screenshot", "description": "Capture a screenshot of a URL, returns base64 PNG" }
+      ]
+    }
+  }
+}
+```
+
+Key fields:
+- **`when`** — trigger condition. Match this against the current task to decide if you need this server.
+- **`tools`** — optional summaries. Helps decide without connecting. If omitted, use `--server <name> tools` to discover at runtime.
+- **`lifecycle`** — `"ephemeral"` (default): connect per call, disconnect after. `"keep-alive"`: daemon maintains the connection for multi-call sessions.
+
+## CLI reference
 
 ```bash
-# 查看所有可用 servers（读 .claude/mcp-registry.json）
-npx mcp-client-utils --registry
+# Discovery
+npx mcp-client-utils --registry                           # List all registered servers and their tools
 
-# 查看某个 server 的完整 tool schema（参数不确定时才用）
-npx mcp-client-utils --server <name> tools
+# Tool operations (registry-based)
+npx mcp-client-utils --server <name> tools                # Full tool schemas (use when param names are unclear)
+npx mcp-client-utils --server <name> call <tool> '<json>' # Call a tool
+npx mcp-client-utils --server <name> info                 # Server metadata
+npx mcp-client-utils --server <name> resources             # List resources
+npx mcp-client-utils --server <name> read <uri>            # Read a resource
+npx mcp-client-utils --server <name> prompts               # List prompts
+npx mcp-client-utils --server <name> prompt <name> '<json>' # Get a prompt
+npx mcp-client-utils --server <name> templates             # List resource templates
 
-# 调用 tool
-npx mcp-client-utils --server <name> call <tool-name> '<json-args>'
-
-# 其他命令
-npx mcp-client-utils --server <name> info
-npx mcp-client-utils --server <name> resources
-npx mcp-client-utils --server <name> read <uri>
-npx mcp-client-utils --server <name> prompts
-npx mcp-client-utils --server <name> prompt <prompt-name> '<json-args>'
-npx mcp-client-utils --server <name> templates
-
-# Ad-hoc 直连（不经过 registry）
+# Ad-hoc direct connection (server not in registry)
 npx mcp-client-utils --stdio "<cmd> [args]" -- <command>
 npx mcp-client-utils --http <url> -- <command>
 npx mcp-client-utils --sse <url> -- <command>
 
-# Daemon 管理
-npx mcp-client-utils daemon status
+# Daemon (for keep-alive servers with multiple sequential calls)
 npx mcp-client-utils daemon start
+npx mcp-client-utils daemon status
 npx mcp-client-utils daemon stop
 ```
 
-## lifecycle
+## When to start the daemon
 
-Registry 中每个 server 可配置 `"lifecycle"` 字段：
+For `keep-alive` servers where you plan multiple sequential calls (e.g. list_tables → describe_table → query), start the daemon first to reuse the connection:
 
-- **`"ephemeral"`**（默认）— 无状态，每次调用独立连接，用完即断。Ad-hoc 直连也是这个模式。
-- **`"keep-alive"`** — 有状态，通过后台 daemon 保持连接，多次调用复用同一会话。适用于设计工具、数据库等需要维持上下文的 server。
+```bash
+npx mcp-client-utils daemon start
+npx mcp-client-utils --server postgres call list_tables '{}'
+npx mcp-client-utils --server postgres call describe_table '{"table": "users"}'
+npx mcp-client-utils --server postgres call query '{"sql": "SELECT * FROM users LIMIT 10"}'
+npx mcp-client-utils daemon stop
+```
 
-Registry 配置：`.claude/mcp-registry.json`，schema 见 `skills/mcp-lazy-cli/mcp-registry.schema.json`。
+For single calls or ephemeral servers, skip the daemon — the CLI handles connection/disconnection automatically.
+
+## Schema reference
+
+Full registry schema: `skills/mcp-lazy-cli/mcp-registry.schema.json`
