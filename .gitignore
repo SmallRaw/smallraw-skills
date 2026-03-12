@@ -16,3 +16,7 @@ node_modules/
 memory/
 .memory/
 *.session.json
+
+
+# test workspace
+mcp-lazy-cli-workspace/
