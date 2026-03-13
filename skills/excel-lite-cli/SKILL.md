@@ -1,7 +1,7 @@
 ---
 name: excel-lite-cli
 description: Excel/xlsx/xls 报表分析、数据清洗与导出。自动处理复杂报表（表头不在首行、合并单元格、脏字符）。用户提到任何 Excel 文件的读取、查询、分析、清洗或导出时必须触发——禁止用 Read 工具直接读 xlsx（会乱码）。不修改原始文件，结果导出为新文件。
-user-invocable: true
+user-invocable: false
 disable-model-invocation: false
 ---
 
