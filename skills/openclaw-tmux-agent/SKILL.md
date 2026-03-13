@@ -1,14 +1,7 @@
 ---
 name: openclaw-tmux-agent
-description: 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作
-license: MIT
-compatibility: claude-code, opencode, gemini-cli, codex
+description: 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作。当需要将子任务委派给其他 AI CLI 工具（claude-code、opencode、gemini-cli、codex）、并行运行多个实例、检查任务状态或断线重连恢复时触发。
 metadata:
-  openclaw:
-    requires:
-      bins: [tmux]
-      env: []
-      config: []
   homepage: https://github.com/smallraw/smallraw-skills
   author: smallraw
 user-invocable: false
@@ -17,306 +10,94 @@ disable-model-invocation: false
 
 # openclaw-tmux-agent — 多 AI CLI 工具调度协议
 
-> 通过 tmux 实现 AI Agent 对其他 AI CLI 工具的持久化调度。专为 OpenClaw 设计。
+> 通过 tmux 实现 AI Agent 对其他 AI CLI 工具的持久化调度。
 
----
+## 前提条件
 
-## 何时使用
+- `tmux` 已安装（`command -v tmux`）
+- `.tmux-agents.json` 可读写
 
-- 需要将子任务委派给其他 AI CLI 工具（claude-code、opencode、gemini-cli、codex 等）执行
-- 需要并行运行多个 AI CLI 工具实例，各自处理不同任务
-- 需要检查已派发任务的运行状态、读取输出结果
-- 断线重连后需要恢复对已有 Agent 的管理（session 仍在，状态文件仍存）
-
----
-
-## 架构概览
+## 架构
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Layer 3 — 生命周期管理                          │
-│  重启 / 回收 / 清理 / 重连恢复                    │
-│  → knowledge/lifecycle-management.md             │
-├─────────────────────────────────────────────────┤
-│  Layer 2 — 任务状态协议                          │
-│  .tmux-agents.json 状态文件读写                   │
-│  → knowledge/state-protocol.md                │
-├─────────────────────────────────────────────────┤
-│  Layer 1 — tmux 原语                             │
-│  new-session / new-window / send-keys /          │
-│  capture-pane / list-panes / kill-window         │
-│  → knowledge/tmux-primitives.md                  │
-└─────────────────────────────────────────────────┘
+Layer 3 — 生命周期管理（重启/回收/清理/重连）
+  → knowledge/lifecycle-management.md
+Layer 2 — 状态协议（.tmux-agents.json 读写）
+  → knowledge/state-protocol.md
+Layer 1 — tmux 原语（session/window/send-keys/capture-pane）
+  → knowledge/tmux-primitives.md
 ```
-
-- **Layer 1** 是底层命令层，封装 tmux 操作细节
-- **Layer 2** 是状态持久化层，所有 Agent 信息记录到 `.tmux-agents.json`
-- **Layer 3** 是管理层，处理异常恢复、进程重启、资源回收等高层逻辑
-
----
 
 ## 核心工作流
 
-### 1. 初始化调度环境
+### 1. 初始化
 
-检查 tmux 是否安装，创建调度 session，初始化状态文件。
+创建 tmux session + 初始化状态文件。如果 `.tmux-agents.json` 已存在，跳到步骤 6（重连恢复）。
 
-```bash
-# 检查 tmux 是否可用
-command -v tmux >/dev/null 2>&1 || { echo "tmux 未安装"; exit 1; }
+### 2. 派发任务（严格五步，不可跳步）
 
-# 创建调度 session（detached 模式）
-tmux new-session -d -s openclaw-agents
-
-# 初始化状态文件
-echo '{"session":"openclaw-agents","agents":{}}' > .tmux-agents.json
-```
-
-> **注意**：如果 `.tmux-agents.json` 已存在，说明之前有调度环境。跳转到 **步骤 6（重连恢复）** 而非重新初始化。
-
-### 2. 派发任务
-
-严格按以下顺序执行，不可跳步：
-
-**第一步：创建 window**
-
-```bash
-tmux new-window -t openclaw-agents -n "task-refactor"
-```
-
-**第二步：写入状态文件**
-
-在状态文件中记录新 Agent 条目（此时 pid 为 null，status 为 "starting"）：
-
-```bash
-# 用 jq 追加记录（示例）
-jq '.agents["task-refactor"] = {"window":"task-refactor","cmd":"claude-code","status":"starting","pid":null,"created":"2026-03-04T10:00:00Z"}' \
-  .tmux-agents.json > .tmux-agents.json.tmp && mv .tmux-agents.json.tmp .tmux-agents.json
-```
-
-**第三步：发送命令**
-
-```bash
-tmux send-keys -t openclaw-agents:task-refactor "claude-code --task '重构 utils 模块'" Enter
-```
-
-**第四步：确认进程启动**
-
-```bash
-# 等待进程启动（短暂延迟）
-sleep 2
-
-# 获取 pane pid
-PANE_PID=$(tmux display-message -t openclaw-agents:task-refactor -p '#{pane_pid}')
-echo "pane_pid: $PANE_PID"
-
-# 找到实际子进程 pid
-CHILD_PID=$(pgrep -P "$PANE_PID" | head -1)
-echo "child_pid: $CHILD_PID"
-```
-
-**第五步：更新 pid 到状态文件**
-
-```bash
-jq --arg pid "$CHILD_PID" '.agents["task-refactor"].pid = ($pid | tonumber) | .agents["task-refactor"].status = "running"' \
-  .tmux-agents.json > .tmux-agents.json.tmp && mv .tmux-agents.json.tmp .tmux-agents.json
-```
+1. 创建 window
+2. 写入状态文件（status: "starting", pid: null）
+3. 发送命令（TUI 工具必须用 `-l` + 分离 Enter，见 tmux-primitives.md）
+4. 确认进程启动（获取 pane_pid → pgrep 找子进程）
+5. 更新 pid 到状态文件（status: "running"）
 
 ### 3. 检查状态
 
-组合 tmux pane 信息与系统进程状态，判断 Agent 是否存活。
-
-```bash
-# 检查 pane 是否存活
-tmux list-panes -t openclaw-agents:task-refactor -F '#{pane_pid} #{pane_dead}' 2>/dev/null
-
-# 检查进程是否存在（使用状态文件中记录的 pid）
-PID=$(jq -r '.agents["task-refactor"].pid' .tmux-agents.json)
-if ps -p "$PID" > /dev/null 2>&1; then
-  echo "Agent 运行中"
-else
-  echo "Agent 已退出"
-  # 更新状态文件
-  jq '.agents["task-refactor"].status = "exited"' \
-    .tmux-agents.json > .tmux-agents.json.tmp && mv .tmux-agents.json.tmp .tmux-agents.json
-fi
-```
+组合 tmux pane 信息 + `ps -p <pid>` 验证进程是否存活。禁止仅凭状态文件判断。
 
 ### 4. 收集结果
 
-使用 `capture-pane` 读取 Agent 输出。
-
-```bash
-# 读取最后 50 行输出
-tmux capture-pane -t openclaw-agents:task-refactor -p -S -50
-
-# 读取指定范围（从第 10 行到第 30 行）
-tmux capture-pane -t openclaw-agents:task-refactor -p -S -30 -E -10
-
-# 读取全部历史（scrollback buffer）
-tmux capture-pane -t openclaw-agents:task-refactor -p -S -
-```
+用 `tmux capture-pane` 读取 Agent 输出。参数用法见 tmux-primitives.md。
 
 ### 5. 生命周期管理
 
-详细参考 `knowledge/lifecycle-management.md`。
-
-**重启（restart）**：Agent 异常退出后重新执行。
-
-```bash
-# 在同一 window 重新发送命令
-tmux send-keys -t openclaw-agents:task-refactor "claude-code --task '重构 utils 模块'" Enter
-
-# 等待并更新 pid
-sleep 2
-PANE_PID=$(tmux display-message -t openclaw-agents:task-refactor -p '#{pane_pid}')
-CHILD_PID=$(pgrep -P "$PANE_PID" | head -1)
-
-jq --arg pid "$CHILD_PID" '.agents["task-refactor"].pid = ($pid | tonumber) | .agents["task-refactor"].status = "running"' \
-  .tmux-agents.json > .tmux-agents.json.tmp && mv .tmux-agents.json.tmp .tmux-agents.json
-```
-
-**回收（reclaim）**：任务完成或不再需要，销毁 window 并移除状态记录。
-
-```bash
-# 销毁 window
-tmux kill-window -t openclaw-agents:task-refactor
-
-# 从状态文件移除
-jq 'del(.agents["task-refactor"])' \
-  .tmux-agents.json > .tmux-agents.json.tmp && mv .tmux-agents.json.tmp .tmux-agents.json
-```
-
-**清理（cleanup）**：全部任务完成，销毁 session 和状态文件。
-
-```bash
-# 销毁整个 session
-tmux kill-session -t openclaw-agents
-
-# 删除状态文件
-rm .tmux-agents.json
-```
+详见 `knowledge/lifecycle-management.md`：
+- **重启**：在同一 window 重新发送命令，更新 pid
+- **回收**：kill-window + 从状态文件删除
+- **清理**：kill-session + 删除状态文件
 
 ### 6. 重连恢复
 
-断线重连或新会话启动时，通过状态文件恢复管理。
-
-**恢复流程**：读状态文件 → 检查 session 存在 → 逐个验证 pid → 修正状态 → 报告。
-
-```bash
-# 1. 读取状态文件
-cat .tmux-agents.json
-
-# 2. 检查 session 是否存在
-tmux has-session -t openclaw-agents 2>/dev/null && echo "session 存在" || echo "session 丢失"
-
-# 3. 逐个验证 Agent pid
-for agent in $(jq -r '.agents | keys[]' .tmux-agents.json); do
-  PID=$(jq -r --arg a "$agent" '.agents[$a].pid' .tmux-agents.json)
-  if ps -p "$PID" > /dev/null 2>&1; then
-    echo "$agent (pid=$PID): 运行中"
-  else
-    echo "$agent (pid=$PID): 已退出"
-    # 4. 修正状态
-    jq --arg a "$agent" '.agents[$a].status = "exited"' \
-      .tmux-agents.json > .tmux-agents.json.tmp && mv .tmux-agents.json.tmp .tmux-agents.json
-  fi
-done
-
-# 5. 报告当前状态
-jq '.agents | to_entries[] | "\(.key): \(.value.status)"' .tmux-agents.json
-```
-
----
+读状态文件 → 检查 session → 逐个验证 pid → 修正状态 → 报告。
 
 ## 规则
 
 ### 禁止规则
 
-1. **禁止脱离状态文件操作 window**：创建或销毁 tmux window 时，必须同步更新 `.tmux-agents.json`。任何 `new-window` 或 `kill-window` 操作都必须对应状态文件的写入或删除。
-2. **禁止不经 pid 检查就假定状态**：不可仅根据状态文件中的 `status` 字段判断 Agent 是否存活。必须用 `ps -p <pid>` 验证进程是否真实存在。
-3. **禁止自动删除失败的 window**：Agent 退出或异常时，仅更新状态为 `"exited"` 或 `"failed"`。不要自动 `kill-window`，除非用户明确要求回收。
+1. **禁止脱离状态文件操作 window** — 任何 new-window / kill-window 必须同步更新 `.tmux-agents.json`
+2. **禁止不经 pid 检查就假定状态** — 必须用 `ps -p <pid>` 验证，不可仅看状态文件
+3. **禁止自动删除失败的 window** — 仅更新状态为 "exited"/"failed"，不自动 kill-window
 
 ### 过程规则
 
-1. **任务派发流程**：严格按照 "创建 window → 写入状态文件 → 发送命令 → 确认进程启动 → 更新 pid" 五步执行，不可跳步或乱序。
-2. **重连恢复流程**：严格按照 "读状态文件 → 检查 session 存在 → 逐个验证 pid → 修正状态 → 报告" 五步执行。
-3. **状态修正原则**：状态文件是声明，tmux + pid 是事实。当声明与事实不一致时，以事实为准修正声明，不可反过来操作。
-
-### 检查清单
-
-在开始调度前，确认以下条件满足：
-
-- [ ] `tmux` 已安装且可执行（`command -v tmux`）
-- [ ] 调度 session 存在（`tmux has-session -t openclaw-agents`）或可以创建
-- [ ] 状态文件 `.tmux-agents.json` 可读写（检查路径和权限）
-
----
+1. **派发流程**：严格五步，不可跳步或乱序
+2. **重连流程**：严格五步（读状态 → 检查 session → 验证 pid → 修正 → 报告）
+3. **状态修正**：状态文件是声明，tmux + pid 是事实。以事实为准修正声明
 
 ## 实战技巧
 
-### TUI 应用的命令发送
+### TUI 命令发送
 
-Claude Code、Codex 等 TUI 应用会将快速的 "文本+回车" 序列当成粘贴/多行输入，导致命令不被提交。**必须将文本和 Enter 分开发送，中间加短暂延迟：**
-
-```bash
-# ❌ 错误：TUI 可能不识别
-tmux send-keys -t openclaw-agents:task-refactor "Fix the auth bug" Enter
-
-# ✅ 正确：文本和 Enter 分开发送
-tmux send-keys -t openclaw-agents:task-refactor -l -- "Fix the auth bug" && sleep 0.1 && tmux send-keys -t openclaw-agents:task-refactor Enter
-```
-
-- `-l`：字面模式（literal），避免 tmux 解释特殊字符
-- `--`：防止后续内容被当作 tmux 选项
-- `sleep 0.1`：给 TUI 应用处理时间
-
-> **规则**：向 AI CLI 工具发送 prompt 时，一律使用 `-l` + 分离 Enter 的方式。
-
-### Session 命名防冲突
-
-使用 `oc-<项目>-<功能>` 前缀命名 session，避免与用户手动创建的 session 冲突：
+AI CLI 工具（Claude Code、Codex 等）必须文本和 Enter 分开发送：
 
 ```bash
-# 命名规范
-tmux new-session -d -s oc-myproject-auth-refactor
-
-# 快速列出所有 OpenClaw 管理的 session
-tmux ls -F '#{session_name}' | grep '^oc-'
-
-# 一键清理所有 OpenClaw session
-tmux ls -F '#{session_name}' | grep '^oc-' | xargs -n1 tmux kill-session -t
+# ✅ 正确
+tmux send-keys -t session:window -l -- "Fix the bug" && sleep 0.1 && tmux send-keys -t session:window Enter
 ```
+
+### Session 命名
+
+使用 `oc-<项目>-<功能>` 前缀，避免冲突。
 
 ### Shell Prompt 完成检测
 
-除了 pid 检测外，还可以通过检查 shell 提示符判断工具是否执行完毕（工具退出后会回到 shell）：
+作为 pid 检测的补充，检查 pane 最后几行是否有 shell 提示符。详见 tmux-primitives.md。
 
-```bash
-# 检查最近几行是否包含 shell 提示符
-if tmux capture-pane -p -t openclaw-agents:task-refactor -S -3 | grep -qE '[\$❯#] ?$'; then
-  echo "工具已完成，回到 shell"
-else
-  echo "工具仍在运行"
-fi
-```
+## 知识库（按需加载）
 
-> 此方法作为 pid 检测的补充，不可替代 pid 检测。
-
-### Python REPL 兼容
-
-启动 Python 相关工具时，设置环境变量避免高级 REPL 破坏 send-keys 流程：
-
-```bash
-tmux send-keys -t openclaw-agents:task-python -l -- "PYTHON_BASIC_REPL=1 python script.py" && sleep 0.1 && tmux send-keys -t openclaw-agents:task-python Enter
-```
-
----
-
-## 知识库文件
-
-| 文件 | 用途 |
-|------|------|
-| `knowledge/tmux-primitives.md` | tmux 命令原语参考（new-session、send-keys、capture-pane 等用法与参数） |
-| `knowledge/state-protocol.md` | `.tmux-agents.json` 状态文件的 JSON Schema 与字段说明 |
-| `knowledge/lifecycle-management.md` | Agent 生命周期管理详解（重启、回收、清理、异常处理策略） |
+| 文件 | 何时读取 |
+|------|----------|
+| `knowledge/tmux-primitives.md` | 需要 tmux 命令的具体参数和用法时 |
+| `knowledge/state-protocol.md` | 需要读写 .tmux-agents.json 的 schema 和规则时 |
+| `knowledge/lifecycle-management.md` | 处理重启、回收、异常恢复时 |
