@@ -1,6 +1,6 @@
 ---
 name: github-kb
-description: 从 GitHub 搜索和总结信息的知识库工具。仅当用户明确提到 GitHub 并要求搜索（如「去 GitHub 搜一下」「GitHub 上有没有」「搜一下 issue/PR」）、给出具体仓库标识（owner/repo 格式或 github.com 链接）并要求分析或查看详情、或提到 ~/docs/github-article 目录时触发。一般编程问答、查文档、写代码、泛泛说「蓝图」「架构」不触发。
+description: "If the user's message contains an owner/repo string (e.g. facebook/react, tokio-rs/tokio, vercel/next.js), a github.com URL, or mentions searching/exploring GitHub in any language (GitHub上搜, GitHub上有没有, 搜一下GitHub, explore GitHub, GitHub上探索) — invoke this skill immediately. It is the sole gateway to remote GitHub repositories: architecture analysis, blueprints, library discovery, issue/PR search, open-source topic research, ~/docs/github-article. Skip for: local project analysis, local git, CI/CD setup, writing code, general programming."
 user-invocable: false
 disable-model-invocation: false
 ---
