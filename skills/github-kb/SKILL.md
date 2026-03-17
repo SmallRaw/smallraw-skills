@@ -9,15 +9,7 @@ disable-model-invocation: false
 
 GitHub 是世界上最大的开源知识库。这个 skill 通过 `gh` CLI 把它变成你的实时检索引擎——搜索、分析、总结、归档，一条龙完成。
 
-## 前置检查
-
-每次使用前确认 gh 已认证且版本足够：
-
-```bash
-gh auth status && gh --version
-```
-
-需要 gh >= 2.80.0。低于此版本时提示用户 `brew upgrade gh`。
+脚本会自动检查 gh 认证状态，未认证或版本过低时会提示用户。
 
 ## 工作模式
 
@@ -32,7 +24,6 @@ gh auth status && gh --version
 | 某个 Issue/PR 的详情 | 摘要 | `scripts/gh-digest.js` |
 | 某个话题的全面调研 | 探索 | `scripts/gh-explore.js` |
 | 追踪代码变更历史 | 追踪 | `gh search commits` |
-| 对比两个项目 | 对比 | 蓝图脚本跑两次，人工对比 |
 
 ## 执行流程
 
@@ -112,28 +103,11 @@ gh search code "<关键词>" --path "src/" --limit 10
 node scripts/gh-repo-blueprint.js <owner/repo> [output-dir]
 ```
 
-脚本采集结构化数据（元信息、语言分布、目录结构、Releases、Issues、PRs、贡献者、同类项目）。
+脚本采集结构化数据（元信息、语言分布、目录结构、Releases、Issues、PRs、贡献者、同类项目）。脚本跑完后：
 
-脚本跑完后，你还需要：
-
-1. **阅读 README** — `gh repo view <owner/repo>` 获取完整 README，理解项目背景和定位
-2. **撰写蓝图** — 按照 `references/blueprint-format.md` 的结构，**从上到下**依次写：
-
-   **先讲「是什么」**（让读者建立兴趣）：
-   - 项目背景与定位 — 诞生背景、解决什么痛点、在生态中的位置
-   - 突破性特点 — 2-3 个最让人眼前一亮的点
-   - 设计亮点 — 深挖具体设计，说清楚好在哪、为什么好
-   - 怎么用 — 典型场景、适合/不适合、上手难度
-
-   **再讲「怎么做的」**（给想深入的读者）：
-   - 架构详解 — 技术栈、分层架构、数据流，用线稿图可视化
-   - 项目健康度 — 活跃度、社区、版本节奏
-
-   **最后放原始数据**（折叠展示，按需查看）
-
-3. **中文撰写** — 所有分析内容用中文，原始数据保留原文放折叠区
-
-最终蓝图的阅读体验：先知道这个项目**为什么值得关注**，再了解**怎么实现的**，最后有原始数据可以**按需深挖**。
+1. 用 `gh repo view <owner/repo>` 阅读完整 README，理解项目背景
+2. 按 `references/blueprint-format.md` 的结构撰写蓝图（中文、含线稿图、含设计亮点分析）
+3. 原始数据保留原文放折叠区
 
 默认保存到 `~/docs/github-article/`。
 
@@ -185,7 +159,7 @@ gh search commits "refactor" --author octocat --limit 5
 
 所有生成的文档保存到 `~/docs/github-article/`，文件名格式 `<owner>-<repo>-<type>.md`。
 
-**语言要求**：所有输出文档必须使用**中文**撰写。脚本采集的原始数据（英文 README、Issue 正文等）保留原文放在折叠区域，但架构分析、总结、关键发现、对比结论等你撰写的内容一律用中文。
+**语言要求**：所有输出文档必须使用**中文**撰写。脚本采集的原始数据（英文 README、Issue 正文等）保留原文放在折叠区域，但架构分析、总结、关键发现等你撰写的内容一律用中文。
 
 文档带 YAML frontmatter：
 
@@ -199,25 +173,12 @@ type: blueprint | digest | exploration
 
 ## 高级用法
 
-当 `gh search` 无法满足需求时，直接调用 GitHub API：
+当 `gh search` 无法满足需求时，可直接调用 GitHub REST/GraphQL API。完整命令参考见 `references/search-commands.md`。
 
 ```bash
-# REST API
+# REST API 示例
 gh api repos/{owner}/{repo}
 gh api "repos/{owner}/{repo}/releases?per_page=5" --jq '.[].tag_name'
-
-# GraphQL（复杂查询更高效）
-gh api graphql -f query='
-  query {
-    repository(owner: "X", name: "Y") {
-      stargazerCount
-      issues(first: 5, states: OPEN) {
-        edges { node { title url } }
-      }
-    }
-  }
-'
 ```
 
-完整搜索命令参考见 `references/search-commands.md`。
 蓝图格式模板见 `references/blueprint-format.md`。

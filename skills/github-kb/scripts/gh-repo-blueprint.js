@@ -224,7 +224,7 @@ ${similarRepos}
 
 ---
 
-> 以上为脚本自动采集的原始数据。接下来请阅读该仓库的 README（\`gh repo view ${repo}\`），结合以上数据完成架构分析、线稿图、竞品对比和中文总结。
+> 以上为脚本自动采集的原始数据。接下来请阅读该仓库的 README（\`gh repo view ${repo}\`），按 references/blueprint-format.md 的结构完成蓝图撰写。
 `;
 
 writeArticle(outputFile, blueprint);
