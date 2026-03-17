@@ -1,0 +1,23 @@
+{
+  "skill_name": "github-kb",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我去 GitHub 上搜一下有没有好用的 Python MCP Server 实现，最好是 star 比较多的，给我对比一下前几名",
+      "expected_output": "使用 gh search repos 搜索 MCP Server 相关仓库，按 star 排序，列出前几名并对比关键指标（stars、语言、更新时间、简介）",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我想了解 vercel/next.js 这个仓库的整体架构，帮我生成一份蓝图文档保存到 ~/docs/github-article",
+      "expected_output": "调用 gh-repo-blueprint.js 脚本生成蓝图，包含元信息、目录结构、Release、Issue、PR、贡献者，并在此基础上做架构分析总结",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我在用 astro 的时候遇到一个 build 报错 'Cannot find module @astrojs/mdx'，帮我去 GitHub issue 里搜一下有没有人遇到过同样的问题",
+      "expected_output": "使用 gh search issues 搜索 astro 相关仓库的 closed issues，找到匹配的解决方案，用 gh-digest.js 获取详情并总结解决方法",
+      "files": []
+    }
+  ]
+}

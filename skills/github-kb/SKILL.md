@@ -1,0 +1,223 @@
+---
+name: github-kb
+description: 从 GitHub 搜索和总结信息的知识库工具。仅当用户明确提到 GitHub 并要求搜索（如「去 GitHub 搜一下」「GitHub 上有没有」「搜一下 issue/PR」）、给出具体仓库标识（owner/repo 格式或 github.com 链接）并要求分析或查看详情、或提到 ~/docs/github-article 目录时触发。一般编程问答、查文档、写代码、泛泛说「蓝图」「架构」不触发。
+user-invocable: false
+disable-model-invocation: false
+---
+
+# GitHub 知识库
+
+GitHub 是世界上最大的开源知识库。这个 skill 通过 `gh` CLI 把它变成你的实时检索引擎——搜索、分析、总结、归档，一条龙完成。
+
+## 前置检查
+
+每次使用前确认 gh 已认证且版本足够：
+
+```bash
+gh auth status && gh --version
+```
+
+需要 gh >= 2.80.0。低于此版本时提示用户 `brew upgrade gh`。
+
+## 工作模式
+
+根据用户意图选择模式：
+
+| 意图 | 模式 | 核心方法 |
+|------|------|----------|
+| 找什么库能做 X | 发现 | `gh search repos` |
+| 这个报错怎么解决 | 排错 | `gh search issues --state closed` |
+| 这个功能怎么实现的 | 学习 | `gh search prs` + `gh search code` |
+| 了解某个仓库全貌 | 蓝图 | `scripts/gh-repo-blueprint.js` |
+| 某个 Issue/PR 的详情 | 摘要 | `scripts/gh-digest.js` |
+| 某个话题的全面调研 | 探索 | `scripts/gh-explore.js` |
+| 追踪代码变更历史 | 追踪 | `gh search commits` |
+| 对比两个项目 | 对比 | 蓝图脚本跑两次，人工对比 |
+
+## 执行流程
+
+```
+1. 分析意图 → 选择模式
+2. 执行检索 → gh search / 脚本
+3. 深度分析 → 阅读关键内容，提炼要点
+4. 输出归档 → 保存到 ~/docs/github-article/
+```
+
+## 各模式详解
+
+### 发现模式 — 找库
+
+```bash
+# 按 star 排序（最受欢迎）
+gh search repos "<关键词>" --sort stars --limit 10
+
+# 按语言筛选
+gh search repos "<关键词>" --language python --stars ">1000"
+
+# 最近活跃（近期更新）
+gh search repos "<关键词>" --sort updated --order desc --limit 10
+
+# 近期新星（模拟 trending）
+gh search repos "<关键词>" --sort stars --stars ">100" --json fullName,stargazersCount,description,updatedAt --limit 10
+```
+
+找到候选后，用蓝图脚本深度分析：
+
+```bash
+node scripts/gh-repo-blueprint.js <owner/repo>
+```
+
+**输出要求**：列出项目名、Star 数、最后更新、一句话简介、适用场景。
+
+### 排错模式 — 搜报错
+
+```bash
+# 搜已关闭的 issue（里面有解决方案）
+gh search issues "<报错关键信息>" --state closed --limit 10
+
+# 在特定仓库中搜
+gh search issues "<报错信息>" --repo owner/repo --state closed --limit 5
+
+# 按标签筛选
+gh search issues "<报错信息>" --label bug --state closed --limit 5
+```
+
+找到相关 issue 后看详情：
+
+```bash
+node scripts/gh-digest.js issue <owner/repo> <number>
+```
+
+**关键逻辑**：优先搜 `closed` issue，因为里面通常包含解决方案。如果 closed 结果不够，再搜 open 的。
+
+### 学习模式 — 看实现
+
+```bash
+# 搜已合并的 PR（看别人怎么实现的）
+gh search prs "<功能描述>" --state merged --limit 5
+
+# 搜代码片段
+gh search code "<函数名或 API>" --language typescript --limit 10
+
+# 按文件类型搜
+gh search code "<配置项>" --extension yaml --limit 10
+
+# 按路径搜
+gh search code "<关键词>" --path "src/" --limit 10
+```
+
+### 蓝图模式 — 仓库全貌
+
+```bash
+node scripts/gh-repo-blueprint.js <owner/repo> [output-dir]
+```
+
+脚本采集结构化数据（元信息、语言分布、目录结构、Releases、Issues、PRs、贡献者、同类项目）。
+
+脚本跑完后，你还需要：
+
+1. **阅读 README** — `gh repo view <owner/repo>` 获取完整 README，理解项目背景和定位
+2. **撰写蓝图** — 按照 `references/blueprint-format.md` 的结构，**从上到下**依次写：
+
+   **先讲「是什么」**（让读者建立兴趣）：
+   - 项目背景与定位 — 诞生背景、解决什么痛点、在生态中的位置
+   - 突破性特点 — 2-3 个最让人眼前一亮的点
+   - 设计亮点 — 深挖具体设计，说清楚好在哪、为什么好
+   - 怎么用 — 典型场景、适合/不适合、上手难度
+
+   **再讲「怎么做的」**（给想深入的读者）：
+   - 架构详解 — 技术栈、分层架构、数据流，用线稿图可视化
+   - 项目健康度 — 活跃度、社区、版本节奏
+
+   **最后放原始数据**（折叠展示，按需查看）
+
+3. **中文撰写** — 所有分析内容用中文，原始数据保留原文放折叠区
+
+最终蓝图的阅读体验：先知道这个项目**为什么值得关注**，再了解**怎么实现的**，最后有原始数据可以**按需深挖**。
+
+默认保存到 `~/docs/github-article/`。
+
+### 摘要模式 — Issue/PR 详情
+
+```bash
+# Issue 摘要
+node scripts/gh-digest.js issue <owner/repo> <number> [output-dir]
+
+# PR 摘要
+node scripts/gh-digest.js pr <owner/repo> <number> [output-dir]
+```
+
+生成包含正文、评论、标签、时间线的完整摘要。PR 额外包含变更文件列表和代码量统计。
+
+### 探索模式 — 话题调研
+
+```bash
+node scripts/gh-explore.js "<关键词>" [--language <lang>] [--output-dir <dir>]
+```
+
+一次性执行多维度搜索（repos + issues + code + PRs），生成综合调研报告。适合技术选型、方案调研。
+
+### 追踪模式 — 代码历史
+
+```bash
+# 搜提交信息
+gh search commits "fix memory leak" --repo owner/repo --limit 5
+
+# 按作者搜
+gh search commits "refactor" --author octocat --limit 5
+```
+
+## 脚本工具
+
+所有脚本位于本 skill 的 `scripts/` 目录。执行前先 `cd` 到本 skill 目录。
+
+| 脚本 | 用途 | 核心参数 |
+|------|------|----------|
+| `gh-repo-blueprint.js` | 仓库蓝图 | `<owner/repo> [output-dir]` |
+| `gh-digest.js` | Issue/PR 摘要 | `<issue\|pr> <owner/repo> <number> [output-dir]` |
+| `gh-explore.js` | 话题探索 | `"<keyword>" [--language X] [--output-dir dir]` |
+
+默认输出目录：`~/docs/github-article/`
+
+脚本只负责数据采集和格式化。拿到原始数据后，由你来做智能总结——提炼核心观点、归纳技术方案、标注关键发现。
+
+## 输出规范
+
+所有生成的文档保存到 `~/docs/github-article/`，文件名格式 `<owner>-<repo>-<type>.md`。
+
+**语言要求**：所有输出文档必须使用**中文**撰写。脚本采集的原始数据（英文 README、Issue 正文等）保留原文放在折叠区域，但架构分析、总结、关键发现、对比结论等你撰写的内容一律用中文。
+
+文档带 YAML frontmatter：
+
+```yaml
+---
+repo: owner/repo          # 或 keyword（探索模式）
+generated: 2024-01-01
+type: blueprint | digest | exploration
+---
+```
+
+## 高级用法
+
+当 `gh search` 无法满足需求时，直接调用 GitHub API：
+
+```bash
+# REST API
+gh api repos/{owner}/{repo}
+gh api "repos/{owner}/{repo}/releases?per_page=5" --jq '.[].tag_name'
+
+# GraphQL（复杂查询更高效）
+gh api graphql -f query='
+  query {
+    repository(owner: "X", name: "Y") {
+      stargazerCount
+      issues(first: 5, states: OPEN) {
+        edges { node { title url } }
+      }
+    }
+  }
+'
+```
+
+完整搜索命令参考见 `references/search-commands.md`。
+蓝图格式模板见 `references/blueprint-format.md`。
