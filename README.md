@@ -15,6 +15,7 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin install excel-lite-cli@smallraw-skills
 /plugin install openclaw-tmux-agent@smallraw-skills
 /plugin install mcp-lazy-cli@smallraw-skills
+/plugin install github-kb@smallraw-skills
 ```
 
 安装后使用 `/rule-gardener:rule-gardener`、`/fractal-docs`、`/excel-lite-cli`、`/mcp-lazy-cli` 调用。
@@ -30,6 +31,7 @@ cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/github-kb ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
@@ -38,6 +40,7 @@ cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/github-kb ~/.config/opencode/skills/
 ```
 
 手动安装后使用 `/rule-gardener` 调用。
@@ -53,6 +56,7 @@ cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.config/opencode/skills/
 | [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | ✅ Ready |
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | ✅ Ready |
 | [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | ✅ Ready |
+| [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | ✅ Ready |
 
 ---
 
@@ -156,6 +160,30 @@ npx mcp-client-utils --server pencil call get_editor_state '{"include_schema":fa
   }
 }
 ```
+
+### github-kb
+
+**GitHub 知识库** — 把 GitHub 当知识库，搜索、分析、总结、归档。
+
+核心理念：**脚本采集确定性数据，AI 只做需要智能的分析。**
+
+Features:
+- 仓库蓝图：一键采集元信息/语言分布/目录结构/Releases/Issues/PRs/贡献者/同类项目，AI 补充架构分析和设计亮点
+- Issue/PR 摘要：完整正文+评论+标签，PR 额外含变更文件和代码量统计
+- 话题探索：多维度搜索（repos+issues+code+PRs），生成综合调研报告
+- 叙事结构输出：先讲「为什么值得关注」，再讲「怎么实现的」，最后附原始数据
+- 全中文输出，ASCII 线稿图可视化架构
+- Node.js 脚本，跨平台（Windows/macOS/Linux）
+
+```bash
+# 依赖：gh CLI (>= 2.80.0) + Node.js
+node scripts/gh-repo-blueprint.js owner/repo         # 生成仓库蓝图
+node scripts/gh-digest.js issue owner/repo 123       # Issue 摘要
+node scripts/gh-digest.js pr owner/repo 456          # PR 摘要
+node scripts/gh-explore.js "mcp server" --language python  # 话题探索
+```
+
+输出保存到 `~/docs/github-article/`。
 
 ### openclaw-tmux-agent
 
