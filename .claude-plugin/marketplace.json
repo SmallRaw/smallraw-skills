@@ -42,6 +42,13 @@
       "source": "./",
       "strict": false,
       "skills": ["./skills/mcp-lazy-cli"]
+    },
+    {
+      "name": "github-kb",
+      "description": "GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图），中文输出",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/github-kb"]
     }
   ]
 }
