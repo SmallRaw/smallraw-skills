@@ -1,109 +1,43 @@
 ---
 name: mcp-lazy-cli
-description: "Lazy MCP proxy — call MCP servers on-demand without preloading. Use when the user wants to invoke MCP tools, connect to MCP servers, check the mcp-registry, or manage the MCP daemon."
+description: "Use when the user wants to invoke MCP tools, connect to MCP servers, check the mcp-registry, or manage the MCP daemon."
 allowed-tools:
   - Bash
   - Read
 ---
 
-# MCP Lazy CLI — On-Demand MCP Server Invocation
+# MCP Lazy CLI
 
-## Why this exists
+On-demand MCP server invocation via `npx mcp-client-utils`. Servers are declared in `.claude/mcp-registry.json` and connected only when needed — no preloading, no background resource consumption.
 
-Registering MCP servers in Claude Code (or any AI tool) makes them preload into memory — every server, all the time, whether you need them or not. This wastes resources and slows everything down.
+## Core Rules
 
-**Do NOT register MCP servers via `claude mcp add`, settings files, or any other built-in registration mechanism.** That defeats the entire purpose. Instead, declare servers in `mcp-registry.json` and invoke them through this CLI — connect on demand, use, disconnect. Zero background resource consumption.
+1. **Never register MCP servers** — Do NOT use `claude mcp add`, settings files, or any built-in registration. All servers go in `mcp-registry.json` and are invoked through this CLI.
+2. **Registry-first** — Always read the registry (`npx mcp-client-utils --registry`) before doing anything. Match the task against each server's `when` field.
+3. **Early exit on no match** — If no registry server matches AND the user hasn't provided a URL for ad-hoc connection, stop. Don't try alternative approaches (curl, raw JSON-RPC, package installs).
+4. **Ad-hoc fallback** — If the server isn't in the registry but the user provided a URL, use `--stdio`, `--http`, or `--sse` for direct connection.
+5. **Daemon only for multi-call keep-alive** — Start the daemon (`daemon start`) only for `lifecycle: "keep-alive"` servers where you plan multiple sequential calls. Single calls and ephemeral servers don't need it.
 
-Think of the registry as a "skill index" for MCP servers — each entry has a `when` field that describes exactly when to use that server, and tool summaries so you know what's available without connecting. This CLI is the bridge between the registry and the actual server.
+## Gotchas
 
-## Workflow
+1. **JSON args must be single-quoted** — `call <tool> '{"key": "value"}'`. Double quotes around the JSON will break shell parsing.
+2. **Registry search is upward** — `.claude/mcp-registry.json` is found by walking up from cwd. If you're in a subdirectory, it still works; if the file doesn't exist, `--registry` returns empty — don't assume the file is missing just because you can't see it in the current directory.
+3. **`tools` in registry are summaries only** — They don't include parameter schemas. When param names or types are unclear, call `--server <name> tools` to get the full schema before calling.
+4. **Ephemeral is the default lifecycle** — If `lifecycle` is omitted, the server is ephemeral. Don't start the daemon for ephemeral servers; it won't help.
+5. **Daemon must be stopped explicitly** — `daemon start` keeps running in the background. Always `daemon stop` when multi-call sessions are done, or connections leak.
+6. **npx cold-start latency** — First invocation downloads the package. If the user reports slowness on first call, this is expected — subsequent calls are fast.
+7. **Don't invent tool names** — If you're unsure what tools a server exposes, call `--server <name> tools` to discover. Don't guess tool names from the description.
 
-```
-1. Read registry    →  npx mcp-client-utils --registry
-2. Match task       →  Find server whose `when` field matches the current task
-3. Call tool        →  npx mcp-client-utils --server <name> call <tool> '<json>'
-4. Done             →  Connection closes automatically (ephemeral) or stays in daemon (keep-alive)
-```
-
-**Early exit**: If you read the registry and no server matches the task, AND the user hasn't provided a URL for ad-hoc connection — stop here. This skill can't help. Don't try to install packages, use `curl` with raw JSON-RPC, or find alternative approaches. Just tell the user the requested MCP server isn't in the registry.
-
-If the server you need is NOT in the registry but the user provided a URL, use ad-hoc mode to connect directly.
-
-## Registry format
-
-The registry lives at `.claude/mcp-registry.json` (searched upward from cwd). Example:
-
-```json
-{
-  "servers": {
-    "figma": {
-      "description": "Figma design file access",
-      "when": "User needs design files, assets, tokens, or Figma data",
-      "transport": { "type": "stdio", "target": "npx", "args": ["-y", "figma-mcp-server"] },
-      "lifecycle": "keep-alive",
-      "tools": [
-        { "name": "get_design_tokens", "description": "Extract design tokens (colors, typography, spacing)" },
-        { "name": "export_assets", "description": "Export assets (PNG, SVG, PDF) from a Figma file" }
-      ]
-    },
-    "screenshot": {
-      "description": "Take screenshots of URLs",
-      "when": "User wants to capture a screenshot of a webpage",
-      "transport": { "type": "stdio", "target": "npx", "args": ["-y", "screenshot-mcp-server"] },
-      "tools": [
-        { "name": "take_screenshot", "description": "Capture a screenshot of a URL, returns base64 PNG" }
-      ]
-    }
-  }
-}
-```
-
-Key fields:
-- **`when`** — trigger condition. Match this against the current task to decide if you need this server.
-- **`tools`** — optional summaries. Helps decide without connecting. If omitted, use `--server <name> tools` to discover at runtime.
-- **`lifecycle`** — `"ephemeral"` (default): connect per call, disconnect after. `"keep-alive"`: daemon maintains the connection for multi-call sessions.
-
-## CLI reference
+## Quick Reference
 
 ```bash
-# Discovery
-npx mcp-client-utils --registry                           # List all registered servers and their tools
-
-# Tool operations (registry-based)
-npx mcp-client-utils --server <name> tools                # Full tool schemas (use when param names are unclear)
+npx mcp-client-utils --registry                           # Read registry
 npx mcp-client-utils --server <name> call <tool> '<json>' # Call a tool
-npx mcp-client-utils --server <name> info                 # Server metadata
-npx mcp-client-utils --server <name> resources             # List resources
-npx mcp-client-utils --server <name> read <uri>            # Read a resource
-npx mcp-client-utils --server <name> prompts               # List prompts
-npx mcp-client-utils --server <name> prompt <name> '<json>' # Get a prompt
-npx mcp-client-utils --server <name> templates             # List resource templates
-
-# Ad-hoc direct connection (server not in registry)
-npx mcp-client-utils --stdio "<cmd> [args]" -- <command>
-npx mcp-client-utils --http <url> -- <command>
-npx mcp-client-utils --sse <url> -- <command>
-
-# Daemon (for keep-alive servers with multiple sequential calls)
-npx mcp-client-utils daemon start
-npx mcp-client-utils daemon status
-npx mcp-client-utils daemon stop
+npx mcp-client-utils --server <name> tools                # Full tool schemas
 ```
 
-## When to start the daemon
+## References
 
-For `keep-alive` servers where you plan multiple sequential calls (e.g. list_tables → describe_table → query), start the daemon first to reuse the connection:
-
-```bash
-npx mcp-client-utils daemon start
-npx mcp-client-utils --server postgres call list_tables '{}'
-npx mcp-client-utils --server postgres call describe_table '{"table": "users"}'
-npx mcp-client-utils --server postgres call query '{"sql": "SELECT * FROM users LIMIT 10"}'
-npx mcp-client-utils daemon stop
-```
-
-For single calls or ephemeral servers, skip the daemon — the CLI handles connection/disconnection automatically.
-
-## Schema reference
-
-Full registry schema: `skills/mcp-lazy-cli/mcp-registry.schema.json`
+- `references/cli-reference.md` — full CLI command listing, ad-hoc modes, daemon usage
+- `references/registry-format.md` — registry JSON format, field semantics, example
+- `references/mcp-registry.schema.json` — full JSON Schema for `mcp-registry.json`
