@@ -7,9 +7,7 @@ disable-model-invocation: false
 
 # GitHub 知识库
 
-GitHub 是世界上最大的开源知识库。这个 skill 通过 `gh` CLI 把它变成你的实时检索引擎——搜索、分析、总结、归档，一条龙完成。
-
-脚本会自动检查 gh 认证状态，未认证或版本过低时会提示用户。
+通过 `gh` CLI 把 GitHub 变成实时检索引擎——搜索、分析、总结、归档。
 
 ## 工作模式
 
@@ -26,139 +24,57 @@ GitHub 是世界上最大的开源知识库。这个 skill 通过 `gh` CLI 把�
 | 追踪代码变更历史 | 追踪 | `gh search commits` |
 | 两个版本之间改了什么 | 版本对比 | `scripts/gh-version-diff.js` |
 
-## 执行流程
+## 核心规则
 
-```
-1. 分析意图 → 选择模式
-2. 执行检索 → gh search / 脚本
-3. 深度分析 → 阅读关键内容，提炼要点
-4. 输出归档 → 保存到 ~/docs/github-article/
-```
+1. **意图驱动选模式**：先判断用户要什么，再选对应模式。不确定时问用户
+2. **脚本采集，AI 分析**：脚本只负责结构化数据采集，拿到原始数据后由你做智能总结——提炼核心观点、归纳技术方案、标注关键发现
+3. **中文归档**：所有输出保存到 `~/docs/github-article/`，用中文撰写，原始英文数据放折叠区。详见 `references/output-spec.md`
+4. **脚本执行**：先 `cd` 到本 skill 目录再执行脚本
+5. **蓝图必须有分析**：蓝图模式跑完脚本后，必须用 `gh repo view <owner/repo>` 阅读 README，再按 `references/blueprint-format.md` 撰写完整蓝图（含线稿图、设计亮点分析）
 
-## 各模式详解
+## Gotchas
 
-### 发现模式 — 找库
+1. **这个 skill 只操作远程 GitHub 仓库**。本地 git 操作、本地项目分析不要用这个 skill
+2. **排错优先搜 closed issue**。closed issue 里有解决方案，open 的通常只有问题描述。先搜 `--state closed`，不够再搜 open
+3. **Compare API 有 250 commit 上限**。version-diff 脚本超过 250 时会自动切换到 List Commits API 分页采集，不需要手动处理
+4. **单 tag 模式按时间排序找上一个 tag，不是语义版本排序**。对有 backport 的仓库（如在 v1.3.0 之后打 v1.2.5），结果可能不是语义上的"上一个版本"。需要精确控制时用双 tag 模式
+5. **gh 有速率限制**。短时间大量 `gh search` 会被 GitHub 限流，遇到空结果时考虑是否被限流
+6. **gh 未认证时脚本会报错**。脚本有 preflight 检查，会提示用户 `gh auth login`
+
+## 极简用法速查
 
 ```bash
-# 按 star 排序（最受欢迎）
+# 发现 — 找库
 gh search repos "<关键词>" --sort stars --limit 10
 
-# 按语言筛选
-gh search repos "<关键词>" --language python --stars ">1000"
+# 排错 — 搜已解决的 issue
+gh search issues "<报错信息>" --state closed --limit 10
 
-# 最近活跃（近期更新）
-gh search repos "<关键词>" --sort updated --order desc --limit 10
-
-# 近期新星（模拟 trending）
-gh search repos "<关键词>" --sort stars --stars ">100" --json fullName,stargazersCount,description,updatedAt --limit 10
-```
-
-找到候选后，用蓝图脚本深度分析：
-
-```bash
-node scripts/gh-repo-blueprint.js <owner/repo>
-```
-
-**输出要求**：列出项目名、Star 数、最后更新、一句话简介、适用场景。
-
-### 排错模式 — 搜报错
-
-```bash
-# 搜已关闭的 issue（里面有解决方案）
-gh search issues "<报错关键信息>" --state closed --limit 10
-
-# 在特定仓库中搜
-gh search issues "<报错信息>" --repo owner/repo --state closed --limit 5
-
-# 按标签筛选
-gh search issues "<报错信息>" --label bug --state closed --limit 5
-```
-
-找到相关 issue 后看详情：
-
-```bash
-node scripts/gh-digest.js issue <owner/repo> <number>
-```
-
-**关键逻辑**：优先搜 `closed` issue，因为里面通常包含解决方案。如果 closed 结果不够，再搜 open 的。
-
-### 学习模式 — 看实现
-
-```bash
-# 搜已合并的 PR（看别人怎么实现的）
+# 学习 — 看实现
 gh search prs "<功能描述>" --state merged --limit 5
+gh search code "<函数名>" --language typescript --limit 10
 
-# 搜代码片段
-gh search code "<函数名或 API>" --language typescript --limit 10
+# 追踪 — 搜 commit
+gh search commits "<关键词>" --repo owner/repo --limit 5
 
-# 按文件类型搜
-gh search code "<配置项>" --extension yaml --limit 10
+# 蓝图 — 仓库全貌
+node scripts/gh-repo-blueprint.js <owner/repo>
 
-# 按路径搜
-gh search code "<关键词>" --path "src/" --limit 10
+# 摘要 — Issue/PR 详情
+node scripts/gh-digest.js issue <owner/repo> <number>
+node scripts/gh-digest.js pr <owner/repo> <number>
+
+# 探索 — 话题调研
+node scripts/gh-explore.js "<关键词>"
+
+# 版本对比
+node scripts/gh-version-diff.js <owner/repo> <tag1> [tag2]
+
+# REST API（高级）
+gh api repos/{owner}/{repo}
 ```
-
-### 蓝图模式 — 仓库全貌
-
-```bash
-node scripts/gh-repo-blueprint.js <owner/repo> [output-dir]
-```
-
-脚本采集结构化数据（元信息、语言分布、目录结构、Releases、Issues、PRs、贡献者、同类项目）。脚本跑完后：
-
-1. 用 `gh repo view <owner/repo>` 阅读完整 README，理解项目背景
-2. 按 `references/blueprint-format.md` 的结构撰写蓝图（中文、含线稿图、含设计亮点分析）
-3. 原始数据保留原文放折叠区
-
-默认保存到 `~/docs/github-article/`。
-
-### 摘要模式 — Issue/PR 详情
-
-```bash
-# Issue 摘要
-node scripts/gh-digest.js issue <owner/repo> <number> [output-dir]
-
-# PR 摘要
-node scripts/gh-digest.js pr <owner/repo> <number> [output-dir]
-```
-
-生成包含正文、评论、标签、时间线的完整摘要。PR 额外包含变更文件列表和代码量统计。
-
-### 探索模式 — 话题调研
-
-```bash
-node scripts/gh-explore.js "<关键词>" [--language <lang>] [--output-dir <dir>]
-```
-
-一次性执行多维度搜索（repos + issues + code + PRs），生成综合调研报告。适合技术选型、方案调研。
-
-### 追踪模式 — 代码历史
-
-```bash
-# 搜提交信息
-gh search commits "fix memory leak" --repo owner/repo --limit 5
-
-# 按作者搜
-gh search commits "refactor" --author octocat --limit 5
-```
-
-### 版本对比模式 — 版本间 commit 汇总
-
-```bash
-# 两个 tag 精确对比
-node scripts/gh-version-diff.js <owner/repo> <tag1> <tag2> [--output-dir <dir>]
-
-# 一个 tag，自动查找上一个 tag 对比
-node scripts/gh-version-diff.js <owner/repo> <tag> [--output-dir <dir>]
-```
-
-采集两个版本 tag 之间的全部 commit（SHA、message、author、date），生成版本对比文档。超过 250 commits 时自动分页全量采集。
-
-单 tag 模式会按时间顺序查找上一个 tag 作为 base，适合快速查看最新版本的变更。
 
 ## 脚本工具
-
-所有脚本位于本 skill 的 `scripts/` 目录。执行前先 `cd` 到本 skill 目录。
 
 | 脚本 | 用途 | 核心参数 |
 |------|------|----------|
@@ -169,32 +85,10 @@ node scripts/gh-version-diff.js <owner/repo> <tag> [--output-dir <dir>]
 
 默认输出目录：`~/docs/github-article/`
 
-脚本只负责数据采集和格式化。拿到原始数据后，由你来做智能总结——提炼核心观点、归纳技术方案、标注关键发现。
+## 参考资料
 
-## 输出规范
-
-所有生成的文档保存到 `~/docs/github-article/`，文件名格式 `<owner>-<repo>-<type>.md`。
-
-**语言要求**：所有输出文档必须使用**中文**撰写。脚本采集的原始数据（英文 README、Issue 正文等）保留原文放在折叠区域，但架构分析、总结、关键发现等你撰写的内容一律用中文。
-
-文档带 YAML frontmatter：
-
-```yaml
----
-repo: owner/repo          # 或 keyword（探索模式）
-generated: 2024-01-01
-type: blueprint | digest | exploration | version-diff
----
-```
-
-## 高级用法
-
-当 `gh search` 无法满足需求时，可直接调用 GitHub REST/GraphQL API。完整命令参考见 `references/search-commands.md`。
-
-```bash
-# REST API 示例
-gh api repos/{owner}/{repo}
-gh api "repos/{owner}/{repo}/releases?per_page=5" --jq '.[].tag_name'
-```
-
-蓝图格式模板见 `references/blueprint-format.md`。
+| 文件 | 用途 | 何时阅读 |
+|------|------|----------|
+| `references/search-commands.md` | `gh` CLI 完整命令参考（50+ 示例） | 速查不够用时，或需要高级搜索语法 |
+| `references/blueprint-format.md` | 蓝图撰写模板与分析指南 | 写蓝图时必读 |
+| `references/output-spec.md` | 输出规范（命名、frontmatter、语言） | 生成文档前确认格式 |
