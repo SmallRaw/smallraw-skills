@@ -1,6 +1,6 @@
 ---
-name: skill-standards
-description: "Enhancement layer for skill-creator. Triggers alongside skill-creator when creating, editing, or reviewing skills. Adds structural standards (core rules + gotchas + progressive disclosure) and isolated testing methodology. Does NOT replace skill-creator — it adds constraints on top of it."
+name: skill-writing-guide
+description: "TRIGGER with skill-creator when creating, editing, or reviewing skills. Structural constraints and testing methodology — not a replacement, an add-on."
 user-invocable: false
 disable-model-invocation: false
 ---
