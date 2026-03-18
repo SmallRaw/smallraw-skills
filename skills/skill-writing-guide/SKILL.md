@@ -1,6 +1,6 @@
 ---
 name: skill-writing-guide
-description: "TRIGGER with skill-creator when creating, editing, or reviewing skills. Structural constraints and testing methodology — not a replacement, an add-on."
+description: "TRIGGER with skill-creator when creating, editing, or reviewing skills. Adds structural constraints — not a replacement, an add-on."
 user-invocable: false
 disable-model-invocation: false
 ---
