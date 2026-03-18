@@ -24,6 +24,7 @@ GitHub 是世界上最大的开源知识库。这个 skill 通过 `gh` CLI 把�
 | 某个 Issue/PR 的详情 | 摘要 | `scripts/gh-digest.js` |
 | 某个话题的全面调研 | 探索 | `scripts/gh-explore.js` |
 | 追踪代码变更历史 | 追踪 | `gh search commits` |
+| 两个版本之间改了什么 | 版本对比 | `scripts/gh-version-diff.js` |
 
 ## 执行流程
 
@@ -141,6 +142,20 @@ gh search commits "fix memory leak" --repo owner/repo --limit 5
 gh search commits "refactor" --author octocat --limit 5
 ```
 
+### 版本对比模式 — 版本间 commit 汇总
+
+```bash
+# 两个 tag 精确对比
+node scripts/gh-version-diff.js <owner/repo> <tag1> <tag2> [--output-dir <dir>]
+
+# 一个 tag，自动查找上一个 tag 对比
+node scripts/gh-version-diff.js <owner/repo> <tag> [--output-dir <dir>]
+```
+
+采集两个版本 tag 之间的全部 commit（SHA、message、author、date），生成版本对比文档。超过 250 commits 时自动分页全量采集。
+
+单 tag 模式会按时间顺序查找上一个 tag 作为 base，适合快速查看最新版本的变更。
+
 ## 脚本工具
 
 所有脚本位于本 skill 的 `scripts/` 目录。执行前先 `cd` 到本 skill 目录。
@@ -150,6 +165,7 @@ gh search commits "refactor" --author octocat --limit 5
 | `gh-repo-blueprint.js` | 仓库蓝图 | `<owner/repo> [output-dir]` |
 | `gh-digest.js` | Issue/PR 摘要 | `<issue\|pr> <owner/repo> <number> [output-dir]` |
 | `gh-explore.js` | 话题探索 | `"<keyword>" [--language X] [--output-dir dir]` |
+| `gh-version-diff.js` | 版本对比 | `<owner/repo> <tag1> [tag2] [--output-dir dir]` |
 
 默认输出目录：`~/docs/github-article/`
 
