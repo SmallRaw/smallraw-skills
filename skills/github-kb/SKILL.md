@@ -183,7 +183,7 @@ node scripts/gh-version-diff.js <owner/repo> <tag> [--output-dir <dir>]
 ---
 repo: owner/repo          # 或 keyword（探索模式）
 generated: 2024-01-01
-type: blueprint | digest | exploration
+type: blueprint | digest | exploration | version-diff
 ---
 ```
 
