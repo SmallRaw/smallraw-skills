@@ -37,7 +37,7 @@ disable-model-invocation: true
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M\")) + \"] \" + .tool_input.skill' >> ~/.claude/skill-usage.log 2>/dev/null || true"
+            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M\")) + \"] \" + .tool_input.skill' >> .claude/skill-usage.log 2>/dev/null || true"
           }
         ]
       }
@@ -46,7 +46,7 @@ disable-model-invocation: true
 }
 ```
 
-**日志位置**：`~/.claude/skill-usage.log`
+**日志位置**：项目级 `.claude/skill-usage.log`（跟随项目，不污染全局）
 
 ### 2. HUD 状态栏
 
