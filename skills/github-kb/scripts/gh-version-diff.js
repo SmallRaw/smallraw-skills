@@ -133,3 +133,49 @@ if (totalCommits > 250) {
 } else {
   console.log(`  [${stepOffset + 1}/${totalSteps}] Using compare API data (${allCommits.length} commits)`);
 }
+
+// --- 格式化输出 ---
+
+console.log(`  [${stepOffset + 2}/${totalSteps}] Generating report`);
+
+const commitRows = allCommits
+  .map((c) => {
+    const sha = (c.sha || "").slice(0, 7);
+    const msg = ((c.commit?.message || "").split("\n")[0] || "").replace(/\|/g, "\\|");
+    const author = c.author?.login ? `@${c.author.login}` : c.commit?.author?.name || "unknown";
+    const date = (c.commit?.author?.date || "").slice(0, 10);
+    return `| ${sha} | ${msg} | ${author} | ${date} |`;
+  })
+  .join("\n");
+
+const fileName = `${safeName(repo)}-version-diff-${safeName(base)}-${safeName(head)}.md`;
+const outputFile = path.join(outputDir, fileName);
+
+const content = `---
+repo: ${repo}
+generated: ${today()}
+type: version-diff
+base: ${base}
+head: ${head}
+total_commits: ${totalCommits}
+---
+
+# ${repo} 版本对比：${base} → ${head}
+
+## 概览
+
+| Field | Value |
+|-------|-------|
+| Base | ${base} |
+| Head | ${head} |
+| Total Commits | ${totalCommits} |
+| URL | ${compareUrl} |
+
+## Commits
+
+| SHA | Message | Author | Date |
+|-----|---------|--------|------|
+${commitRows || "| | (no commits) | | |"}
+`;
+
+writeArticle(outputFile, content);
