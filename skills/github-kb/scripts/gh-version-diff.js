@@ -36,3 +36,37 @@ if (!repo || !tag1) {
 
 preflight();
 ensureDir(outputDir);
+
+let base, head;
+
+if (tag2) {
+  // 双 tag 模式
+  base = tag1;
+  head = tag2;
+  console.log(`==> Comparing ${base}...${head} in ${repo} ...`);
+} else {
+  // 单 tag 模式：查找上一个 tag
+  head = tag1;
+  console.log(`==> Finding previous tag for ${head} in ${repo} ...`);
+
+  console.log("  [1/4] Fetching tag list");
+  const tags = gh(`api "repos/${repo}/tags?per_page=100"`, { json: true });
+  if (!tags || !tags.length) {
+    console.error(`Error: No tags found in ${repo}`);
+    process.exit(1);
+  }
+
+  const idx = tags.findIndex((t) => t.name === head);
+  if (idx === -1) {
+    console.error(`Error: Tag "${head}" not found in the latest 100 tags of ${repo}`);
+    process.exit(1);
+  }
+  if (idx === tags.length - 1) {
+    console.error(`Error: No previous tag found for "${head}" in ${repo} (it is the earliest tag)`);
+    process.exit(1);
+  }
+
+  base = tags[idx + 1].name;
+  console.log(`  Found previous tag: ${base}`);
+  console.log(`==> Comparing ${base}...${head} in ${repo} ...`);
+}
