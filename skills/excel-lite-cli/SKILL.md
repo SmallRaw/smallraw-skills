@@ -9,64 +9,34 @@ disable-model-invocation: false
 
 读取 Excel → 自动检测结构 → 自动清洗脏字符 → 查询/清洗/加工 → 导出新文件。不修改原始文件。
 
-## 强制规则
+## 核心规则
 
-1. 禁止用 Read 工具读取 .xlsx/.xls（乱码）
-2. 用户给了文件路径就直接用，不要 Glob 搜索
-3. 所有 Excel 读取通过 `scripts/excel_tool.py`
-4. 保存规则文件用 Write 工具
+1. **禁止用 Read 工具读 .xlsx/.xls** — 二进制文件会乱码，所有读取必须走 `scripts/excel_tool.py`
+2. **用户给了路径就直接用** — 不要 Glob 搜索文件
+3. **不确定做什么就跑 auto** — `python scripts/excel_tool.py auto <文件路径>` 自动检测结构
+4. **保存规则文件用 Write 工具** — steps JSON 用 Write 写入，不要用 Bash echo
+5. **执行前先 cd 到 skill 目录** — 即包含此 SKILL.md 的目录
 
-## 不确定该做什么？直接执行 auto
+## Gotchas
+
+1. **多 Sheet 必须 `--sheet`** — 不指定时，query/clean 会报错退出；只有单 Sheet 才会自动选择
+2. **先 `--preview` 再 `-o`** — clean 不加 `--preview` 也不加 `-o` 时只打格式提示，不执行清洗
+3. **`-t` 控制输出条数** — 默认 10 条，大表不加 `-t` 会截断；`-c` 只选需要的列，避免大量列撑爆输出
+4. **steps JSON 格式严格** — 缺 `action` 字段、拼错操作名、漏必填参数都会被校验拦截，看报错提示修
+5. **规则文件命名必须含 `.excel-steps.json`** — 否则 clean 自动发现找不到，要手动传路径
+6. **scout 看原始结构，auto 看清洗后结构** — 排查表头检测错误时用 scout，日常用 auto
+7. **数值列自动转数值比较** — query/filter 的 `>` `<` 等运算符对数值列生效，字符串列走字符串匹配
+8. **export 导出的是干净数据** — 已经过自动检测+脏字符清洗，可直接给自定义 Python 脚本用
+
+## 极简用法
 
 ```bash
-python scripts/excel_tool.py auto <文件路径>
+python scripts/excel_tool.py auto <文件>                    # 自动检测 + 预览
+python scripts/excel_tool.py auto <文件> query --sheet "X" --where-col "列" --where-op ">" --where-val "100"
+python scripts/excel_tool.py help                           # 查看所有清洗操作格式
 ```
 
-工具会自动检测表格结构（表头行、数据起始行、序号列等），无需手动配置。
+## 详细参考
 
-## 命令速查
-
-```bash
-python scripts/excel_tool.py scout <文件> -n 8                           # 侦察原始结构
-python scripts/excel_tool.py auto <文件> headers --sheet "Sheet名"        # 查看列名
-python scripts/excel_tool.py auto <文件> preview -n 5 --sheet "Sheet名"   # 预览数据
-python scripts/excel_tool.py auto <文件> query --sheet "Sheet名" \
-  --where-col "列名" --where-op ">" --where-val "100" -s "desc:列名" -t 10  # 条件查询
-python scripts/excel_tool.py clean <文件> --preview --sheet "Sheet名"     # 预览清洗
-python scripts/excel_tool.py clean <文件> -o out.xlsx --sheet "Sheet名"   # 导出
-python scripts/excel_tool.py export <文件> -o data.csv --sheet "Sheet名"  # 导出干净 csv
-python scripts/excel_tool.py help                                        # 查看所有操作
-python scripts/excel_tool.py help <操作名>                                # 查看操作格式
-python scripts/excel_tool.py help custom-scripts                         # 自定义脚本指南
-```
-
-执行前先 `cd` 到本 skill 目录（即包含此 SKILL.md 的目录）。
-
-## 文件约定
-
-| 文件 | 用途 |
-|------|------|
-| `xxx-操作描述.excel-steps.json` | 清洗步骤（steps 数组，clean 无 steps 时工具输出格式参考） |
-
-规则文件放在 Excel 同目录下，由工具自动发现。
-
-## 工作流
-
-1. **auto headers/preview** → 自动检测结构，直接探索数据
-2. **auto query** → 条件查询
-3. **clean** → 无 steps 时工具输出可用操作和格式 → 编写 steps JSON 保存 → `--preview` 确认 → `-o` 导出
-4. 内置操作不够？→ `help custom-scripts` 查看指南 → `export` 导出 csv → 写自定义 Python 脚本
-
-每一步工具都会输出带绝对路径的下一步命令，照着执行即可。
-
-## 内置清洗操作（13 种）
-
-trim, replace, fill_empty, dedup, filter, regex_replace, add_column, drop_columns, sort, aggregate, rename, type_convert, pivot
-
-用 `help <操作名>` 按需查看格式，不需要提前记住。
-
-## 省 Token
-
-- `--sheet` 指定单个 Sheet，多 Sheet 时必须指定
-- `-t` 控制输出条数（默认 10），`-c` 只选需要的列
-- 先 `--preview` 确认，再 `-o` 导出
+- [CLI 完整命令](references/cli-reference.md) — 全部命令、参数速查
+- [工作流与清洗操作](references/workflow.md) — 标准流程、文件约定、13 种内置操作列表
