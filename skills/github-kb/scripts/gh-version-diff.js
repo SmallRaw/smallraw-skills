@@ -87,7 +87,7 @@ if (!compare) {
 }
 
 const totalCommits = compare.total_commits || 0;
-const compareUrl = compare.html_url || `https://github.com/${repo}/compare/${base}...${head}`;
+const compareUrl = compare.html_url || `https://github.com/${repo}/compare/${encBase}...${encHead}`;
 let allCommits = compare.commits || [];
 
 console.log(`  Total commits: ${totalCommits}`);
