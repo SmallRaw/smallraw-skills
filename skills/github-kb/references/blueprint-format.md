@@ -219,3 +219,4 @@ Next.js 用 N-API 把 Rust 编译器（SWC/Turbopack）桥接到 Node.js 运行�
 | Issue 摘要 | `<owner>-<repo>-issue-<N>.md` | `vercel-next.js-issue-12345.md` |
 | PR 摘要 | `<owner>-<repo>-pr-<N>.md` | `vercel-next.js-pr-5678.md` |
 | 探索报告 | `explore-<keyword>.md` | `explore-mcp-server.md` |
+| 版本对比 | `<owner>-<repo>-version-diff-<base>-<head>.md` | `facebook-react-version-diff-v18.3.0-v18.3.1.md` |
