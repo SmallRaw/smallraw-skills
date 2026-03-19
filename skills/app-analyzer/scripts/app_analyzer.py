@@ -369,7 +369,7 @@ def cmd_binary_info(args: argparse.Namespace) -> None:
             ["file", str(binary)],
             capture_output=True, text=True, timeout=10,
         )
-    except OSError as exc:
+    except (subprocess.TimeoutExpired, OSError) as exc:
         emit_error(f"Failed to run 'file': {exc}", code=2)
     else:
         if result.returncode == 0:
@@ -381,7 +381,7 @@ def cmd_binary_info(args: argparse.Namespace) -> None:
             ["lipo", "-info", str(binary)],
             capture_output=True, text=True, timeout=10,
         )
-    except OSError:
+    except (subprocess.TimeoutExpired, OSError):
         pass  # lipo not available — not critical
     else:
         if result.returncode == 0:
@@ -421,7 +421,7 @@ def cmd_dylib_list(args: argparse.Namespace) -> None:
             ["otool", "-L", str(binary)],
             capture_output=True, text=True, timeout=30,
         )
-    except OSError as exc:
+    except (subprocess.TimeoutExpired, OSError) as exc:
         emit_error(f"Failed to run 'otool -L': {exc}", code=2)
 
     if result.returncode != 0:
@@ -487,7 +487,7 @@ def cmd_headers_dump(args: argparse.Namespace) -> None:
             ["otool", "-l", str(binary)],
             capture_output=True, text=True, timeout=30,
         )
-    except OSError as exc:
+    except (subprocess.TimeoutExpired, OSError) as exc:
         emit_error(f"Failed to run 'otool -l': {exc}", code=2)
 
     if result.returncode != 0:
@@ -567,7 +567,7 @@ def cmd_symbols(args: argparse.Namespace) -> None:
             ["nm", str(binary)],
             capture_output=True, text=True, timeout=60,
         )
-    except OSError as exc:
+    except (subprocess.TimeoutExpired, OSError) as exc:
         emit_error(f"Failed to run 'nm': {exc}", code=2)
 
     if result.returncode != 0:
@@ -652,7 +652,7 @@ def cmd_strings_grep(args: argparse.Namespace) -> None:
             ["strings", str(binary)],
             capture_output=True, text=True, timeout=60,
         )
-    except OSError as exc:
+    except (subprocess.TimeoutExpired, OSError) as exc:
         emit_error(f"Failed to run 'strings': {exc}", code=2)
 
     if strings_proc.returncode != 0:
@@ -663,11 +663,11 @@ def cmd_strings_grep(args: argparse.Namespace) -> None:
 
     try:
         grep_proc = subprocess.run(
-            ["grep", "-E", args.pattern],
+            ["grep", "-E", "--", args.pattern],
             input=strings_proc.stdout,
             capture_output=True, text=True, timeout=30,
         )
-    except OSError as exc:
+    except (subprocess.TimeoutExpired, OSError) as exc:
         emit_error(f"Failed to run 'grep': {exc}", code=2)
 
     # grep exit 1 means no matches
@@ -718,7 +718,7 @@ def cmd_codesign_info(args: argparse.Namespace) -> None:
             ["codesign", "-dv", str(app_path)],
             capture_output=True, text=True, timeout=30,
         )
-    except OSError as exc:
+    except (subprocess.TimeoutExpired, OSError) as exc:
         emit_error(f"Failed to run 'codesign -dv': {exc}", code=2)
 
     if result_dv.returncode != 0:
