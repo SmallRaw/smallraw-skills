@@ -18,13 +18,14 @@ import plistlib
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 
 # ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
 
-def emit_error(message: str, code: int, hint: str = "") -> None:
+def emit_error(message: str, code: int, hint: str = "") -> NoReturn:
     """Write structured error JSON to stderr and exit."""
     payload = {"error": message, "code": code}
     if hint:
@@ -104,6 +105,19 @@ def read_info_plist(app_path: Path) -> dict:
             code=2,
             hint="The plist may be binary or corrupted; try plist_read for details",
         )
+
+
+def make_serializable(obj):
+    """Convert plist types (bytes, datetime, etc.) to JSON-safe types."""
+    if isinstance(obj, bytes):
+        return obj.hex()
+    if isinstance(obj, dict):
+        return {k: make_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [make_serializable(item) for item in obj]
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    return obj
 
 
 # ---------------------------------------------------------------------------
@@ -227,11 +241,11 @@ def cmd_file_type(args: argparse.Namespace) -> None:
             code=2,
             hint="The file may be very large or on a slow volume",
         )
-    except FileNotFoundError:
+    except OSError as exc:
         emit_error(
-            "The 'file' command is not available on this system",
+            f"Failed to run 'file' command: {exc}",
             code=2,
-            hint="Install file utility or use macOS default system",
+            hint="The 'file' command may not be available or the path is inaccessible",
         )
 
     if result.returncode != 0:
@@ -289,30 +303,18 @@ def cmd_plist_read(args: argparse.Namespace) -> None:
             code=2,
             hint="The file may be corrupted or in an unsupported format",
         )
+    else:
+        serializable = make_serializable(plist)
+        output = json.dumps(serializable, indent=2, ensure_ascii=False)
 
-    def _make_serializable(obj):
-        """Convert plist types to JSON-safe types."""
-        if isinstance(obj, bytes):
-            return obj.hex()
-        if isinstance(obj, dict):
-            return {k: _make_serializable(v) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple)):
-            return [_make_serializable(item) for item in obj]
-        if hasattr(obj, "isoformat"):
-            return obj.isoformat()
-        return obj
+        if not output or output == "{}":
+            emit_error(
+                "Plist file is empty or contains no data",
+                code=3,
+                hint="The file exists but has no useful content",
+            )
 
-    serializable = _make_serializable(plist)
-    output = json.dumps(serializable, indent=2, ensure_ascii=False)
-
-    if not output or output == "{}":
-        emit_error(
-            "Plist file is empty or contains no data",
-            code=3,
-            hint="The file exists but has no useful content",
-        )
-
-    print(output)
+        print(output)
 
 
 # ---------------------------------------------------------------------------
