@@ -110,14 +110,14 @@ if [ -n "$used_pct" ] && [ -n "$remaining_pct" ]; then
   [ "$filled" -gt "$bar_width" ] && filled=$bar_width
   empty=$(( bar_width - filled ))
 
-  bar=""
-  for ((i=0; i<filled; i++)); do bar+="="; done
-  for ((i=0; i<empty;  i++)); do bar+="-"; done
+  bar_filled=""
+  bar_empty=""
+  for ((i=0; i<filled; i++)); do bar_filled+="█"; done
+  for ((i=0; i<empty;  i++)); do bar_empty+="░"; done
 
-  ctx_part="${CTX_COLOR}ctx ${used_int}%${RESET} [${CTX_COLOR}${bar}${RESET}]"
+  ctx_part="ctx ${CTX_COLOR}${bar_filled}${RESET}${DIM}${bar_empty}${RESET} ${CTX_COLOR}${used_int}%${RESET}"
 
   if [ -n "$ctx_size" ] && [ "$ctx_size" != "null" ]; then
-    # Derive used tokens from percentage (includes cache + output tokens)
     used_tokens=$(awk "BEGIN { printf \"%.0f\", $used_int * $ctx_size / 100 }")
     if [ "$used_tokens" -lt 1000 ]; then
       used_fmt="${used_tokens}"
@@ -125,10 +125,9 @@ if [ -n "$used_pct" ] && [ -n "$remaining_pct" ]; then
       used_fmt="$(awk "BEGIN { printf \"%.0f\", $used_tokens / 1000 }")k"
     fi
     total_k=$(awk "BEGIN { printf \"%.0f\", $ctx_size / 1000 }")
-    ctx_part+=" ${DIM}${used_fmt}/${total_k}k${RESET}"
+    ctx_part+=" ${DIM}(${used_fmt}/${total_k}k)${RESET}"
   fi
 
-  # Append cost with · if available
   if [ -n "$cost" ] && [ "$cost" != "null" ] && [ "$cost" != "" ]; then
     cost_fmt=$(awk "BEGIN { printf \"%.2f\", $cost }")
     ctx_part+=" ${DIM}· \$${cost_fmt}${RESET}"
@@ -256,10 +255,11 @@ if [ "$cfg_showUsage" = "true" ] && [ -f "$USAGE_CACHE" ]; then
         end
        else "" end) as $time_left |
 
-      $color + $name + "\u001b[0m " +
+      "usage " +
       $color + $bar_filled + "\u001b[0m\u001b[2m" + $bar_empty + "\u001b[0m" +
       " " + $color + "\($pct)%\u001b[0m" +
-      "\u001b[2m" + $time_left + "\u001b[0m"
+      "\u001b[2m" + $time_left + "\u001b[0m" +
+      " \u001b[2m· " + $name + "\u001b[0m"
     end
   ' "$USAGE_CACHE" 2>/dev/null) || true
   [ -n "$usage_line" ] && printf '%b\n' "$usage_line"
