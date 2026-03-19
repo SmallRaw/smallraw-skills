@@ -16,6 +16,7 @@ import argparse
 import json
 import plistlib
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -704,6 +705,382 @@ def cmd_strings_grep(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Sub-command: codesign_info
+# ---------------------------------------------------------------------------
+
+def cmd_codesign_info(args: argparse.Namespace) -> None:
+    """Extract code-signing info and entitlements via codesign."""
+    app_path = validate_app_path(args.app)
+
+    # codesign -dv prints signing info to stderr
+    try:
+        result_dv = subprocess.run(
+            ["codesign", "-dv", str(app_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+    except OSError as exc:
+        emit_error(f"Failed to run 'codesign -dv': {exc}", code=2)
+
+    if result_dv.returncode != 0:
+        emit_error(
+            f"codesign -dv failed: {result_dv.stderr.strip()}",
+            code=2,
+            hint="The app may not be signed, or codesign is unavailable",
+        )
+
+    # Parse signing info from stderr
+    signing_info: dict = {}
+    for line in result_dv.stderr.splitlines():
+        if "=" in line:
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if key in ("Authority", "TeamIdentifier", "Identifier", "Format", "CodeDirectory flags"):
+                if key == "Authority":
+                    # Multiple Authority lines possible (certificate chain)
+                    signing_info.setdefault("Authority", [])
+                    signing_info["Authority"].append(value)
+                else:
+                    signing_info[key] = value
+
+    # codesign --entitlements :- prints entitlements XML to stdout
+    entitlements_raw = ""
+    try:
+        result_ent = subprocess.run(
+            ["codesign", "-d", "--entitlements", ":-", str(app_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result_ent.returncode == 0 and result_ent.stdout.strip():
+            entitlements_raw = result_ent.stdout.strip()
+    except OSError:
+        pass  # entitlements extraction is best-effort
+
+    # Try to parse entitlements as plist
+    entitlements: dict | str = {}
+    if entitlements_raw:
+        try:
+            ent_data = plistlib.loads(entitlements_raw.encode("utf-8"))
+            entitlements = make_serializable(ent_data)
+        except Exception:
+            entitlements = entitlements_raw  # keep raw XML if parsing fails
+
+    data = {
+        "signing": signing_info,
+        "entitlements": entitlements,
+    }
+
+    if not signing_info and not entitlements:
+        emit_error(
+            "No signing info or entitlements found",
+            code=3,
+            hint="The app may not be signed",
+        )
+
+    output_json = json.dumps(data, indent=2, ensure_ascii=False)
+
+    # Write to file
+    output_dir = resolve_output_dir(app_path, args.output)
+    metadata_dir = output_dir / "metadata"
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    out_file = metadata_dir / "codesign.json"
+    out_file.write_text(output_json + "\n", encoding="utf-8")
+
+    print(output_json)
+
+
+# ---------------------------------------------------------------------------
+# Sub-command: framework_list
+# ---------------------------------------------------------------------------
+
+def cmd_framework_list(args: argparse.Namespace) -> None:
+    """List frameworks inside the .app bundle."""
+    app_path = validate_app_path(args.app)
+    frameworks_dir = app_path / "Contents" / "Frameworks"
+
+    if not frameworks_dir.exists() or not frameworks_dir.is_dir():
+        emit_error(
+            f"No Frameworks directory found at {frameworks_dir}",
+            code=3,
+            hint="This app may not embed any frameworks; check app_tree for the full layout",
+        )
+
+    frameworks: list[dict] = []
+    for entry in sorted(frameworks_dir.iterdir(), key=lambda e: e.name.lower()):
+        if not entry.name.endswith(".framework"):
+            continue
+
+        fw_info: dict = {"name": entry.name}
+
+        # Binary architecture via `file` command on the framework binary
+        # The binary typically has the same name as the framework (minus .framework)
+        binary_name = entry.name.removesuffix(".framework")
+        binary_path = entry / binary_name
+        # Also check Versions/Current/<binary_name>
+        if not binary_path.exists():
+            binary_path = entry / "Versions" / "Current" / binary_name
+        if not binary_path.exists():
+            # Try finding any binary inside
+            binary_path = None
+
+        if binary_path and binary_path.exists():
+            try:
+                result = subprocess.run(
+                    ["file", str(binary_path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if result.returncode == 0:
+                    fw_info["architecture"] = result.stdout.strip()
+            except OSError:
+                pass
+
+        # Size of the whole .framework directory
+        total_size = 0
+        try:
+            for f in entry.rglob("*"):
+                if f.is_file() and not f.is_symlink():
+                    total_size += f.stat().st_size
+        except OSError:
+            pass
+        fw_info["size_bytes"] = total_size
+        fw_info["size_human"] = _human_size(total_size)
+
+        frameworks.append(fw_info)
+
+    if not frameworks:
+        emit_error(
+            "Frameworks directory exists but contains no .framework bundles",
+            code=3,
+            hint="The directory may contain only dylibs or other files",
+        )
+
+    data = {
+        "frameworks_dir": str(frameworks_dir),
+        "count": len(frameworks),
+        "frameworks": frameworks,
+    }
+    output_json = json.dumps(data, indent=2, ensure_ascii=False)
+
+    # Write to file
+    output_dir = resolve_output_dir(app_path, args.output)
+    fw_out_dir = output_dir / "frameworks"
+    fw_out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = fw_out_dir / "framework_list.json"
+    out_file.write_text(output_json + "\n", encoding="utf-8")
+
+    print(output_json)
+
+
+# ---------------------------------------------------------------------------
+# Sub-command: resource_extract
+# ---------------------------------------------------------------------------
+
+def cmd_resource_extract(args: argparse.Namespace) -> None:
+    """Extract a file or directory from the .app bundle."""
+    app_path = validate_app_path(args.app)
+    source = app_path / args.path
+
+    if not source.exists():
+        emit_error(
+            f"Path not found: {args.path}",
+            code=1,
+            hint=f"Use app_tree to list available files in {app_path.name}",
+        )
+
+    output_dir = resolve_output_dir(app_path, args.output)
+    extracted_dir = output_dir / "extracted"
+    # Preserve directory structure relative to the app bundle
+    dest = extracted_dir / args.path
+
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(source, dest, symlinks=True)
+        else:
+            shutil.copy2(source, dest)
+    except PermissionError:
+        emit_error(
+            f"Permission denied copying: {args.path}",
+            code=2,
+            hint="Try running with elevated permissions",
+        )
+    except OSError as exc:
+        emit_error(
+            f"Failed to extract: {exc}",
+            code=2,
+            hint="Check source permissions and destination disk space",
+        )
+
+    print(str(dest.resolve()))
+
+
+# ---------------------------------------------------------------------------
+# Sub-command: asar_extract
+# ---------------------------------------------------------------------------
+
+def cmd_asar_extract(args: argparse.Namespace) -> None:
+    """Extract Electron asar archive from the .app bundle."""
+    app_path = validate_app_path(args.app)
+    resources_dir = app_path / "Contents" / "Resources"
+
+    if not resources_dir.exists():
+        emit_error(
+            f"Resources directory not found at {resources_dir}",
+            code=3,
+            hint="This does not appear to be a standard macOS app bundle",
+        )
+
+    output_dir = resolve_output_dir(app_path, args.output)
+    extracted_dir = output_dir / "extracted"
+
+    # Auto-detect asar variants
+    asar_candidates = ["app.asar", "app-arm64.asar", "app-x64.asar"]
+    unpacked_app_dir = resources_dir / "app"
+
+    found_asar: Path | None = None
+    for candidate in asar_candidates:
+        candidate_path = resources_dir / candidate
+        if candidate_path.exists():
+            found_asar = candidate_path
+            break
+
+    if found_asar:
+        # Need npx to extract asar
+        try:
+            npx_check = subprocess.run(
+                ["npx", "--version"],
+                capture_output=True, text=True, timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            emit_error(
+                "npx is not available",
+                code=2,
+                hint="Install Node.js (https://nodejs.org) to extract asar archives",
+            )
+
+        if npx_check.returncode != 0:
+            emit_error(
+                "npx is not working properly",
+                code=2,
+                hint="Reinstall Node.js or check your PATH",
+            )
+
+        dest = extracted_dir / "asar_contents"
+        dest.mkdir(parents=True, exist_ok=True)
+
+        try:
+            result = subprocess.run(
+                ["npx", "@electron/asar", "extract", str(found_asar), str(dest)],
+                capture_output=True, text=True, timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            emit_error(
+                "asar extraction timed out",
+                code=2,
+                hint="The asar file may be very large",
+            )
+        except OSError as exc:
+            emit_error(
+                f"Failed to run npx @electron/asar: {exc}",
+                code=2,
+                hint="Check Node.js installation",
+            )
+
+        if result.returncode != 0:
+            emit_error(
+                f"asar extraction failed: {result.stderr.strip()}",
+                code=2,
+                hint="Try: npm install -g @electron/asar",
+            )
+
+        print(str(dest.resolve()))
+
+    elif unpacked_app_dir.exists() and unpacked_app_dir.is_dir():
+        # Unpacked app/ directory — just copy it
+        dest = extracted_dir / "asar_contents"
+        try:
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(unpacked_app_dir, dest, symlinks=True)
+        except OSError as exc:
+            emit_error(
+                f"Failed to copy unpacked app directory: {exc}",
+                code=2,
+                hint="Check permissions and disk space",
+            )
+        print(str(dest.resolve()))
+
+    else:
+        emit_error(
+            "No asar archive or unpacked app/ directory found in Resources",
+            code=3,
+            hint="This may not be an Electron app; check app_tree for the bundle layout",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Sub-command: npm_package
+# ---------------------------------------------------------------------------
+
+def cmd_npm_package(args: argparse.Namespace) -> None:
+    """Parse and display package.json information."""
+    # --path can be absolute or relative to app
+    pkg_path = Path(args.path)
+    if not pkg_path.is_absolute() and args.app:
+        app_path = validate_app_path(args.app)
+        pkg_path = app_path / args.path
+
+    pkg_path = pkg_path.resolve()
+
+    if not pkg_path.exists():
+        emit_error(
+            f"package.json not found: {pkg_path}",
+            code=1,
+            hint="Provide a valid path to a package.json file",
+        )
+
+    if not pkg_path.is_file():
+        emit_error(
+            f"Path is not a file: {pkg_path}",
+            code=1,
+            hint="Provide a path to a package.json file, not a directory",
+        )
+
+    try:
+        raw = pkg_path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        emit_error(
+            f"Invalid JSON in package.json: {exc}",
+            code=2,
+            hint="The file may be malformed",
+        )
+    except PermissionError:
+        emit_error(
+            f"Permission denied reading: {pkg_path}",
+            code=2,
+            hint="Try running with elevated permissions",
+        )
+    except OSError as exc:
+        emit_error(
+            f"Failed to read package.json: {exc}",
+            code=2,
+        )
+
+    result = {
+        "name": data.get("name", ""),
+        "version": data.get("version", ""),
+        "dependencies": data.get("dependencies", {}),
+        "devDependencies": data.get("devDependencies", {}),
+        "scripts": data.get("scripts", {}),
+    }
+
+    output_json = json.dumps(result, indent=2, ensure_ascii=False)
+    print(output_json)
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -819,6 +1196,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Max output lines (default: 1000)",
     )
     p_str.set_defaults(func=cmd_strings_grep)
+
+    # --- codesign_info ---
+    p_cs = subparsers.add_parser("codesign_info", help="Extract code-signing info and entitlements")
+    add_common_args(p_cs)
+    p_cs.set_defaults(func=cmd_codesign_info)
+
+    # --- framework_list ---
+    p_fw = subparsers.add_parser("framework_list", help="List embedded frameworks")
+    add_common_args(p_fw)
+    p_fw.set_defaults(func=cmd_framework_list)
+
+    # --- resource_extract ---
+    p_rext = subparsers.add_parser("resource_extract", help="Extract a file or directory from the bundle")
+    add_common_args(p_rext)
+    p_rext.add_argument(
+        "--path",
+        required=True,
+        help="Relative path within the .app bundle to extract",
+    )
+    p_rext.set_defaults(func=cmd_resource_extract)
+
+    # --- asar_extract ---
+    p_asar = subparsers.add_parser("asar_extract", help="Extract Electron asar archive")
+    add_common_args(p_asar)
+    p_asar.set_defaults(func=cmd_asar_extract)
+
+    # --- npm_package ---
+    p_npm = subparsers.add_parser("npm_package", help="Parse package.json")
+    p_npm.add_argument(
+        "--app",
+        default=None,
+        help="Path to the .app bundle (used to resolve relative --path)",
+    )
+    p_npm.add_argument(
+        "--output",
+        default=None,
+        help="Output directory (unused for npm_package, kept for consistency)",
+    )
+    p_npm.add_argument(
+        "--path",
+        required=True,
+        help="Path to a package.json file (absolute or relative to --app)",
+    )
+    p_npm.set_defaults(func=cmd_npm_package)
 
     return parser
 
