@@ -570,6 +570,13 @@ def cmd_symbols(args: argparse.Namespace) -> None:
         emit_error(f"Failed to run 'nm': {exc}", code=2)
 
     if result.returncode != 0:
+        stderr_lower = result.stderr.strip().lower()
+        if "no symbols" in stderr_lower or "no name list" in stderr_lower:
+            emit_error(
+                "Binary appears to be stripped (no symbols found)",
+                code=3,
+                hint="Try 'strings_grep' to search for embedded strings instead",
+            )
         emit_error(
             f"nm failed: {result.stderr.strip()}",
             code=2,
@@ -578,7 +585,7 @@ def cmd_symbols(args: argparse.Namespace) -> None:
 
     lines = result.stdout.splitlines()
 
-    # Detect stripped binary
+    # Detect stripped binary (few symbols despite exit 0)
     if len(lines) < 5:
         emit_error(
             "Binary appears to be stripped (few or no symbols found)",
