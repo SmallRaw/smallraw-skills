@@ -153,21 +153,23 @@ HUD_CACHE="${cwd:+$cwd/.claude/hud-cache.json}"
 # ── Tools line ──────────────────────────────────────────────────────────────
 if [ "$cfg_showTools" = "true" ] && [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ]; then
   tools_line=$(jq -r '
-    def trunc(n): if length > n then .[:n] + "…" else . end;
-    def rst: "\u001b[0m";
-    def yellow: "\u001b[33m";
-    def green: "\u001b[32m";
-    def dim: "\u001b[2m";
-
-    .tools // empty |
-    (
-      [ .running // [] | .[-2:][] |
-        yellow + "◐ " + rst + (.name // "?") + " " + dim + ((.target // "") | trunc(20)) + rst
-      ] +
-      [ .completed // [] | sort_by(-.count) | .[:4][] |
-        green + "✓ " + rst + (.name // "?") + " " + dim + "×\(.count)" + rst
-      ]
-    ) | join(" \u001b[2m|\u001b[0m ") // empty
+    (.tools // []) |
+    if length == 0 then empty else
+      ([ .[] | select(.status == "running") ] | .[-2:]) as $running |
+      ([ .[] | select(.status == "completed" or .status == "error") ]
+       | group_by(.name) | map({name: .[0].name, count: length})
+       | sort_by(-.count) | .[:4]
+      ) as $completed |
+      [
+        ($running[] |
+          "\u001b[33m◐\u001b[0m \u001b[36m\(.name)\u001b[0m" +
+          (if .target then "\u001b[2m: \(.target[:20])\u001b[0m" else "" end)
+        ),
+        ($completed[] |
+          "\u001b[32m✓\u001b[0m \(.name) \u001b[2m×\(.count)\u001b[0m"
+        )
+      ] | if length == 0 then empty else join(" \u001b[2m|\u001b[0m ") end
+    end
   ' "$HUD_CACHE" 2>/dev/null) || true
   [ -n "$tools_line" ] && printf '%b\n' "$tools_line"
 fi
@@ -175,59 +177,50 @@ fi
 # ── Agents line ─────────────────────────────────────────────────────────────
 if [ "$cfg_showAgents" = "true" ] && [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ]; then
   now_epoch=$(date +%s)
-  agents_line=$(jq -r --arg now "$now_epoch" '
-    def rst: "\u001b[0m";
-    def yellow: "\u001b[33m";
-    def green: "\u001b[32m";
-    def dim: "\u001b[2m";
-    def cyan: "\u001b[36m";
-    def elapsed(s; e):
-      ((if e == null or e == "" then ($now | tonumber) else (e | tonumber) end) - (s | tonumber)) |
-      if . < 60 then "\(.)s"
-      elif . < 3600 then "\(. / 60 | floor)m\(. % 60)s"
-      else "\(. / 3600 | floor)h\((. % 3600) / 60 | floor)m"
+  agents_line=$(jq -r --argjson now "$now_epoch" '
+    def to_epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    def fmt_elapsed(secs):
+      if secs < 60 then "\(secs)s"
+      elif secs < 3600 then "\(secs / 60 | floor)m \(secs % 60)s"
+      else "\(secs / 3600 | floor)h \((secs % 3600) / 60 | floor)m"
       end;
 
-    .agents // empty |
-    (
-      [ (.running // [])[] |
-        yellow + "◐" + rst + " " +
-        cyan + (.type // "?") + rst +
-        (if .model then dim + " [" + .model + "]" + rst else "" end) +
-        ": " + ((.description // "?") | if length > 40 then .[:40] + "…" else . end) +
-        dim + " (" + elapsed(.startTime; null) + ")" + rst
-      ] +
-      [ (.completed // []) | .[-2:][] |
-        green + "✓" + rst + " " +
-        cyan + (.type // "?") + rst +
-        (if .model then dim + " [" + .model + "]" + rst else "" end) +
-        ": " + ((.description // "?") | if length > 40 then .[:40] + "…" else . end) +
-        dim + " (" + elapsed(.startTime; .endTime) + ")" + rst
-      ]
-    ) | .[:3] | join("  ") // empty
+    (.agents // []) |
+    if length == 0 then empty else
+      ([ .[] | select(.status == "running") ]) as $running |
+      ([ .[] | select(.status == "completed") ] | .[-2:]) as $recent |
+      ($running + $recent) | .[-3:] | .[] |
+      (if .status == "running" then "\u001b[33m◐\u001b[0m"
+       else "\u001b[32m✓\u001b[0m" end) as $icon |
+      (if .endTime and .endTime != null then
+        ((.endTime | to_epoch) - (.startTime | to_epoch))
+       else ($now - (.startTime | to_epoch)) end | floor) as $secs |
+      "\($icon) \u001b[35m\(.type // "?")\u001b[0m" +
+      (if .model then " \u001b[2m[\(.model)]\u001b[0m" else "" end) +
+      (if .description then "\u001b[2m: \(.description[:40])\u001b[0m" else "" end) +
+      " \u001b[2m(\(fmt_elapsed($secs)))\u001b[0m"
+    end
   ' "$HUD_CACHE" 2>/dev/null) || true
-  [ -n "$agents_line" ] && printf '%b\n' "$agents_line"
+  if [ -n "$agents_line" ]; then
+    while IFS= read -r line; do
+      printf '%b\n' "$line"
+    done <<< "$agents_line"
+  fi
 fi
 
 # ── Todos line ──────────────────────────────────────────────────────────────
 if [ "$cfg_showTodos" = "true" ] && [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ]; then
   todos_line=$(jq -r '
-    def rst: "\u001b[0m";
-    def yellow: "\u001b[33m";
-    def green: "\u001b[32m";
-    def dim: "\u001b[2m";
-
-    .todos // empty |
-    . as $todos |
-    (.total // 0) as $total |
-    (.done // 0) as $done |
-    if $total == 0 then empty
-    elif (.in_progress // null) != null then
-      yellow + "▸" + rst + " " + .in_progress + dim + " (\($done)/\($total))" + rst
-    elif $done >= $total then
-      green + "✓" + rst + " All todos complete" + dim + " (\($done)/\($total))" + rst
-    else
-      dim + "… \($done)/\($total) todos" + rst
+    (.todos // []) |
+    if length == 0 then empty else
+      ([ .[] | select(.status == "completed") ] | length) as $done |
+      length as $total |
+      ([ .[] | select(.status == "in_progress") ] | first // null) as $current |
+      if $current then
+        "\u001b[33m▸\u001b[0m \($current.content[:50]) \u001b[2m(\($done)/\($total))\u001b[0m"
+      elif $done == $total and $total > 0 then
+        "\u001b[32m✓\u001b[0m All todos complete \u001b[2m(\($done)/\($total))\u001b[0m"
+      else empty end
     end
   ' "$HUD_CACHE" 2>/dev/null) || true
   [ -n "$todos_line" ] && printf '%b\n' "$todos_line"
@@ -237,38 +230,36 @@ fi
 USAGE_CACHE="$HOME/.claude/hud-usage-cache.json"
 if [ "$cfg_showUsage" = "true" ] && [ -f "$USAGE_CACHE" ]; then
   usage_line=$(jq -r '
-    def rst: "\u001b[0m";
-    def blue: "\u001b[34m";
-    def magenta: "\u001b[35m";
-    def red: "\u001b[31m";
-    def dim: "\u001b[2m";
-
-    if .error then empty else
+    if .error then empty
+    elif .fiveHour == null then empty
+    else
       (.planName // "Plan") as $name |
-      (.usedPercent // 0) as $pct |
-      (.remainingSeconds // 0) as $rem |
+      (.fiveHour // 0) as $pct |
 
       # Color based on percent
-      (if $pct >= 100 then red
-       elif $pct >= 80 then magenta
-       else blue end) as $color |
+      (if $pct >= 100 then "\u001b[31m"
+       elif $pct >= 80 then "\u001b[35m"
+       else "\u001b[34m" end) as $color |
 
       # Progress bar (10 chars)
-      (($pct / 10) | floor | if . > 10 then 10 elif . < 0 then 0 else . end) as $filled |
+      (($pct * 10 / 100) | floor | if . > 10 then 10 elif . < 0 then 0 else . end) as $filled |
       (10 - $filled) as $empty |
       ([range($filled)] | map("█") | join("")) as $bar_filled |
       ([range($empty)] | map("░") | join("")) as $bar_empty |
 
-      # Time remaining
-      (if $rem <= 0 then ""
-       elif $rem < 3600 then " (\($rem / 60 | floor)m left)"
-       else " (\($rem / 3600 | floor)h \(($rem % 3600) / 60 | floor)m left)"
-       end) as $time_left |
+      # Time remaining from fiveHourResetAt
+      (if .fiveHourResetAt then
+        ((.fiveHourResetAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - now | floor) |
+        if . <= 0 then ""
+        elif . < 3600 then " (\(. / 60 | floor)m left)"
+        else " (\(. / 3600 | floor)h \((. % 3600) / 60 | floor)m left)"
+        end
+       else "" end) as $time_left |
 
-      $color + $name + rst + " " +
-      $color + $bar_filled + rst + dim + $bar_empty + rst +
-      " " + $color + "\($pct)%" + rst +
-      dim + $time_left + rst
+      $color + $name + "\u001b[0m " +
+      $color + $bar_filled + "\u001b[0m\u001b[2m" + $bar_empty + "\u001b[0m" +
+      " " + $color + "\($pct)%\u001b[0m" +
+      "\u001b[2m" + $time_left + "\u001b[0m"
     end
   ' "$USAGE_CACHE" 2>/dev/null) || true
   [ -n "$usage_line" ] && printf '%b\n' "$usage_line"
