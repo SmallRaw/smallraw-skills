@@ -49,7 +49,7 @@ usage-fetch.sh (后台异步)
 
 | 数据 | 刷新间隔 | 条件 |
 |------|----------|------|
-| 工具/Agent/Todo | 可配，默认 5 秒 | 无限制 |
+| 工具/Agent/Todo | 可配，默认 1 秒 | 无限制 |
 | Usage API | 可配，默认 3600 秒 | UTC+8 9:00-23:00 |
 
 statusline.sh 每次运行时检查时间戳文件，未到刷新间隔则跳过触发，直接用缓存渲染。
@@ -91,7 +91,7 @@ skills/cc-setup/scripts/
     "critical": "red"
   },
   "refresh": {
-    "transcriptRefreshSeconds": 5,
+    "transcriptRefreshSeconds": 1,
     "usageRefreshSeconds": 3600,
     "usageActiveHoursUTC8": [9, 23]
   }
@@ -113,7 +113,7 @@ skills/cc-setup/scripts/
 | `display.showTodos` | bool | false | Todo 进度行 |
 | `display.showDuration` | bool | false | 会话时长 |
 | `colors.*` | string | 见上 | ANSI 颜色名 |
-| `refresh.transcriptRefreshSeconds` | int | 5 | transcript 扫描间隔 |
+| `refresh.transcriptRefreshSeconds` | int | 1 | transcript 扫描间隔 |
 | `refresh.usageRefreshSeconds` | int | 3600 | Usage API 请求间隔 |
 | `refresh.usageActiveHoursUTC8` | [int,int] | [9,23] | UTC+8 活跃时段 |
 
@@ -243,7 +243,7 @@ scan-transcript.sh 和 usage-fetch.sh 都是 **一次性脚本**（非常驻 dae
 
 `~/.claude/hud-config.json` 不存在时，statusline.sh 使用内置默认值：
 - 所有 display 开关为 false（只显示基础行）
-- transcriptRefreshSeconds = 5
+- transcriptRefreshSeconds = 1
 - usageRefreshSeconds = 3600
 - usageActiveHoursUTC8 = [9, 23]
 

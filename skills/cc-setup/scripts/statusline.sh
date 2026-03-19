@@ -26,7 +26,7 @@ cfg_showAgents="false"
 cfg_showTodos="false"
 cfg_showUsage="false"
 cfg_showDuration="false"
-cfg_transcriptRefresh=5
+cfg_transcriptRefresh=1
 cfg_usageRefresh=3600
 cfg_pathLevels=1
 
