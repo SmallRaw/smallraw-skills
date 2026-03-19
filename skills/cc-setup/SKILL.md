@@ -50,13 +50,26 @@ disable-model-invocation: true
 
 ### 2. HUD 状态栏
 
-配置 statusLine 显示项目路径、git 分支、模型、上下文用量、费用。
+配置 statusLine 显示项目路径、git 分支、模型、上下文用量、费用，以及可选的工具活动、Agent 追踪、Todo 进度、Usage 限额。
 
 **检测**：检查目标 settings 中是否存在 `statusLine` 配置
 
 **开启时**：将 `scripts/statusline.sh` 的路径写入 `statusLine.command`
 
 **关闭时**：删除 `statusLine` 字段
+
+**HUD 子选项**（开启状态栏后依次询问，选择结果写入 `~/.claude/hud-config.json`）：
+
+| 子选项 | 配置字段 | 默认 | 说明 |
+|--------|----------|------|------|
+| 工具活动 | `display.showTools` | 关 | 显示正在运行和已完成的工具调用 |
+| Agent 追踪 | `display.showAgents` | 关 | 显示子 Agent 状态和耗时 |
+| Todo 进度 | `display.showTodos` | 关 | 显示当前任务和完成进度 |
+| Usage 限额 | `display.showUsage` | 关 | 显示 Pro/Max/Team 用量百分比（每小时刷新，UTC+8 9-23 点） |
+
+**检测 HUD 子选项**：读取 `~/.claude/hud-config.json`，显示各项当前状态
+
+**配置文件结构**：完整配置参考 `docs/superpowers/specs/2026-03-19-cc-setup-hud-design.md`
 
 ## Gotchas
 
