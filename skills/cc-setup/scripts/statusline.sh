@@ -12,11 +12,38 @@ eval "$(echo "$input" | jq -r '
   @sh "used_pct=\(.context_window.used_percentage // "")",
   @sh "ctx_size=\(.context_window.context_window_size // "")",
   @sh "input_tokens=\(.context_window.current_usage.input_tokens // "")",
-  @sh "cost=\(.cost.total_cost_usd // "")"
+  @sh "cost=\(.cost.total_cost_usd // "")",
+  @sh "transcript_path=\(.transcript_path // "")"
 ')"
 
 # Effort level from settings (not in statusline JSON)
 effort=$(jq -r '.effortLevel // ""' "$HOME/.claude/settings.json" 2>/dev/null)
+
+# ── Config ──────────────────────────────────────────────────────────────────
+HUD_CONFIG="$HOME/.claude/hud-config.json"
+cfg_showTools="false"
+cfg_showAgents="false"
+cfg_showTodos="false"
+cfg_showUsage="false"
+cfg_showDuration="false"
+cfg_transcriptRefresh=5
+cfg_usageRefresh=3600
+cfg_pathLevels=1
+
+if [ -f "$HUD_CONFIG" ]; then
+  eval "$(jq -r '
+    @sh "cfg_showTools=\(.display.showTools // false)",
+    @sh "cfg_showAgents=\(.display.showAgents // false)",
+    @sh "cfg_showTodos=\(.display.showTodos // false)",
+    @sh "cfg_showUsage=\(.display.showUsage // false)",
+    @sh "cfg_showDuration=\(.display.showDuration // false)",
+    @sh "cfg_transcriptRefresh=\(.refresh.transcriptRefreshSeconds // 5)",
+    @sh "cfg_usageRefresh=\(.refresh.usageRefreshSeconds // 3600)",
+    @sh "cfg_pathLevels=\(.pathLevels // 1)"
+  ' "$HUD_CONFIG" 2>/dev/null)" || true
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 CYAN='\033[36m'
@@ -28,13 +55,17 @@ YELLOW='\033[33m'
 GREEN='\033[32m'
 RESET='\033[0m'
 
-# ── Directory: ~/.../last-segment ────────────────────────────────────────────
+# ── Directory: pathLevels-based truncation ─────────────────────────────────
 home="$HOME"
-short_dir="${cwd/#$home/\~}"
-seg_count=$(echo "$short_dir" | tr '/' '\n' | wc -l | tr -d ' ')
-if [ "$seg_count" -gt 3 ]; then
-  last=$(basename "$short_dir")
-  short_dir="~/.../${last}"
+if [ -n "$cwd" ]; then
+  IFS='/' read -ra _segs <<< "$cwd"
+  if [ "${#_segs[@]}" -gt "$cfg_pathLevels" ]; then
+    short_dir=$(printf '%s/' "${_segs[@]: -$cfg_pathLevels}" | sed 's|/$||')
+  else
+    short_dir="${cwd/#$home/\~}"
+  fi
+else
+  short_dir="?"
 fi
 
 parts=()
@@ -115,3 +146,153 @@ for ((i=0; i<${#parts[@]}; i++)); do
 done
 
 printf '%b\n' "$out"
+
+# ── Extra lines ─────────────────────────────────────────────────────────────
+HUD_CACHE="${cwd:+$cwd/.claude/hud-cache.json}"
+
+# ── Tools line ──────────────────────────────────────────────────────────────
+if [ "$cfg_showTools" = "true" ] && [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ]; then
+  tools_line=$(jq -r '
+    def trunc(n): if length > n then .[:n] + "…" else . end;
+    def rst: "\u001b[0m";
+    def yellow: "\u001b[33m";
+    def green: "\u001b[32m";
+    def dim: "\u001b[2m";
+
+    .tools // empty |
+    (
+      [ .running // [] | .[-2:][] |
+        yellow + "◐ " + rst + (.name // "?") + " " + dim + ((.target // "") | trunc(20)) + rst
+      ] +
+      [ .completed // [] | sort_by(-.count) | .[:4][] |
+        green + "✓ " + rst + (.name // "?") + " " + dim + "×\(.count)" + rst
+      ]
+    ) | join(" \u001b[2m|\u001b[0m ") // empty
+  ' "$HUD_CACHE" 2>/dev/null) || true
+  [ -n "$tools_line" ] && printf '%b\n' "$tools_line"
+fi
+
+# ── Agents line ─────────────────────────────────────────────────────────────
+if [ "$cfg_showAgents" = "true" ] && [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ]; then
+  now_epoch=$(date +%s)
+  agents_line=$(jq -r --arg now "$now_epoch" '
+    def rst: "\u001b[0m";
+    def yellow: "\u001b[33m";
+    def green: "\u001b[32m";
+    def dim: "\u001b[2m";
+    def cyan: "\u001b[36m";
+    def elapsed(s; e):
+      ((if e == null or e == "" then ($now | tonumber) else (e | tonumber) end) - (s | tonumber)) |
+      if . < 60 then "\(.)s"
+      elif . < 3600 then "\(. / 60 | floor)m\(. % 60)s"
+      else "\(. / 3600 | floor)h\((. % 3600) / 60 | floor)m"
+      end;
+
+    .agents // empty |
+    (
+      [ (.running // [])[] |
+        yellow + "◐" + rst + " " +
+        cyan + (.type // "?") + rst +
+        (if .model then dim + " [" + .model + "]" + rst else "" end) +
+        ": " + ((.description // "?") | if length > 40 then .[:40] + "…" else . end) +
+        dim + " (" + elapsed(.startTime; null) + ")" + rst
+      ] +
+      [ (.completed // []) | .[-2:][] |
+        green + "✓" + rst + " " +
+        cyan + (.type // "?") + rst +
+        (if .model then dim + " [" + .model + "]" + rst else "" end) +
+        ": " + ((.description // "?") | if length > 40 then .[:40] + "…" else . end) +
+        dim + " (" + elapsed(.startTime; .endTime) + ")" + rst
+      ]
+    ) | .[:3] | join("  ") // empty
+  ' "$HUD_CACHE" 2>/dev/null) || true
+  [ -n "$agents_line" ] && printf '%b\n' "$agents_line"
+fi
+
+# ── Todos line ──────────────────────────────────────────────────────────────
+if [ "$cfg_showTodos" = "true" ] && [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ]; then
+  todos_line=$(jq -r '
+    def rst: "\u001b[0m";
+    def yellow: "\u001b[33m";
+    def green: "\u001b[32m";
+    def dim: "\u001b[2m";
+
+    .todos // empty |
+    . as $todos |
+    (.total // 0) as $total |
+    (.done // 0) as $done |
+    if $total == 0 then empty
+    elif (.in_progress // null) != null then
+      yellow + "▸" + rst + " " + .in_progress + dim + " (\($done)/\($total))" + rst
+    elif $done >= $total then
+      green + "✓" + rst + " All todos complete" + dim + " (\($done)/\($total))" + rst
+    else
+      dim + "… \($done)/\($total) todos" + rst
+    end
+  ' "$HUD_CACHE" 2>/dev/null) || true
+  [ -n "$todos_line" ] && printf '%b\n' "$todos_line"
+fi
+
+# ── Usage line ──────────────────────────────────────────────────────────────
+USAGE_CACHE="$HOME/.claude/hud-usage-cache.json"
+if [ "$cfg_showUsage" = "true" ] && [ -f "$USAGE_CACHE" ]; then
+  usage_line=$(jq -r '
+    def rst: "\u001b[0m";
+    def blue: "\u001b[34m";
+    def magenta: "\u001b[35m";
+    def red: "\u001b[31m";
+    def dim: "\u001b[2m";
+
+    if .error then empty else
+      (.planName // "Plan") as $name |
+      (.usedPercent // 0) as $pct |
+      (.remainingSeconds // 0) as $rem |
+
+      # Color based on percent
+      (if $pct >= 100 then red
+       elif $pct >= 80 then magenta
+       else blue end) as $color |
+
+      # Progress bar (10 chars)
+      (($pct / 10) | floor | if . > 10 then 10 elif . < 0 then 0 else . end) as $filled |
+      (10 - $filled) as $empty |
+      ([range($filled)] | map("█") | join("")) as $bar_filled |
+      ([range($empty)] | map("░") | join("")) as $bar_empty |
+
+      # Time remaining
+      (if $rem <= 0 then ""
+       elif $rem < 3600 then " (\($rem / 60 | floor)m left)"
+       else " (\($rem / 3600 | floor)h \(($rem % 3600) / 60 | floor)m left)"
+       end) as $time_left |
+
+      $color + $name + rst + " " +
+      $color + $bar_filled + rst + dim + $bar_empty + rst +
+      " " + $color + "\($pct)%" + rst +
+      dim + $time_left + rst
+    end
+  ' "$USAGE_CACHE" 2>/dev/null) || true
+  [ -n "$usage_line" ] && printf '%b\n' "$usage_line"
+fi
+
+# ── Trigger background scans (after all output) ────────────────────────────
+now_ts=$(date +%s)
+
+# Transcript scan
+if [ "$cfg_showTools" = "true" ] || [ "$cfg_showAgents" = "true" ] || [ "$cfg_showTodos" = "true" ]; then
+  if [ -n "$transcript_path" ] && [ -n "$cwd" ]; then
+    last_scan=0
+    [ -f "$cwd/.claude/hud-last-scan" ] && last_scan=$(cat "$cwd/.claude/hud-last-scan" 2>/dev/null || echo 0)
+    if [ $(( now_ts - last_scan )) -ge "$cfg_transcriptRefresh" ]; then
+      "$SCRIPT_DIR/scan-transcript.sh" "$transcript_path" "$cwd" &>/dev/null & disown
+    fi
+  fi
+fi
+
+# Usage fetch
+if [ "$cfg_showUsage" = "true" ]; then
+  last_fetch=0
+  [ -f "$HOME/.claude/hud-usage-last-fetch" ] && last_fetch=$(cat "$HOME/.claude/hud-usage-last-fetch" 2>/dev/null || echo 0)
+  if [ $(( now_ts - last_fetch )) -ge "$cfg_usageRefresh" ]; then
+    "$SCRIPT_DIR/usage-fetch.sh" &>/dev/null & disown
+  fi
+fi
