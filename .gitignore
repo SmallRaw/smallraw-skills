@@ -21,3 +21,6 @@ memory/
 # test workspace
 mcp-lazy-cli-workspace/
 github-kb-workspace/
+
+# analysis dumps
+docs/dump/

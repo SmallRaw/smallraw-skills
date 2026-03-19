@@ -90,8 +90,7 @@ jq -s '
         startTime: ._ts
       }
     ) |
-    last(limit(20; reverse[]))? // . |
-    if type == "array" then .[-20:] else [.] end
+    .[-20:]
   ) as $tools |
 
   # ── Agents ───────────────────────────────────────────────────────────────
