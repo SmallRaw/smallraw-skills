@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # scan-transcript.sh — Parse a Claude Code transcript JSONL and write HUD cache.
 # Usage: scan-transcript.sh <transcript.jsonl> <project-dir>
+# Reference: jarrodwatts/claude-hud transcript.ts
 set -euo pipefail
 
 TRANSCRIPT="${1:-}"
@@ -14,6 +15,9 @@ fi
 if [[ ! -f "$TRANSCRIPT" ]]; then
   exit 0
 fi
+
+# ── Session ID from transcript filename ({session_id}.jsonl) ─────────────────
+SESSION_ID=$(basename "$TRANSCRIPT" .jsonl)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 CACHE_DIR="${PROJECT_DIR}/.claude"
@@ -39,13 +43,17 @@ echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT
 
 # ── Parse transcript with jq ──────────────────────────────────────────────────
+# Key fixes vs old version:
+#   1. Filter content to arrays only (some entries have string content)
+#   2. Agent tool name is "Agent" (not "Task")
+#   3. Also skip "Agent" from tool list
 jq -s '
-  # ── Flatten all content blocks, carrying timestamp ──────────────────────────
+  # ── Flatten content blocks, skip non-array content ─────────────────────────
   [
     .[] |
     . as $line |
     ($line.timestamp // null) as $ts |
-    ($line.message.content // [])[] |
+    (if ($line.message.content | type) == "array" then $line.message.content else [] end)[] |
     . + { _ts: $ts }
   ] as $blocks |
 
@@ -63,15 +71,26 @@ jq -s '
   # ── Session start ─────────────────────────────────────────────────────────
   ($blocks | map(._ts) | map(select(. != null)) | first) as $sessionStart |
 
-  # ── Agent names to exclude from tool list ────────────────────────────────
-  (["Task","TodoWrite","TaskCreate","TaskUpdate"]) as $skip |
+  # ── Session ID (from first entry) ──────────────────────────────────────────
+  ([.[] | .sessionId // empty] | first // null) as $sessionId |
+
+  # ── Skills (deduplicated, in call order) ─────────────────────────────────
+  (
+    $uses |
+    map(select(.name == "Skill")) |
+    map(.input.skill // empty) |
+    map(select(. != "")) |
+    reduce .[] as $s ([]; if (. | index($s)) then . else . + [$s] end)
+  ) as $skills |
+
+  # ── Names to exclude from tool list ────────────────────────────────────────
+  (["Agent","Task","TodoWrite","TaskCreate","TaskUpdate","Skill"]) as $skip |
 
   # ── Tools ────────────────────────────────────────────────────────────────
   (
     $uses |
     map(select(.name as $n | $skip | index($n) | not)) |
     map(
-      . as $u |
       ($done[.id] // null) as $completion |
       {
         id: .id,
@@ -93,12 +112,11 @@ jq -s '
     .[-20:]
   ) as $tools |
 
-  # ── Agents ───────────────────────────────────────────────────────────────
+  # ── Agents (tool name "Agent" in transcript, legacy "Task") ─────────────
   (
     $uses |
-    map(select(.name == "Task")) |
+    map(select(.name == "Agent" or .name == "Task")) |
     map(
-      . as $u |
       ($done[.id] // null) as $completion |
       {
         id: .id,
@@ -134,17 +152,21 @@ jq -s '
         map({ content: .content, status: (.status | normalize_status) })
       elif $op.name == "TaskCreate" then
         # Append new task
-        . + [{ content: ($op.input.subject // ""), status: "pending" }]
+        . + [{
+          content: (($op.input.subject // $op.input.description) // ""),
+          status: (($op.input.status // "pending") | normalize_status)
+        }]
       elif $op.name == "TaskUpdate" then
         # Update by taskId (1-based numeric index)
-        ($op.input.taskId | tonumber? // null) as $idx |
+        ($op.input.taskId | tostring | tonumber? // null) as $idx |
         if $idx then
           [
             to_entries[] |
             if .key == ($idx - 1) then
-              .value * {
-                status: (($op.input.status // .value.status) | normalize_status)
-              }
+              .value * (
+                (if $op.input.status then { status: ($op.input.status | normalize_status) } else {} end) +
+                (if $op.input.subject then { content: $op.input.subject } else {} end)
+              )
             else
               .value
             end
@@ -163,9 +185,26 @@ jq -s '
     tools: $tools,
     agents: $agents,
     todos: $todos,
-    sessionStart: $sessionStart
+    skills: $skills,
+    sessionStart: $sessionStart,
+    updatedAt: now
   }
-' "$TRANSCRIPT" > "${CACHE_FILE}.tmp" && mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
+' "$TRANSCRIPT" > "${CACHE_FILE}.session.tmp" || { rm -f "${CACHE_FILE}.session.tmp"; exit 1; }
+
+# ── Merge into cache file under session key, prune entries older than 2 days ─
+SESSION_DATA=$(cat "${CACHE_FILE}.session.tmp")
+rm -f "${CACHE_FILE}.session.tmp"
+
+EXISTING="{}"
+if [ -f "$CACHE_FILE" ]; then
+  # Only keep existing if it's a keyed object (not old flat format)
+  is_keyed=$(jq -r 'if type == "object" and (keys | all(test("^[0-9a-f-]+$"))) then "yes" else "no" end' "$CACHE_FILE" 2>/dev/null || echo "no")
+  [ "$is_keyed" = "yes" ] && EXISTING=$(cat "$CACHE_FILE")
+fi
+
+echo "$EXISTING" | jq --arg sid "$SESSION_ID" --argjson data "$SESSION_DATA" \
+  '(.[$sid] = $data) | with_entries(select(.value.updatedAt > (now - 172800)))' \
+  > "${CACHE_FILE}.tmp" && mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
 
 # ── Write timestamp ───────────────────────────────────────────────────────────
 date +%s > "$SCAN_TS_FILE"

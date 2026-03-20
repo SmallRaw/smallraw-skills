@@ -20,33 +20,15 @@ disable-model-invocation: true
 
 启动后依次询问以下配置项（用户可跳过任何一项）：
 
-### 1. Skill 调用日志
+### 1. Skill 加载状态
 
-监听 `Skill` 工具调用，记录每次使用的 skill 名称和时间。
+显示当前 session 已加载的 skill 列表。**不需要 hook**，从 transcript 解析 Skill tool_use 记录。
 
-**检测**：检查目标 settings 中是否存在 `hooks.PostToolUse` 中 matcher 为 `Skill` 的 hook
+**数据来源**：`scan-transcript.sh` 提取所有 Skill 调用的 skill 名称（去重、按调用顺序），写入 `hud-cache.json` 的 `skills` 字段
 
-**开启时写入的 hook**：
+**防新旧 session 串数据**：`hud-cache.json` 中记录 `sessionId`，statusline 对比 stdin 中的 `session_id`，不匹配则不显示
 
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "jq -r '\"[\" + (now | strftime(\"%Y-%m-%d %H:%M\")) + \"] \" + .tool_input.skill' >> .claude/skill-usage.log 2>/dev/null || true"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**日志位置**：项目级 `.claude/skill-usage.log`（跟随项目，不污染全局）
+**显示**：独立一行，格式 `⚡ skill-a | ⚡ skill-b`。无 skill 加载时不显示该行，始终开启无需配置
 
 ### 2. HUD 状态栏
 
