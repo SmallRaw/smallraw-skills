@@ -47,7 +47,10 @@ disable-model-invocation: true
 | 工具活动 | `display.showTools` | 关 | 显示正在运行和已完成的工具调用 |
 | Agent 追踪 | `display.showAgents` | 关 | 显示子 Agent 状态和耗时 |
 | Todo 进度 | `display.showTodos` | 关 | 显示当前任务和完成进度 |
-| Usage 限额 | `display.showUsage` | 关 | 显示 Pro/Max/Team 用量百分比（每小时刷新，UTC+8 9-23 点） |
+| Usage 限额 | `display.showUsage` | 关 | 显示 Pro/Max/Team 用量百分比（每半小时刷新，UTC+8 9-23 点） |
+| 会话时长 | `display.showDuration` | 关 | 显示当前会话已持续时间（如 `12m`、`1h 30m`） |
+| 配置概览 | `display.showConfigCounts` | 关 | 显示生效的 CLAUDE.md、rules、MCP、hooks 数量，快速排查配置来源 |
+| Skill 追踪 | `display.showSkills` | 关 | 显示当前 session 已加载的 skill 列表（从 transcript 解析） |
 
 **检测 HUD 子选项**：读取 `~/.claude/hud-config.json`，显示各项当前状态
 
