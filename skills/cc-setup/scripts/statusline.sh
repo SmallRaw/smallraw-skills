@@ -200,10 +200,10 @@ if [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ] && [ -n "$session_id" ]; then
 fi
 
 # ── Session duration ─────────────────────────────────────────────────────────
-if [ -n "$HUD_SESSION" ]; then
+if [ "$cfg_showDuration" = "true" ] && [ -n "$HUD_SESSION" ]; then
   session_start=$(echo "$HUD_SESSION" | jq -r '.sessionStart // empty' 2>/dev/null || true)
   if [ -n "$session_start" ]; then
-    start_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${session_start%%.*}" +%s 2>/dev/null || true)
+    start_epoch=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "${session_start%%.*}" +%s 2>/dev/null || true)
     if [ -n "$start_epoch" ]; then
       now_epoch=$(date +%s)
       elapsed=$(( now_epoch - start_epoch ))
