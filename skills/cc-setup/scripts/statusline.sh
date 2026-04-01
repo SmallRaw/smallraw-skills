@@ -105,25 +105,11 @@ if [ -n "$model" ]; then
   parts+=("${model_part}")
 fi
 
-# ── Context: autocompact-aware % + bar + token breakdown ─────────────────────
-AUTOCOMPACT_BUFFER=165  # 16.5% as integer ×10 for bash math
+# ── Context: % + bar + token breakdown ───────────────────────────────────────
 ctx_part=""
 if [ -n "$used_pct" ] && [ -n "$remaining_pct" ]; then
   raw_used_int=$(printf "%.0f" "$used_pct")
-
-  # Autocompact buffer correction: effective = raw / (1 - 0.165)
-  if [ -n "$ctx_size" ] && [ "$ctx_size" != "null" ] && [ "$ctx_size" -gt 0 ] 2>/dev/null; then
-    effective_size=$(( ctx_size * (1000 - AUTOCOMPACT_BUFFER) / 1000 ))
-    used_tokens_approx=$(( raw_used_int * ctx_size / 100 ))
-    if [ "$effective_size" -gt 0 ]; then
-      used_int=$(( used_tokens_approx * 100 / effective_size ))
-      [ "$used_int" -gt 100 ] && used_int=100
-    else
-      used_int=$raw_used_int
-    fi
-  else
-    used_int=$raw_used_int
-  fi
+  used_int=$raw_used_int
 
   if   [ "$used_int" -gt 80 ]; then CTX_COLOR="$RED"
   elif [ "$used_int" -gt 60 ]; then CTX_COLOR="$YELLOW"
