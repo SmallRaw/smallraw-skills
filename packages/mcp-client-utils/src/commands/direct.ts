@@ -2,7 +2,7 @@ import type { McpClient } from "../core/client.js";
 import { USAGE } from "../cli/usage.js";
 import { parseJsonArg } from "../cli/args.js";
 
-export async function runCommand(client: McpClient, commandArgs: string[]): Promise<void> {
+export async function runCommand(client: McpClient, commandArgs: string[], serverName?: string): Promise<void> {
   if (!commandArgs.length) {
     console.log(USAGE);
     process.exit(0);
@@ -16,12 +16,24 @@ export async function runCommand(client: McpClient, commandArgs: string[]): Prom
       break;
 
     case "tools":
-      await client.listTools();
+      await client.listTools({ compact: commandArgs.includes("--compact"), serverName });
       break;
 
     case "call": {
       const name = commandArgs[1];
-      if (!name) { console.error("Usage: call <tool-name> [json-args]"); process.exit(1); }
+      if (!name) {
+        await client.printToolCallGuide(serverName);
+        process.exit(1);
+      }
+      if (commandArgs[2] === "--help" || commandArgs[2] === "-h") {
+        const found = await client.printSingleToolGuide(name, serverName);
+        if (!found) {
+          console.error(`Tool not found: ${name}`);
+          await client.printToolCallGuide(serverName);
+          process.exit(1);
+        }
+        return;
+      }
       await client.callTool(name, parseJsonArg(commandArgs[2]));
       break;
     }
@@ -54,6 +66,7 @@ export async function runCommand(client: McpClient, commandArgs: string[]): Prom
 
     default:
       console.error(`Unknown command: ${command}`);
+      console.error(USAGE);
       process.exit(1);
   }
 }
