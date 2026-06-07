@@ -30,6 +30,25 @@ fractal-context search wallet
 
 `fractal-context` 只读取 `FRACTAL-DOCS.md`、目录 `AGENTS.md` 和源码 INPUT/OUTPUT/POS 头注释，不会修改项目文件。
 
+### 安装 CLI
+
+仓库内开发或未发布 npm 时：
+
+```bash
+cd packages/fractal-context-cli
+npm install
+npm run build
+node dist/index.js status --root /path/to/project
+```
+
+发布 npm 后：
+
+```bash
+npx fractal-context-cli status --root /path/to/project
+```
+
+如果只在本机/本仓库使用，不需要发布；如果希望其他 agent 或其他机器直接 `npx fractal-context-cli` 使用，需要发布 npm 包。
+
 ## 三层结构
 
 ```

@@ -4,6 +4,19 @@ Read-only CLI for Fractal Documentation Protocol context.
 
 ## Usage
 
+Local repository usage:
+
+```bash
+npm install
+npm run build
+node dist/index.js status --root /path/to/project
+node dist/index.js list src --depth 2 --root /path/to/project
+node dist/index.js read src/wallet.ts --root /path/to/project
+node dist/index.js search wallet --root /path/to/project
+```
+
+After publishing to npm:
+
 ```bash
 npx fractal-context-cli status
 npx fractal-context-cli list src --depth 2
@@ -36,3 +49,13 @@ fractal-context search <query> [--scope docs|headers|all] [--max 20] [--root <pa
 `fractal-context` is a compact context reader, not a full language service. It helps agents answer "where should I read next?" by prioritizing project documentation and source headers before raw source content.
 
 Use `/fractal-docs init`, `/fractal-docs update`, and `/fractal-docs check` to maintain the protocol. Use `fractal-context` to consume it.
+
+## Publishing
+
+Publishing is only needed for `npx fractal-context-cli ...` from machines that do not have this repository checked out.
+
+```bash
+npm login
+npm test
+npm publish --access public
+```
