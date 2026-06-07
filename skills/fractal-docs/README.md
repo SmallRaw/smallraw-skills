@@ -2,6 +2,8 @@
 
 三层自描述文档体系，让 AI Agent 快速理解任意模块。
 
+`/fractal-docs` 是维护层，负责创建、更新、检查协议文档。只读导航和代码理解辅助使用 companion CLI：`fractal-context`。
+
 ## Quick Start
 
 ```bash
@@ -14,6 +16,19 @@
 # 检查：验证文档一致性
 /fractal-docs check
 ```
+
+## 只读上下文导航
+
+项目已经建立分形文档后，可以用 `fractal-context` 让 agent 先按文档理解代码，再决定读取哪些源码：
+
+```bash
+fractal-context status
+fractal-context list src --depth 2
+fractal-context read src/wallet.ts
+fractal-context search wallet
+```
+
+`fractal-context` 只读取 `FRACTAL-DOCS.md`、目录 `AGENTS.md` 和源码 INPUT/OUTPUT/POS 头注释，不会修改项目文件。
 
 ## 三层结构
 
