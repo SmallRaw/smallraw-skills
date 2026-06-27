@@ -12,9 +12,20 @@ const launcher = path.join(skillDir, "scripts", "codex-delegate-worker.mjs");
 
 function runNode(args, env, options = {}) {
   return new Promise((resolve) => {
+    const childEnv = { ...process.env };
+    for (const key of Object.keys(childEnv)) {
+      if (key.startsWith("CODEX_DELEGATE_WORKER_")) {
+        delete childEnv[key];
+      }
+    }
+    delete childEnv.CODEX_HOME;
+    if (!Object.prototype.hasOwnProperty.call(env, "CODEX_HOME")) {
+      childEnv.CODEX_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-home-"));
+    }
+
     const child = spawn(process.execPath, args, {
       cwd: options.cwd ?? skillDir,
-      env: { ...process.env, ...env },
+      env: { ...childEnv, ...env },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -348,6 +359,33 @@ test("uses inline config mode by default", async () => {
     assert.ok(capture.args.includes("-c"));
     assert.ok(capture.args.includes('model="default-inline-model"'));
     assert.equal(fs.existsSync(path.join(capture.codeHome, "config.toml")), false);
+  } finally {
+    fs.rmSync(tmpdir, { recursive: true, force: true });
+  }
+});
+
+test("rejects wireApi config because the launcher no longer exposes it", async () => {
+  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
+  try {
+    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
+    fs.writeFileSync(
+      path.join(tmpdir, ".codex-delegate-worker.json"),
+      JSON.stringify({
+        baseUrl: "https://api.deepseek.com/v1",
+        apiKey: "test-key",
+        codexBin: fakeCodex,
+        wireApi: "responses",
+      }),
+    );
+
+    const result = await runNode([launcher, "do work"], {
+      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
+    }, { cwd: tmpdir });
+
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /wireApi.*no longer supported/i);
+    assert.match(result.stderr, /remove/i);
+    assert.equal(fs.existsSync(capturePath), false);
   } finally {
     fs.rmSync(tmpdir, { recursive: true, force: true });
   }

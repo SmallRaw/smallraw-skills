@@ -100,7 +100,6 @@ node skills/codex-delegate-worker/scripts/codex-delegate-worker.mjs "reply with 
 | `model` | `CODEX_DELEGATE_WORKER_MODEL` | Model name. Defaults to `deepseek-flash`. |
 | `providerId` | `CODEX_DELEGATE_WORKER_PROVIDER_ID` | Codex provider id. Defaults to `codex_delegate_worker`. |
 | `providerName` | `CODEX_DELEGATE_WORKER_PROVIDER_NAME` | Human-readable provider name. |
-| `wireApi` | `CODEX_DELEGATE_WORKER_WIRE_API` | Optional Codex `wire_api`, for example `responses`. |
 | `configMode` | `CODEX_DELEGATE_WORKER_CONFIG_MODE` | `inline` or `temp-home`. Defaults to `inline`. |
 | `codexBin` | `CODEX_DELEGATE_WORKER_CODEX_BIN` | Optional Codex executable path or command. |
 | `keepHome` | `CODEX_DELEGATE_WORKER_KEEP_HOME` | Set `"1"` to keep the temp `CODEX_HOME` for debugging. |
@@ -114,6 +113,20 @@ Keep provider-specific overrides under the `CODEX_DELEGATE_WORKER_` namespace. A
 The default mode is `inline`, which passes provider settings through `codex exec -c key=value` overrides.
 
 Use `"configMode": "temp-home"` only when debugging generated Codex config. Set `"keepHome": "1"` or `CODEX_DELEGATE_WORKER_KEEP_HOME=1` to inspect the temporary `CODEX_HOME`.
+
+## Chat Completions Providers
+
+Current Codex releases send custom-provider traffic through the Responses API path. A provider that only implements OpenAI-compatible Chat Completions, such as DeepSeek's native endpoint, will not work directly.
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:8000/v1",
+  "model": "deepseek-chat",
+  "apiKey": "proxy-or-provider-token"
+}
+```
+
+Use a local bridge, proxy, or gateway that exposes a Responses-compatible `/v1/responses` endpoint and translates to the provider's Chat Completions API. This launcher no longer exposes `wireApi`; remove old `wireApi` or `CODEX_DELEGATE_WORKER_WIRE_API` settings if they exist.
 
 ## Security Notes
 
