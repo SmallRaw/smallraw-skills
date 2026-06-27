@@ -52,7 +52,7 @@
     },
     {
       "name": "codex-delegate-worker",
-      "description": "把任务交给外部 Agent：通过一次性 codex exec 进程使用临时 provider 配置启动隔离的 Codex worker",
+      "description": "把任务交给外部 Agent：用一次性 codex exec 启动隔离的 provider worker",
       "source": "./",
       "strict": false,
       "skills": ["./skills/codex-delegate-worker"]
