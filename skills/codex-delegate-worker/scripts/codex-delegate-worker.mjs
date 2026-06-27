@@ -20,7 +20,6 @@ Environment:
   ${ENV_PREFIX}MODEL           Default: deepseek-flash.
   ${ENV_PREFIX}PROVIDER_ID     Default: codex_delegate_worker.
   ${ENV_PREFIX}PROVIDER_NAME   Default: Codex delegate worker.
-  ${ENV_PREFIX}WIRE_API        Optional Codex provider wire_api, for example responses.
   ${ENV_PREFIX}CONFIG_MODE     inline (default) or temp-home.
   ${ENV_PREFIX}CODEX_BIN       Optional codex executable path or command.
   ${ENV_PREFIX}KEEP_HOME       Set to 1 to keep the temporary CODEX_HOME for debugging.
@@ -39,6 +38,10 @@ function firstValue(...values) {
     }
   }
   return "";
+}
+
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== "";
 }
 
 function tomlString(value) {
@@ -129,10 +132,6 @@ function writeConfig(configPath, options) {
     `base_url = ${tomlString(options.baseUrl)}`,
   ];
 
-  if (options.wireApi) {
-    lines.push(`wire_api = ${tomlString(options.wireApi)}`);
-  }
-
   if (options.authCommand) {
     lines.push(
       "",
@@ -163,10 +162,6 @@ function buildInlineConfigArgs(options) {
     ...configOverride(`model_providers.${options.providerId}.name`, tomlString(options.providerName)),
     ...configOverride(`model_providers.${options.providerId}.base_url`, tomlString(options.baseUrl)),
   ];
-
-  if (options.wireApi) {
-    args.push(...configOverride(`model_providers.${options.providerId}.wire_api`, tomlString(options.wireApi)));
-  }
 
   if (options.authCommand) {
     args.push(
@@ -224,7 +219,6 @@ async function main() {
     firstValue(process.env[`${ENV_PREFIX}PROVIDER_ID`], fileConfig.providerId, "codex_delegate_worker");
   const providerName =
     firstValue(process.env[`${ENV_PREFIX}PROVIDER_NAME`], fileConfig.providerName, "Codex delegate worker");
-  const wireApi = firstValue(process.env[`${ENV_PREFIX}WIRE_API`], fileConfig.wireApi);
   const configMode = firstValue(process.env[`${ENV_PREFIX}CONFIG_MODE`], fileConfig.configMode, "inline");
   const codexBin = firstValue(process.env[`${ENV_PREFIX}CODEX_BIN`], fileConfig.codexBin, "codex");
   const keepHome = firstValue(process.env[`${ENV_PREFIX}KEEP_HOME`], fileConfig.keepHome) === "1";
@@ -238,6 +232,13 @@ async function main() {
   if (!isValidProviderId(providerId)) {
     fail(`${ENV_PREFIX}PROVIDER_ID must contain only letters, numbers, underscores, or hyphens`);
   }
+  if (
+    hasValue(process.env[`${ENV_PREFIX}WIRE_API`]) ||
+    hasValue(fileConfig.wireApi) ||
+    hasValue(fileConfig.wire_api)
+  ) {
+    fail(`wireApi / ${ENV_PREFIX}WIRE_API is no longer supported; remove it and point baseUrl at a Responses-compatible endpoint`);
+  }
   if (!["temp-home", "inline"].includes(configMode)) {
     fail(`${ENV_PREFIX}CONFIG_MODE must be "temp-home" or "inline"`);
   }
@@ -248,7 +249,6 @@ async function main() {
     model,
     providerId,
     providerName,
-    wireApi,
     authCommand,
     authArgs,
   };
