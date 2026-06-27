@@ -3,6 +3,7 @@ import type { ContentItem } from "../types.js";
 import type { DaemonClient } from "../daemon/client.js";
 import { USAGE } from "../cli/usage.js";
 import { parseJsonArg } from "../cli/args.js";
+import { formatToolCallGuide, formatToolsGuide, type ToolLike } from "../operator.js";
 
 export async function runCommandViaDaemon(daemon: DaemonClient, serverName: string, commandArgs: string[]): Promise<void> {
   if (!commandArgs.length) { console.log(USAGE); process.exit(0); }
@@ -14,10 +15,29 @@ export async function runCommandViaDaemon(daemon: DaemonClient, serverName: stri
       break;
     case "tools":
       result = await daemon.invoke("listTools", { server: serverName });
+      if (commandArgs.includes("--compact")) {
+        console.log(formatToolsGuide(result as ToolLike[], serverName));
+        return;
+      }
       break;
     case "call": {
       const name = commandArgs[1];
-      if (!name) { console.error("Usage: call <tool-name> [json-args]"); process.exit(1); }
+      if (!name) {
+        const tools = await daemon.invoke("listTools", { server: serverName }) as ToolLike[];
+        console.log(formatToolCallGuide(tools, serverName));
+        process.exit(1);
+      }
+      if (commandArgs[2] === "--help" || commandArgs[2] === "-h") {
+        const tools = await daemon.invoke("listTools", { server: serverName }) as ToolLike[];
+        const tool = tools.find((item) => item.name === name);
+        if (!tool) {
+          console.error(`Tool not found: ${name}`);
+          console.log(formatToolCallGuide(tools, serverName));
+          process.exit(1);
+        }
+        console.log(formatToolsGuide([tool], serverName));
+        return;
+      }
       const args = parseJsonArg(commandArgs[2]);
       const callResult = await daemon.invoke("callTool", { server: serverName, name, args }) as {
         isError?: boolean;

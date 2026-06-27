@@ -33,6 +33,8 @@ Then use `--server` to connect by name:
 
 ```bash
 npx mcp-client-utils --server my-server tools
+npx mcp-client-utils --server my-server tools --compact
+npx mcp-client-utils --server my-server call my_tool --help
 npx mcp-client-utils --server my-server call my_tool '{"key":"value"}'
 npx mcp-client-utils --registry                # show all servers
 ```
@@ -53,7 +55,9 @@ npx mcp-client-utils --sse http://localhost:3000/sse -- tools
 | -------------------------- | ------------------------ |
 | `info`                     | Server info & capabilities |
 | `tools`                    | List all tools (full schema) |
+| `tools --compact`          | List tools with copyable call templates |
 | `call <name> [json-args]`  | Call a tool              |
+| `call <name> --help`       | Show one tool's argument template |
 | `resources`                | List resources           |
 | `templates`                | List resource templates  |
 | `read <uri>`               | Read a resource          |
@@ -96,6 +100,16 @@ The CLI searches upward from the current directory for:
 
 1. `mcp-registry.json`
 2. `.claude/mcp-registry.json`
+
+## Agent-Friendly Operator Output
+
+`mcp-client-utils` is designed as an MCP operator for agents:
+
+- `--registry` prints compact server summaries and `Next` commands.
+- `tools --compact` prints tool descriptions plus JSON argument templates.
+- `call` without a tool name lists available tool call commands.
+- `call <tool> --help` prints a copyable argument template for that tool.
+- invalid JSON and tool errors exit non-zero with actionable text.
 
 ## License
 

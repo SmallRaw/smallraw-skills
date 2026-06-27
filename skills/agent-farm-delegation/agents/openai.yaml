@@ -1,0 +1,7 @@
+interface:
+  display_name: "Agent Farm Delegation"
+  short_description: "Delegate scoped tasks to Pi/Codex via ACPX"
+  default_prompt: "Use $agent-farm-delegation to delegate this scoped implementation task to a Pi or Codex ACPX worker configured for the local model, then supervise the result."
+
+policy:
+  allow_implicit_invocation: false

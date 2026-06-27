@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ContentItem } from "../types.js";
+import { formatToolCallGuide, formatToolsGuide, type ToolLike } from "../operator.js";
 
 export function printContent(content: ContentItem[]): void {
   if (!content?.length) return;
@@ -45,9 +46,31 @@ export class McpClient {
     console.log(JSON.stringify({ server: info, capabilities: caps }, null, 2));
   }
 
-  async listTools(): Promise<void> {
+  async listToolsRaw(): Promise<ToolLike[]> {
     const result = await this.client.listTools();
-    console.log(JSON.stringify(result.tools, null, 2));
+    return result.tools as ToolLike[];
+  }
+
+  async listTools(options: { compact?: boolean; serverName?: string } = {}): Promise<void> {
+    const tools = await this.listToolsRaw();
+    if (options.compact) {
+      console.log(formatToolsGuide(tools, options.serverName));
+    } else {
+      console.log(JSON.stringify(tools, null, 2));
+    }
+  }
+
+  async printToolCallGuide(serverName?: string): Promise<void> {
+    const tools = await this.listToolsRaw();
+    console.log(formatToolCallGuide(tools, serverName));
+  }
+
+  async printSingleToolGuide(name: string, serverName?: string): Promise<boolean> {
+    const tools = await this.listToolsRaw();
+    const tool = tools.find((item) => item.name === name);
+    if (!tool) return false;
+    console.log(formatToolsGuide([tool], serverName));
+    return true;
   }
 
   async callTool(name: string, args?: Record<string, unknown>): Promise<void> {

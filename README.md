@@ -58,6 +58,12 @@ cp -r /tmp/smallraw-skills/skills/github-kb ~/.config/opencode/skills/
 | [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | ✅ Ready |
 | [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | ✅ Ready |
 
+## CLI Packages
+
+| Package | Binary | Description |
+|---------|--------|-------------|
+| [fractal-context-cli](packages/fractal-context-cli/) | `fractal-context` | Fractal docs-aware context reader: `status`, `list`, `read`, `search` |
+
 ---
 
 ## Skills Overview
@@ -87,6 +93,8 @@ Features:
 
 核心理念：**代码即文档，文档即协议。每一级目录自包含地描述自身。**
 
+`/fractal-docs` 是维护层：创建、更新、检查协议文档。只读导航请使用 `fractal-context` CLI。
+
 Features:
 - 三行头部注释：每个源码文件的 INPUT/OUTPUT/POS
 - 目录级 AGENTS.md：模块职责、逻辑、约束、业务域清单
@@ -96,6 +104,15 @@ Features:
 /fractal-docs init     # 为项目建立完整文档体系
 /fractal-docs update   # 文件变更后级联更新文档
 /fractal-docs check    # 验证文档一致性
+
+# 只读上下文导航
+cd packages/fractal-context-cli
+npm install
+npm run build
+node dist/index.js status --root /path/to/project
+node dist/index.js list src --root /path/to/project --depth 2
+node dist/index.js read src/foo.ts --root /path/to/project
+node dist/index.js search wallet --root /path/to/project
 ```
 
 ### /excel-lite-cli

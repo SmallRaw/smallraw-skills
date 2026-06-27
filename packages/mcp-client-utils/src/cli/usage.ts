@@ -19,7 +19,9 @@ Ad-hoc mode:
 Commands:
   info                           Server info & capabilities
   tools                          List all tools (full schema)
+  tools --compact                List tools with call templates
   call <name> [json-args]        Call a tool
+  call <name> --help             Show one tool's argument template
   resources                      List resources
   templates                      List resource templates
   read <uri>                     Read a resource
@@ -34,6 +36,8 @@ Daemon:
 Examples:
   # Registry mode
   mcp-client-utils --server pencil tools
+  mcp-client-utils --server pencil tools --compact
+  mcp-client-utils --server pencil call get_editor_state --help
   mcp-client-utils --server pencil call get_editor_state '{"include_schema":false}'
   mcp-client-utils --registry
 

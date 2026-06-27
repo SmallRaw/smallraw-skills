@@ -1,0 +1,30 @@
+{
+  "name": "fractal-context-cli",
+  "version": "0.1.0",
+  "description": "Docs-aware Fractal Documentation Protocol context reader CLI",
+  "bin": {
+    "fractal-context": "dist/index.js",
+    "fractal-context-cli": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/index.js --banner:js='#!/usr/bin/env node' && node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm run build && node --test test/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "fractal-docs",
+    "context",
+    "cli",
+    "ai-agent"
+  ],
+  "license": "MIT"
+}

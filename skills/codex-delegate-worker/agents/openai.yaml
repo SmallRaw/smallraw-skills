@@ -1,0 +1,3 @@
+interface:
+  display_name: "Codex Delegate Worker"
+  short_description: "Launch one-off Codex workers on custom providers"

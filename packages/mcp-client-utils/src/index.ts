@@ -11,6 +11,9 @@ import type { TransportConfig } from "./types.js";
 import { DaemonClient } from "./daemon/client.js";
 import { runDaemonHost } from "./daemon/host.js";
 import { getSocketPath, getMetadataPath } from "./daemon/paths.js";
+import { formatRegistryGuide } from "./operator.js";
+
+export { buildJsonTemplate, formatRegistryGuide, formatToolCallGuide, formatToolsGuide } from "./operator.js";
 
 async function main() {
   const parsed = parseCliArgs();
@@ -27,7 +30,7 @@ async function main() {
     }
 
     const registry = loadRegistry(regPath);
-    console.log(JSON.stringify(registry, null, 2));
+    console.log(formatRegistryGuide(registry));
     return;
   }
 
@@ -123,13 +126,15 @@ async function main() {
   await client.connect(transport);
 
   try {
-    await runCommand(client, parsed.commandArgs);
+    await runCommand(client, parsed.commandArgs, parsed.serverName);
   } finally {
     await client.close();
   }
 }
 
-main().catch((e) => {
+if (typeof require !== "undefined" && require.main === module) {
+  main().catch((e) => {
   console.error(`Fatal: ${e instanceof Error ? e.message : String(e)}`);
   process.exit(1);
-});
+  });
+}

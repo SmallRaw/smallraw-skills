@@ -1,6 +1,6 @@
 {
   "name": "mcp-client-utils",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Lazy MCP client CLI — connect, call, disconnect on demand via registry",
   "bin": {
     "mcp-client-utils": "dist/mcp-utils.js"
@@ -10,7 +10,9 @@
     "mcp-registry.schema.json"
   ],
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/mcp-utils.js --banner:js='#!/usr/bin/env node'",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/mcp-utils.js --banner:js='#!/usr/bin/env node' && node -e \"require('fs').chmodSync('dist/mcp-utils.js', 0o755)\"",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm run build && node --test test/*.test.mjs",
     "prepack": "npm run build"
   },
   "dependencies": {

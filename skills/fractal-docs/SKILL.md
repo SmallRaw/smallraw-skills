@@ -13,6 +13,34 @@ disable-model-invocation: true
 
 本 skill 是分形文档协议的**维护工具**。协议本身定义在项目的 `FRACTAL-DOCS.md` 中，Agent 读项目时直接按协议导航即可。
 
+## Companion CLI
+
+`fractal-context` 是只读上下文导航 CLI，用来消费已有分形文档，不负责创建、更新或修复文档。需要让 agent 先按文档理解代码时使用它：
+
+```bash
+fractal-context status
+fractal-context list src --depth 2
+fractal-context read src/wallet.ts
+fractal-context search wallet
+```
+
+仓库内开发或未发布到 npm 时，用本地构建：
+
+```bash
+cd packages/fractal-context-cli
+npm install
+npm run build
+node dist/index.js status --root /path/to/project
+```
+
+发布到 npm 后才可使用：
+
+```bash
+npx fractal-context-cli status --root /path/to/project
+```
+
+是否发布：如果只在本仓库或本机使用，不需要发布；如果希望 Codex、Claude Code、Pi worker 或其他机器直接 `npx fractal-context-cli` 调用，就需要发布 npm 包。
+
 ## 核心规则
 
 1. **先读 SOP 再动手** -- 每个命令有独立 SOP（`prompts/*.md`），执行前必须读完对应 SOP，不要凭记忆操作

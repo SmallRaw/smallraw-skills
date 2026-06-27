@@ -16,6 +16,7 @@ node_modules/
 memory/
 .memory/
 *.session.json
+.codex-delegate-worker.json
 
 
 # test workspace
