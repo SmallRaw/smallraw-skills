@@ -10,7 +10,11 @@ The registry lives at `.claude/mcp-registry.json` (searched upward from cwd).
     "figma": {
       "description": "Figma design file access",
       "when": "User needs design files, assets, tokens, or Figma data",
-      "transport": { "type": "stdio", "target": "npx", "args": ["-y", "figma-mcp-server"] },
+      "transport": {
+        "type": "stdio",
+        "target": "npx",
+        "args": ["-y", "figma-mcp-server"]
+      },
       "lifecycle": "keep-alive",
       "tools": [
         { "name": "get_design_tokens", "description": "Extract design tokens (colors, typography, spacing)" },
@@ -34,6 +38,7 @@ The registry lives at `.claude/mcp-registry.json` (searched upward from cwd).
 - **`when`** — trigger condition. Match this against the current task to decide if you need this server.
 - **`tools`** — optional summaries. Helps decide without connecting. If omitted, use `--server <name> tools` to discover at runtime.
 - **`lifecycle`** — `"ephemeral"` (default): connect per call, disconnect after. `"keep-alive"`: daemon maintains the connection for multi-call sessions.
+- **`transport.protocol`** — optional override. Omit it for automatic negotiation with legacy fallback; use `"legacy"` to skip discovery or `"2026-07-28"` to require the modern revision.
 
 ## Schema
 

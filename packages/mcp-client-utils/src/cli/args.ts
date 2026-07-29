@@ -1,4 +1,5 @@
 import { USAGE } from "./usage.js";
+import type { ProtocolMode } from "../types.js";
 
 export interface ParsedArgs {
   mode: "registry" | "server" | "manual" | "daemon";
@@ -6,6 +7,7 @@ export interface ParsedArgs {
   serverName?: string;
   transportType?: string;
   target?: string;
+  protocol?: ProtocolMode;
   serverArgs: string[];
   commandArgs: string[];
   daemonCommand?: "start" | "stop" | "status";
@@ -85,6 +87,14 @@ export function parseCliArgs(): ParsedArgs {
       result.mode = "manual";
       result.transportType = "sse";
       result.target = argv[++i];
+      i++;
+    } else if (arg === "--protocol") {
+      const protocol = argv[++i];
+      if (protocol !== "legacy" && protocol !== "auto" && protocol !== "2026-07-28") {
+        console.error("Invalid protocol. Use: legacy, auto, or 2026-07-28");
+        process.exit(1);
+      }
+      result.protocol = protocol;
       i++;
     } else if (arg === "--transport") {
       result.transportType = argv[++i];

@@ -117,12 +117,13 @@ async function main() {
       type: parsed.transportType as TransportConfig["type"],
       target: parsed.target,
       args: parsed.serverArgs,
+      protocol: parsed.protocol,
     };
   }
 
   // --- Connect and run ---
   const transport = createTransport(transportConfig);
-  const client = new McpClient();
+  const client = new McpClient(transportConfig.protocol);
   await client.connect(transport);
 
   try {

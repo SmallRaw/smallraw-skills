@@ -1,7 +1,14 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { ContentItem } from "../types.js";
+import { Client, type Transport } from "@modelcontextprotocol/client";
+import type { ContentItem, ProtocolMode } from "../types.js";
 import { formatToolCallGuide, formatToolsGuide, type ToolLike } from "../operator.js";
+
+export function createClient(name: string, protocol: ProtocolMode = "auto"): Client {
+  const mode = protocol === "2026-07-28" ? { pin: protocol } as const : protocol;
+  return new Client(
+    { name, version: "0.2.0" },
+    { versionNegotiation: { mode } },
+  );
+}
 
 export function printContent(content: ContentItem[]): void {
   if (!content?.length) return;
@@ -24,8 +31,8 @@ export class McpClient {
   private client: Client;
   private connected = false;
 
-  constructor() {
-    this.client = new Client({ name: "mcp-client-utils", version: "1.0.0" });
+  constructor(protocol: ProtocolMode = "auto") {
+    this.client = createClient("mcp-client-utils", protocol);
   }
 
   async connect(transport: Transport): Promise<void> {
@@ -43,7 +50,12 @@ export class McpClient {
   async serverInfo(): Promise<void> {
     const info = this.client.getServerVersion();
     const caps = this.client.getServerCapabilities();
-    console.log(JSON.stringify({ server: info, capabilities: caps }, null, 2));
+    console.log(JSON.stringify({
+      server: info,
+      capabilities: caps,
+      protocolEra: this.client.getProtocolEra(),
+      protocolVersion: this.client.getNegotiatedProtocolVersion(),
+    }, null, 2));
   }
 
   async listToolsRaw(): Promise<ToolLike[]> {
