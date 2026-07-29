@@ -4,6 +4,8 @@ Generic MCP (Model Context Protocol) client CLI for AI agents. Connects to any M
 
 ## Install
 
+Requires Node.js 20 or newer.
+
 ```bash
 npx mcp-client-utils --help
 ```
@@ -48,6 +50,34 @@ npx mcp-client-utils --stdio "/path/to/server --app desktop" -- tools
 npx mcp-client-utils --http http://localhost:3000/mcp -- call my_tool '{"key":"val"}'
 npx mcp-client-utils --sse http://localhost:3000/sse -- tools
 ```
+
+### Protocol Versions
+
+Connections automatically negotiate the MCP protocol version. The client probes
+for MCP `2026-07-28` and falls back to the legacy protocol when needed, so
+callers and agents do not need to select a version:
+
+```bash
+npx mcp-client-utils --http http://localhost:3000/mcp -- tools
+npx mcp-client-utils --stdio "/path/to/server" -- tools
+```
+
+The optional `protocol` setting is only for compatibility overrides or testing:
+
+```json
+{
+  "transport": {
+    "type": "http",
+    "target": "http://localhost:3000/mcp",
+    "protocol": "legacy"
+  }
+}
+```
+
+Use `legacy` to skip discovery for an older server, or `2026-07-28` to require
+the modern revision. Automatic negotiation on stdio may start a short-lived
+probe process; set `legacy` only when an older server ignores discovery and the
+probe delay is undesirable.
 
 ### Commands
 
@@ -110,6 +140,21 @@ The CLI searches upward from the current directory for:
 - `call` without a tool name lists available tool call commands.
 - `call <tool> --help` prints a copyable argument template for that tool.
 - invalid JSON and tool errors exit non-zero with actionable text.
+
+## Publishing
+
+From this package directory:
+
+```bash
+npm login
+npm whoami
+npm test
+npm publish --dry-run
+npm publish
+```
+
+The package is unscoped and publishes publicly. Direct publishing requires npm
+two-factor authentication or a granular access token that can bypass 2FA.
 
 ## License
 

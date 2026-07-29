@@ -1,7 +1,7 @@
 import * as net from "net";
 import * as fs from "fs";
 import { dirname } from "path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { Client } from "@modelcontextprotocol/client";
 import type {
   DaemonRequest,
   DaemonResponse,
@@ -10,6 +10,7 @@ import type {
 } from "./protocol.js";
 import type { ServerEntry, Registry } from "../types.js";
 import { createTransport } from "../core/transport.js";
+import { createClient } from "../core/client.js";
 import { loadRegistry } from "../core/registry.js";
 
 // --- Constants ---
@@ -223,7 +224,12 @@ async function routeRequest(
         return {
           id: req.id,
           ok: true,
-          result: { server: info, capabilities: caps },
+          result: {
+            server: info,
+            capabilities: caps,
+            protocolEra: managed.client!.getProtocolEra(),
+            protocolVersion: managed.client!.getNegotiatedProtocolVersion(),
+          },
         };
       }
 
@@ -344,10 +350,7 @@ async function ensureConnected(managed: ManagedServer): Promise<void> {
 
   managed.connecting = (async () => {
     try {
-      const client = new Client({
-        name: "mcp-daemon",
-        version: "1.0.0",
-      });
+      const client = createClient("mcp-daemon", managed.entry.transport.protocol);
       const transport = createTransport(managed.entry.transport);
       await client.connect(transport);
       managed.client = client;

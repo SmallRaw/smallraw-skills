@@ -153,7 +153,7 @@ Features:
 - 按需连接：需要时连、用完就断，零常驻进程
 - 全协议支持：tools / resources / prompts 完整 MCP 协议
 - 三种传输：stdio（本地进程）、Streamable HTTP、SSE（legacy）
-- npm 分发：`npx mcp-client-utils` 即用，只需 Node.js
+- npm 分发：`npx mcp-client-utils` 即用，只需 Node.js 20+
 
 ```bash
 # 查看项目注册了哪些 MCP servers

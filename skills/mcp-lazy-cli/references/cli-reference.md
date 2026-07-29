@@ -27,6 +27,20 @@ npx mcp-client-utils --http <url> -- <command>
 npx mcp-client-utils --sse <url> -- <command>
 ```
 
+Protocol negotiation is automatic. Most callers and agents should not pass a
+protocol option. Use an override only to skip discovery for an older server or
+to require the modern revision:
+
+```bash
+npx mcp-client-utils --protocol legacy --stdio "<cmd> [args]" -- <command>
+npx mcp-client-utils --protocol 2026-07-28 --stdio "<cmd> [args]" -- <command>
+```
+
+The default is `auto`: negotiate MCP `2026-07-28` and fall back to legacy.
+Automatic negotiation on stdio may launch an extra probe process; force
+`legacy` only when an older server ignores discovery and the delay is
+undesirable.
+
 ## Daemon (for keep-alive servers)
 
 ```bash

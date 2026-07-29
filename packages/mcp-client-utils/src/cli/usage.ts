@@ -15,6 +15,7 @@ Ad-hoc mode:
   --stdio "<command> [args...]"    Connect to a stdio MCP server
   --http <url>                     Connect to an HTTP MCP server
   --sse <url>                      Connect to an SSE MCP server
+  --protocol <mode>                auto (default), legacy, or 2026-07-28
 
 Commands:
   info                           Server info & capabilities
@@ -44,5 +45,7 @@ Examples:
   # Ad-hoc mode
   mcp-client-utils --stdio "/path/to/server --app desktop" -- tools
   mcp-client-utils --http http://localhost:3000/mcp -- call my_tool '{"key":"val"}'
+  mcp-client-utils --protocol legacy --stdio "/path/to/legacy-server" -- tools
+  mcp-client-utils --protocol 2026-07-28 --http http://localhost:3000/mcp -- tools
   mcp-client-utils --sse http://localhost:3000/sse -- tools
 `;

@@ -5,10 +5,13 @@ export interface ContentItem {
   mimeType?: string;
 }
 
+export type ProtocolMode = "legacy" | "auto" | "2026-07-28";
+
 export interface TransportConfig {
   type: "stdio" | "http" | "sse";
   target: string;
   args?: string[];
+  protocol?: ProtocolMode;
 }
 
 export interface ServerEntry {
