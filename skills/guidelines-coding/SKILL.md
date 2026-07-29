@@ -1,12 +1,12 @@
 ---
-name: coding-guidelines
+name: guidelines-coding
 description: Behavioral guidelines to reduce common LLM coding mistakes. Use when writing, reviewing, or refactoring code to avoid overcomplication, make surgical changes, surface assumptions, and define verifiable success criteria.
 user-invocable: false
 disable-model-invocation: false
 license: MIT
 ---
 
-# Coding Guidelines
+# Guidelines: Coding
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
@@ -65,3 +65,15 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## 5. Verification Cadence
+
+**Complete coherent work before checking it. Match verification scope to the stage.**
+
+- Don't run tests, formatting, lint, or builds after every small edit.
+- During implementation, run a check only when its result will inform the next decision.
+- Complete the coherent implementation pass before routine verification.
+- Then run the narrowest relevant tests or checks for the changed scope.
+- Once the implementation has settled, run the relevant module or package tests, formatting, lint, and build checks once.
+- Run full-repository tests or end-to-end checks only for cross-cutting changes, shared core behavior, repository requirements, explicit user requests, or release readiness.
+- Don't repeat a check unless relevant code or conditions have changed.

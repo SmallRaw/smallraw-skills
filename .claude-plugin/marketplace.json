@@ -56,6 +56,13 @@
       "source": "./",
       "strict": false,
       "skills": ["./skills/codex-delegate-worker"]
+    },
+    {
+      "name": "guidelines-coding",
+      "description": "编码行为准则 - 减少常见 AI 编码错误，并按任务阶段控制验证范围与频率",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/guidelines-coding"]
     }
   ]
 }

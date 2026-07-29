@@ -16,6 +16,7 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin install openclaw-tmux-agent@smallraw-skills
 /plugin install mcp-lazy-cli@smallraw-skills
 /plugin install github-kb@smallraw-skills
+/plugin install guidelines-coding@smallraw-skills
 ```
 
 安装后使用 `/rule-gardener:rule-gardener`、`/fractal-docs`、`/excel-lite-cli`、`/mcp-lazy-cli` 调用。
@@ -32,6 +33,7 @@ cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.claude/skills/
 cp -r /tmp/smallraw-skills/skills/github-kb ~/.claude/skills/
+cp -r /tmp/smallraw-skills/skills/guidelines-coding ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
@@ -41,6 +43,7 @@ cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.config/opencode/skills/
 cp -r /tmp/smallraw-skills/skills/github-kb ~/.config/opencode/skills/
+cp -r /tmp/smallraw-skills/skills/guidelines-coding ~/.config/opencode/skills/
 ```
 
 手动安装后使用 `/rule-gardener` 调用。
@@ -57,6 +60,7 @@ cp -r /tmp/smallraw-skills/skills/github-kb ~/.config/opencode/skills/
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | ✅ Ready |
 | [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | ✅ Ready |
 | [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | ✅ Ready |
+| [guidelines-coding](skills/guidelines-coding/) | 编码行为准则 - 分阶段控制验证范围与频率 | ✅ Ready |
 
 ## CLI Packages
 
