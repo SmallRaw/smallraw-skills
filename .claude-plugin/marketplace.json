@@ -70,6 +70,20 @@
       "source": "./",
       "strict": false,
       "skills": ["./skills/guidelines-git"]
+    },
+    {
+      "name": "guidelines-security-local",
+      "description": "本地安全红线 - 禁止访问敏感数据并阻断文件名伪装域名",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/guidelines-security-local"]
+    },
+    {
+      "name": "guidelines-security-npm",
+      "description": "npm 供应链安全准则 - 隔离审查依赖变更、执行与发布风险",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/guidelines-security-npm"]
     }
   ]
 }

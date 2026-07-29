@@ -19,6 +19,8 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin install codex-delegate-worker@smallraw-skills
 /plugin install guidelines-coding@smallraw-skills
 /plugin install guidelines-git@smallraw-skills
+/plugin install guidelines-security-local@smallraw-skills
+/plugin install guidelines-security-npm@smallraw-skills
 ```
 
 各 Skill 会按其 `SKILL.md` 中的触发条件自动生效；支持手动调用的 Skill 也可以通过对应的 `/skill-name` 命令使用。
@@ -55,6 +57,8 @@ cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 | [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | Marketplace |
 | [guidelines-coding](skills/guidelines-coding/) | 编码行为准则 - 分阶段控制验证范围与频率 | Marketplace |
 | [guidelines-git](skills/guidelines-git/) | Git 行为准则 - 保护现有状态、明确操作授权并使用仓库专属 SSH 身份 | Marketplace |
+| [guidelines-security-local](skills/guidelines-security-local/) | 本地安全红线 - 禁止访问敏感数据并阻断文件名伪装域名 | Marketplace |
+| [guidelines-security-npm](skills/guidelines-security-npm/) | npm 供应链安全准则 - 隔离审查依赖变更、执行与发布风险 | Marketplace |
 | [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | Marketplace |
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | Marketplace |
 | [rule-gardener](skills/rule-gardener/) | 项目规则园丁 - 培育项目规范有机生长 | Marketplace |
