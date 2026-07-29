@@ -1,13 +1,22 @@
 ---
 name: codex-delegate-worker
-description: Delegate work to an external Agent through a separate one-off `codex exec` process. Use when the user asks to let an external Agent handle a task, or when the work should run in an isolated alternate-provider Codex worker without changing durable Codex config.
+description: Run a one-off Codex worker through the configured custom model node. Use only when the user explicitly requests the custom worker or custom node. Do not use for native Codex subagents, parallel agents, ChatGPT subscription usage, or OpenAI GPT models; those must use Codex's native agent path.
 ---
 
 # Codex Delegate Worker
 
-Use this skill to hand work to an external Agent. The user only needs to express the delegation intent, such as "让外部 Agent 做", "交给外部 Agent", or "use an outside worker"; the parent Codex session is responsible for writing the worker prompt.
+Use this skill to hand work to the configured custom-node worker. The user only needs to express that intent, such as "让自定义节点做", "交给自定义 worker", or "use the custom node"; the parent Codex session is responsible for writing the worker prompt.
 
 This is not a native Codex subagent role file and not an application worker thread. It starts a separate `codex exec --ephemeral` process with one-run provider overrides.
+
+## Provider Gate
+
+Before invoking the launcher, resolve the requested execution channel:
+
+- For a native Codex subagent, parallel agent, ChatGPT subscription, or OpenAI model such as `gpt-*`, do not use this skill. Use Codex's native subagent tools instead.
+- Use this skill only when the user explicitly wants the configured custom node.
+
+Do not infer the provider from the word "agent" or "subagent". If the user names both a native subagent and an OpenAI model, the native path wins.
 
 ## Launcher
 

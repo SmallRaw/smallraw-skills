@@ -1,6 +1,10 @@
 # Codex Delegate Worker
 
-This skill delegates work to a separate one-off `codex exec` process backed by an OpenAI-compatible provider. It is useful when the main Codex session should write the prompt, but the actual work should run through a cheap, local, or isolated provider-backed worker.
+This skill delegates work to a separate one-off `codex exec` process backed by a configured custom model node. It is useful when the main Codex session should write the prompt, but the actual work should run through that isolated worker.
+
+It is intentionally limited to the configured custom node. Native Codex
+subagents and OpenAI models backed by a ChatGPT subscription must use Codex's
+native agent path instead.
 
 ## Run
 
@@ -13,6 +17,16 @@ Any `codex exec` flags go before the task:
 ```bash
 node skills/codex-delegate-worker/scripts/codex-delegate-worker.mjs --sandbox read-only "summarize this repo"
 ```
+
+The launcher rejects OpenAI model ids supplied through config, `-m` /
+`--model`, or `-c model=...`. To run a separate subscription-backed OpenAI
+worker, bypass this skill and use the normal Codex login:
+
+```bash
+codex exec --ephemeral --ignore-user-config -c 'model_provider="openai"' -m gpt-5.5 "task"
+```
+
+Model availability depends on the active ChatGPT account and workspace.
 
 ## Config Files
 
@@ -35,7 +49,7 @@ Use command-backed auth for real credentials, so the API key is produced by a se
 ```json
 {
   "baseUrl": "https://provider.example/v1",
-  "model": "deepseek-flash",
+  "model": "custom-worker-model",
   "auth": {
     "command": "op",
     "args": ["read", "op://Private/Provider API Key/credential"]
@@ -65,7 +79,7 @@ For disposable local keys or quick smoke tests, the config file can contain the 
 ```json
 {
   "baseUrl": "https://provider.example/v1",
-  "model": "deepseek-flash",
+  "model": "custom-worker-model",
   "apiKey": "sk-or-provider-token-here"
 }
 ```
@@ -97,7 +111,7 @@ node skills/codex-delegate-worker/scripts/codex-delegate-worker.mjs "reply with 
 | --- | --- | --- |
 | `baseUrl` | `CODEX_DELEGATE_WORKER_BASE_URL` | Provider base URL, usually ending in `/v1`. |
 | `apiKey` | `CODEX_DELEGATE_WORKER_API_KEY` | Low-friction API key fallback. Prefer `auth.command` for real credentials. |
-| `model` | `CODEX_DELEGATE_WORKER_MODEL` | Model name. Defaults to `deepseek-flash`. |
+| `model` | `CODEX_DELEGATE_WORKER_MODEL` | Required model name exposed by the custom node. |
 | `providerId` | `CODEX_DELEGATE_WORKER_PROVIDER_ID` | Codex provider id. Defaults to `codex_delegate_worker`. |
 | `providerName` | `CODEX_DELEGATE_WORKER_PROVIDER_NAME` | Human-readable provider name. |
 | `configMode` | `CODEX_DELEGATE_WORKER_CONFIG_MODE` | `inline` or `temp-home`. Defaults to `inline`. |
@@ -106,7 +120,7 @@ node skills/codex-delegate-worker/scripts/codex-delegate-worker.mjs "reply with 
 | `auth.command` | `CODEX_DELEGATE_WORKER_AUTH_COMMAND` | Secret helper command for command-backed auth. |
 | `auth.args` | `CODEX_DELEGATE_WORKER_AUTH_ARGS_JSON` | JSON string array of args for the auth command. |
 
-Keep provider-specific overrides under the `CODEX_DELEGATE_WORKER_` namespace. Avoid names such as `KAPI_API_KEY` or `DEEPSEEK_API_KEY` in this skill.
+Keep node-specific overrides under the `CODEX_DELEGATE_WORKER_` namespace instead of introducing unrelated credential variable names.
 
 ## Config Mode
 
@@ -116,12 +130,12 @@ Use `"configMode": "temp-home"` only when debugging generated Codex config. Set 
 
 ## Chat Completions Providers
 
-Current Codex releases send custom-provider traffic through the Responses API path. A provider that only implements OpenAI-compatible Chat Completions, such as DeepSeek's native endpoint, will not work directly.
+Current Codex releases send custom-node traffic through the Responses API path. A node that only implements OpenAI-compatible Chat Completions will not work directly.
 
 ```json
 {
   "baseUrl": "http://127.0.0.1:8000/v1",
-  "model": "deepseek-chat",
+  "model": "custom-worker-model",
   "apiKey": "proxy-or-provider-token"
 }
 ```

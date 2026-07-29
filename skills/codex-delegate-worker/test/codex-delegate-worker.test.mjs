@@ -108,9 +108,9 @@ test("launches codex exec with a temporary namespaced provider config", async ()
         CODEX_DELEGATE_WORKER_CONFIG_MODE: "temp-home",
         CODEX_DELEGATE_WORKER_BASE_URL: "https://kapi.example.test/v1",
         CODEX_DELEGATE_WORKER_API_KEY: "test-key",
-        CODEX_DELEGATE_WORKER_MODEL: "deepseek-flash",
-        CODEX_DELEGATE_WORKER_PROVIDER_ID: "kapi_deepseek",
-        CODEX_DELEGATE_WORKER_PROVIDER_NAME: "Xiaoqiang KAPI worker",
+        CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
+        CODEX_DELEGATE_WORKER_PROVIDER_ID: "custom_node",
+        CODEX_DELEGATE_WORKER_PROVIDER_NAME: "Custom node worker",
       },
     );
 
@@ -126,10 +126,10 @@ test("launches codex exec with a temporary namespaced provider config", async ()
     ]);
     assert.equal(capture.apiKey, "test-key");
     assert.match(capture.codeHome, /codex-delegate-worker-/);
-    assert.match(capture.config, /model = "deepseek-flash"/);
-    assert.match(capture.config, /model_provider = "kapi_deepseek"/);
-    assert.match(capture.config, /\[model_providers\.kapi_deepseek\]/);
-    assert.match(capture.config, /name = "Xiaoqiang KAPI worker"/);
+    assert.match(capture.config, /model = "custom-worker-model"/);
+    assert.match(capture.config, /model_provider = "custom_node"/);
+    assert.match(capture.config, /\[model_providers\.custom_node\]/);
+    assert.match(capture.config, /name = "Custom node worker"/);
     assert.match(capture.config, /base_url = "https:\/\/kapi\.example\.test\/v1"/);
     assert.match(capture.config, /env_key = "CODEX_DELEGATE_WORKER_API_KEY"/);
     assert.match(capture.config, /\[shell_environment_policy\]/);
@@ -149,6 +149,7 @@ test("fails before spawning codex when the skill-scoped API key is missing", asy
       CODEX_DELEGATE_WORKER_CONFIG_MODE: "temp-home",
       CODEX_DELEGATE_WORKER_BASE_URL: "https://kapi.example.test/v1",
       CODEX_DELEGATE_WORKER_API_KEY: "",
+      CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
     });
 
     assert.equal(result.code, 2);
@@ -169,6 +170,7 @@ test("writes command-backed auth config without requiring an API key env var", a
       CODEX_DELEGATE_WORKER_CONFIG_MODE: "temp-home",
       CODEX_DELEGATE_WORKER_BASE_URL: "https://kapi.example.test/v1",
       CODEX_DELEGATE_WORKER_API_KEY: "",
+      CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
       CODEX_DELEGATE_WORKER_AUTH_COMMAND: "op",
       CODEX_DELEGATE_WORKER_AUTH_ARGS_JSON: JSON.stringify([
         "read",
@@ -364,6 +366,114 @@ test("uses inline config mode by default", async () => {
   }
 });
 
+test("rejects an OpenAI model configured for the custom node", async () => {
+  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
+  try {
+    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
+    const result = await runNode([launcher, "do work"], {
+      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
+      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
+      CODEX_DELEGATE_WORKER_BASE_URL: "https://external.example.test/v1",
+      CODEX_DELEGATE_WORKER_API_KEY: "test-key",
+      CODEX_DELEGATE_WORKER_MODEL: "gpt-5.5",
+    });
+
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /gpt-5\.5/);
+    assert.match(result.stderr, /native Codex subagent/);
+    assert.match(result.stderr, /normal ChatGPT login/);
+    assert.equal(fs.existsSync(capturePath), false);
+  } finally {
+    fs.rmSync(tmpdir, { recursive: true, force: true });
+  }
+});
+
+test("allows gpt-oss through the custom node", async () => {
+  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
+  try {
+    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
+    const result = await runNode([launcher, "do local work"], {
+      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
+      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
+      CODEX_DELEGATE_WORKER_BASE_URL: "http://127.0.0.1:8000/v1",
+      CODEX_DELEGATE_WORKER_API_KEY: "test-key",
+      CODEX_DELEGATE_WORKER_MODEL: "gpt-oss-20b",
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
+    assert.ok(capture.args.includes('model="gpt-oss-20b"'));
+  } finally {
+    fs.rmSync(tmpdir, { recursive: true, force: true });
+  }
+});
+
+test("rejects an OpenAI model passed as a codex model override", async () => {
+  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
+  try {
+    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
+    const result = await runNode([launcher, "-m", "gpt-5.5", "do work"], {
+      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
+      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
+      CODEX_DELEGATE_WORKER_BASE_URL: "https://external.example.test/v1",
+      CODEX_DELEGATE_WORKER_API_KEY: "test-key",
+      CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
+    });
+
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /gpt-5\.5/);
+    assert.match(result.stderr, /native Codex subagent/);
+    assert.equal(fs.existsSync(capturePath), false);
+  } finally {
+    fs.rmSync(tmpdir, { recursive: true, force: true });
+  }
+});
+
+test("rejects a provider-qualified OpenAI model override", async () => {
+  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
+  try {
+    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
+    const result = await runNode([launcher, "--model=openai/gpt-5.5", "do work"], {
+      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
+      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
+      CODEX_DELEGATE_WORKER_BASE_URL: "https://external.example.test/v1",
+      CODEX_DELEGATE_WORKER_API_KEY: "test-key",
+      CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
+    });
+
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /openai\/gpt-5\.5/);
+    assert.match(result.stderr, /native Codex subagent/);
+    assert.equal(fs.existsSync(capturePath), false);
+  } finally {
+    fs.rmSync(tmpdir, { recursive: true, force: true });
+  }
+});
+
+test("rejects an OpenAI model passed as a generic config override", async () => {
+  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
+  try {
+    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
+    const result = await runNode(
+      [launcher, "-c", 'model="gpt-5.5"', "do work"],
+      {
+        CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
+        CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
+        CODEX_DELEGATE_WORKER_BASE_URL: "https://external.example.test/v1",
+        CODEX_DELEGATE_WORKER_API_KEY: "test-key",
+        CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
+      },
+    );
+
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /gpt-5\.5/);
+    assert.match(result.stderr, /normal ChatGPT login/);
+    assert.equal(fs.existsSync(capturePath), false);
+  } finally {
+    fs.rmSync(tmpdir, { recursive: true, force: true });
+  }
+});
+
 test("rejects wireApi config because the launcher no longer exposes it", async () => {
   const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
   try {
@@ -371,7 +481,8 @@ test("rejects wireApi config because the launcher no longer exposes it", async (
     fs.writeFileSync(
       path.join(tmpdir, ".codex-delegate-worker.json"),
       JSON.stringify({
-        baseUrl: "https://api.deepseek.com/v1",
+        baseUrl: "https://custom-node.example.test/v1",
+        model: "custom-worker-model",
         apiKey: "test-key",
         codexBin: fakeCodex,
         wireApi: "responses",
