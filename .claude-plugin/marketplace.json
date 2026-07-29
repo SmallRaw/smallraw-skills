@@ -63,6 +63,13 @@
       "source": "./",
       "strict": false,
       "skills": ["./skills/guidelines-coding"]
+    },
+    {
+      "name": "guidelines-git",
+      "description": "Git 行为准则 - 保护现有状态、明确操作授权并使用仓库专属 SSH 身份",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/guidelines-git"]
     }
   ]
 }

@@ -16,10 +16,12 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin install openclaw-tmux-agent@smallraw-skills
 /plugin install mcp-lazy-cli@smallraw-skills
 /plugin install github-kb@smallraw-skills
+/plugin install codex-delegate-worker@smallraw-skills
 /plugin install guidelines-coding@smallraw-skills
+/plugin install guidelines-git@smallraw-skills
 ```
 
-安装后使用 `/rule-gardener:rule-gardener`、`/fractal-docs`、`/excel-lite-cli`、`/mcp-lazy-cli` 调用。
+各 Skill 会按其 `SKILL.md` 中的触发条件自动生效；支持手动调用的 Skill 也可以通过对应的 `/skill-name` 命令使用。
 
 ### 手动安装
 
@@ -28,45 +30,42 @@ A collection of AI development skills compatible with [Claude Code](https://code
 mkdir -p ~/.claude/skills
 git clone https://github.com/smallraw/smallraw-skills.git /tmp/smallraw-skills
 cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/github-kb ~/.claude/skills/
-cp -r /tmp/smallraw-skills/skills/guidelines-coding ~/.claude/skills/
 
 # OpenCode
 mkdir -p ~/.config/opencode/skills
 cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/fractal-docs ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/excel-lite-cli ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/openclaw-tmux-agent ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/mcp-lazy-cli ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/github-kb ~/.config/opencode/skills/
-cp -r /tmp/smallraw-skills/skills/guidelines-coding ~/.config/opencode/skills/
 ```
 
-手动安装后使用 `/rule-gardener` 调用。
+将示例中的 `rule-gardener` 换成你要安装的 Skill 名称。
 
 ---
 
 ## Available Skills
 
-| Skill | Description | Status |
-|-------|-------------|--------|
-| [rule-gardener](skills/rule-gardener/) | 项目规则园丁 - 培育项目规范有机生长 | ✅ Ready |
-| [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | ✅ Ready |
-| [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | ✅ Ready |
-| [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | ✅ Ready |
-| [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | ✅ Ready |
-| [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | ✅ Ready |
-| [guidelines-coding](skills/guidelines-coding/) | 编码行为准则 - 分阶段控制验证范围与频率 | ✅ Ready |
+`Marketplace` 表示已在 `.claude-plugin/marketplace.json` 中注册；`Manual` 表示仓库已包含，但目前需要手动安装。
+
+| Skill | Description | Installation |
+|-------|-------------|--------------|
+| [agent-farm-delegation](skills/agent-farm-delegation/) | 将范围明确的小任务委托给 ACPX、Pi、Codex 或本地 ACP worker | Manual |
+| [app-analyzer](skills/app-analyzer/) | 分析和逆向 macOS `.app` 的技术栈、Bundle、资源与二进制 | Manual |
+| [cc-setup](skills/cc-setup/) | 交互式配置 Claude Code 的 Skill 日志、HUD statusLine 等功能 | Manual |
+| [codex-delegate-worker](skills/codex-delegate-worker/) | 通过配置好的自定义模型节点运行一次性 Codex worker | Marketplace |
+| [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | Marketplace |
+| [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | Marketplace |
+| [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | Marketplace |
+| [guidelines-coding](skills/guidelines-coding/) | 编码行为准则 - 分阶段控制验证范围与频率 | Marketplace |
+| [guidelines-git](skills/guidelines-git/) | Git 行为准则 - 保护现有状态、明确操作授权并使用仓库专属 SSH 身份 | Marketplace |
+| [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | Marketplace |
+| [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | Marketplace |
+| [rule-gardener](skills/rule-gardener/) | 项目规则园丁 - 培育项目规范有机生长 | Marketplace |
+| [skill-writing-guide](skills/skill-writing-guide/) | 配合 skill-creator 使用的 Skill 编写约束与最佳实践 | Manual |
 
 ## CLI Packages
 
-| Package | Binary | Description |
-|---------|--------|-------------|
-| [fractal-context-cli](packages/fractal-context-cli/) | `fractal-context` | Fractal docs-aware context reader: `status`, `list`, `read`, `search` |
+| Package | Binaries | Description |
+|---------|----------|-------------|
+| [fractal-context-cli](packages/fractal-context-cli/) | `fractal-context`, `fractal-context-cli` | Fractal docs-aware context reader: `status`, `list`, `read`, `search` |
+| [mcp-client-utils](packages/mcp-client-utils/) | `mcp-client-utils` | Lazy MCP client: inspect the registry and connect, call, then disconnect on demand |
 
 ---
 

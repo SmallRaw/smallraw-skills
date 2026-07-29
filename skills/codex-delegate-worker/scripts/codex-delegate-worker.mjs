@@ -6,6 +6,8 @@ import path from "node:path";
 
 const ENV_PREFIX = "CODEX_DELEGATE_WORKER_";
 const API_KEY_ENV = `${ENV_PREFIX}API_KEY`;
+const OPENAI_MODEL_PATTERN =
+  /^(?:openai[/:])?(?:gpt-(?!oss(?:-|$))|chatgpt(?:-|$)|codex(?:-|$)|o[134](?:-|$))/i;
 
 function usage() {
   return `Usage:
@@ -17,7 +19,7 @@ Environment:
   ${API_KEY_ENV}         Provider API key for low-friction env-key mode.
   ${ENV_PREFIX}AUTH_COMMAND    Secret helper command for high-security auth mode.
   ${ENV_PREFIX}AUTH_ARGS_JSON  Optional JSON array of args for AUTH_COMMAND.
-  ${ENV_PREFIX}MODEL           Default: deepseek-flash.
+  ${ENV_PREFIX}MODEL           Required model name exposed by the custom node.
   ${ENV_PREFIX}PROVIDER_ID     Default: codex_delegate_worker.
   ${ENV_PREFIX}PROVIDER_NAME   Default: Codex delegate worker.
   ${ENV_PREFIX}CONFIG_MODE     inline (default) or temp-home.
@@ -63,6 +65,73 @@ function configOverride(key, value) {
 
 function isValidProviderId(value) {
   return /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+function normalizeConfigString(value) {
+  const trimmed = String(value).trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function isOpenAIModel(value) {
+  return OPENAI_MODEL_PATTERN.test(normalizeConfigString(value));
+}
+
+function requestedModelOverrides(args) {
+  const models = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "-m" || arg === "--model") {
+      if (index + 1 < args.length) {
+        models.push(args[index + 1]);
+        index += 1;
+      }
+      continue;
+    }
+
+    if (arg.startsWith("--model=")) {
+      models.push(arg.slice("--model=".length));
+      continue;
+    }
+
+    if (arg.startsWith("-m=")) {
+      models.push(arg.slice("-m=".length));
+      continue;
+    }
+
+    let override = "";
+    if (arg === "-c" || arg === "--config") {
+      if (index + 1 < args.length) {
+        override = args[index + 1];
+        index += 1;
+      }
+    } else if (arg.startsWith("--config=")) {
+      override = arg.slice("--config=".length);
+    }
+
+    const separator = override.indexOf("=");
+    if (separator !== -1 && override.slice(0, separator).trim() === "model") {
+      models.push(override.slice(separator + 1));
+    }
+  }
+
+  return models;
+}
+
+function failOpenAIModel(model) {
+  const normalizedModel = normalizeConfigString(model);
+  fail(
+    `OpenAI/ChatGPT model "${normalizedModel}" cannot use the custom-node worker; ` +
+      `use a native Codex subagent or run codex exec with the normal ChatGPT login`,
+  );
 }
 
 function parseArgsJson(value) {
@@ -214,7 +283,7 @@ async function main() {
     fail("config auth args must be an array of strings");
   }
 
-  const model = firstValue(process.env[`${ENV_PREFIX}MODEL`], fileConfig.model, "deepseek-flash");
+  const model = firstValue(process.env[`${ENV_PREFIX}MODEL`], fileConfig.model);
   const providerId =
     firstValue(process.env[`${ENV_PREFIX}PROVIDER_ID`], fileConfig.providerId, "codex_delegate_worker");
   const providerName =
@@ -223,11 +292,21 @@ async function main() {
   const codexBin = firstValue(process.env[`${ENV_PREFIX}CODEX_BIN`], fileConfig.codexBin, "codex");
   const keepHome = firstValue(process.env[`${ENV_PREFIX}KEEP_HOME`], fileConfig.keepHome) === "1";
 
+  if (isOpenAIModel(model)) {
+    failOpenAIModel(model);
+  }
+  const openAIModelOverride = requestedModelOverrides(args).find(isOpenAIModel);
+  if (openAIModelOverride) {
+    failOpenAIModel(openAIModelOverride);
+  }
   if (!baseUrl) {
     fail(`missing ${ENV_PREFIX}BASE_URL`);
   }
   if (!apiKey && !authCommand) {
     fail(`missing ${API_KEY_ENV}`);
+  }
+  if (!model) {
+    fail(`missing ${ENV_PREFIX}MODEL`);
   }
   if (!isValidProviderId(providerId)) {
     fail(`${ENV_PREFIX}PROVIDER_ID must contain only letters, numbers, underscores, or hyphens`);
