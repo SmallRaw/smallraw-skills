@@ -1,0 +1,7 @@
+{
+  "name": "fixture-project",
+  "version": "1.0.0",
+  "dependencies": {
+    "alpha": "^2.0.0"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "skill_name": "guardrails-agent-plugin",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our dependency-security skill already knows how to classify package-manager commands and exposes a local preflight script. Make that policy run before npm, pnpm, yarn, npx, and bunx execution in Claude Code and Codex without duplicating the policy logic.",
+      "expected_output": "Implements a shared deterministic policy hook with Claude-compatible packaging, preserves host-specific confirmation behavior, and verifies harmless allow and block cases.",
+      "files": [],
+      "expectations": [
+        "The dependency-security skill remains the source of policy logic; the host adapters do not copy its blacklist or classifier.",
+        "Claude Code and Codex share one Claude-compatible hook implementation instead of separate policy forks.",
+        "Confirmation remains ask on Claude Code; Codex preserves an existing PermissionRequest prompt or explicitly denies and reports the gap when no native approval or requested one-use grant exists.",
+        "The hook targets package-manager execution narrowly and does not run the full scanner for unrelated tools.",
+        "The solution does not require a fixed check/install command vocabulary."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Turn this local-data policy into a Pi guardrail: deny protected file reads, request confirmation for access outside the workspace, and keep the existing policy module as the source of truth.",
+      "expected_output": "Builds a thin Pi tool_call adapter that calls the supplied policy, blocks headless confirmation paths, and does not copy the domain blacklist into the adapter.",
+      "files": [],
+      "expectations": [
+        "The Pi extension uses the tool_call event and delegates decisions to the supplied policy module.",
+        "The adapter returns block true with a reason for denied operations.",
+        "Confirmation uses Pi UI when available and blocks conservatively without UI.",
+        "The protected-path blacklist is not duplicated in the Pi adapter."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "This Git policy should intercept only remote-writing operations in OpenCode. Wire it into the Agent without adding fixed install commands or changing unrelated plugins.",
+      "expected_output": "Uses OpenCode's tool.execute.before callback, preserves the caller's Git policy, merges surgically, and reports enforcement gaps instead of inventing support.",
+      "files": [],
+      "expectations": [
+        "The OpenCode adapter uses tool.execute.before and calls the supplied Git policy.",
+        "The adapter is scoped to remote-writing operations rather than every tool call.",
+        "Existing unrelated OpenCode plugins remain unchanged.",
+        "Unsupported confirmation or interception paths are reported instead of silently allowed."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I have no existing script, only these domain rules: allow reads inside the workspace, confirm reads outside it, and deny credential paths. Turn them into one guardrail for Claude Code and Pi without teaching the adapters the rules.",
+      "expected_output": "Materializes the supplied rules once as a host-neutral policy module, adds thin host adapters, and installs both under one stable policy identity.",
+      "files": [],
+      "expectations": [
+        "The declarative rules are materialized once in a shared host-neutral policy module.",
+        "Claude Code and Pi adapters normalize their native inputs and call the shared module instead of copying rules.",
+        "The installed policy has a stable identity derived from the domain, policy name, and scope when the caller did not supply one.",
+        "Malformed decisions and policy failures block rather than silently allow.",
+        "Claude Code uses native ask while Pi uses its UI confirmation and blocks headless execution."
+      ]
+    }
+  ]
+}

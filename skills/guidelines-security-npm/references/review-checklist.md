@@ -40,6 +40,7 @@ Verify the installed package-manager version and its official documentation befo
 
 Record and review:
 
+- normally require a seven-day release cooldown before adopting a new version;
 - exact name, scope, version, publication time, registry, tarball URL, integrity, signatures, and attestations;
 - current maintainers, recent maintainer or ownership changes, repository and homepage changes, deprecation, and release cadence;
 - package and unpacked size, file count, bundled dependencies, platform artifacts, lifecycle scripts, and `bin`;

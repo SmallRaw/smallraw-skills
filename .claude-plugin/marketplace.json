@@ -69,21 +69,67 @@
       "description": "Git 行为准则 - 保护现有状态、明确操作授权并使用仓库专属 SSH 身份",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guidelines-git"]
+      "skills": ["./skills/guidelines-git"],
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-git/scripts/policy.mjs\""
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "guidelines-security-local",
       "description": "本地安全红线 - 禁止访问敏感数据并阻断文件名伪装域名",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guidelines-security-local"]
+      "skills": ["./skills/guidelines-security-local"],
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash|Read|Write|Edit|NotebookEdit|Glob|Grep|WebFetch",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-local/scripts/policy.mjs\""
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "guidelines-security-npm",
       "description": "npm 供应链安全准则 - 隔离审查依赖变更、执行与发布风险",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guidelines-security-npm"]
+      "skills": ["./skills/guidelines-security-npm"],
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-npm/scripts/policy.mjs\""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "guardrails-agent-plugin",
+      "description": "跨 Agent Hook 实现层 - 将领域 Skill 的规则、预检和阻断要求转换为当前 Agent 的原生 Hook",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/guardrails-agent-plugin"]
     }
   ]
 }
