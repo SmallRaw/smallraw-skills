@@ -38,36 +38,14 @@ Installable hosts are the ones whose blocking semantics were verified: Claude Co
 and Cursor. Every other host is scanned for an existing install but never written blindly —
 a hook that registers and silently no-ops is worse than none, because it reads as protection.
 
-## For Any Other Policy or Host
+## When the Installer Refuses
 
-1. Preserve the caller's exact allow, confirm, deny, preflight, and remediation semantics.
-   Clarify only when a missing choice would materially change enforcement.
-2. Check the host's real registration point and any existing entry for this policy's stable
-   ID first. Update that entry; never append a duplicate or create a plugin to work around it.
-3. Choose the narrowest deterministic lifecycle event and matcher. Prefer a command or
-   native callback over an LLM-backed prompt or agent hook.
-4. Reuse a caller-provided policy module, and reuse `scripts/guard.mjs` on any host that
-   accepts Claude-compatible hook payloads. If the caller supplies only rules, materialize
-   them once as a host-neutral policy module; keep every host adapter limited to input
-   normalization, policy invocation, and decision translation.
-5. Strictly validate policy output. Errors, timeouts, unknown decisions, and malformed
-   blocks must use the host's explicit blocking path where possible; report unavoidable
-   fail-open behavior.
-6. Use native confirmation when available. Otherwise treat `confirm` as `deny` and report
-   the semantic gap unless the caller explicitly requests a session-scoped, single-use
-   approval bound to the normalized operation. Never weaken `confirm` or `deny` to `allow`.
-7. Verify once with harmless allow and block cases, then report the files, scope, active
-   events, trust state, and residual coverage gaps.
-
-## Host References
-
-- Claude Code, Codex, Cursor, GitHub Copilot, or a Claude-compatible host:
-  [references/open-plugins.md](references/open-plugins.md)
-- Pi: [references/pi.md](references/pi.md)
-- OpenCode: [references/opencode.md](references/opencode.md)
-
-For an unlisted host, use its current official hook or plugin documentation and build a
-thin adapter to the caller's policy. Do not infer wire formats from another Agent.
+Only then: read [references/custom-policy.md](references/custom-policy.md) for the manual
+procedure and the bar a new host must clear, plus the matching host reference —
+[open-plugins.md](references/open-plugins.md) for Claude Code, Codex, Cursor, Copilot, and
+other Claude-compatible hosts; [pi.md](references/pi.md); [opencode.md](references/opencode.md).
+For an unlisted host use its own official documentation; never infer wire formats from
+another Agent.
 
 ## Gotchas
 
