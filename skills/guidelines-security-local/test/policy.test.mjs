@@ -33,6 +33,32 @@ test("blocks protected targets reached through a symlink", (context) => {
   assert.equal(evaluatePath(path.join(root, "current", "value.txt")).decision, "deny");
 });
 
+test("blocks established credential stores by their conventional names", () => {
+  for (const target of [
+    "/workspace/.htpasswd",
+    "~/.pgpass",
+    "~/.my.cnf",
+    "~/.authinfo",
+    "/etc/shadow",
+  ]) {
+    assert.equal(evaluatePath(target).ruleId, "protected-credential-file", target);
+  }
+  assert.equal(evaluatePath("~/.password-store/github.gpg").decision, "deny");
+
+  // Ordinary names that merely mention a secret concept stay readable.
+  for (const target of [
+    "/workspace/src/password-reset.tsx",
+    "/workspace/lib/passwordStrength.ts",
+    "/workspace/docs/password-policy.md",
+    "/workspace/components/PasswordInput.vue",
+    "/workspace/config/db-password.txt",
+    "/workspace/styles/shadow",
+    "/workspace/src/shadow/index.ts",
+  ]) {
+    assert.equal(evaluatePath(target).decision, "allow", target);
+  }
+});
+
 test("does not block ordinary source names containing token", () => {
   assert.equal(evaluatePath("/workspace/src/token_bucket.ts").decision, "allow");
   assert.equal(evaluatePath("/workspace/client_secretary_notes.md").decision, "allow");

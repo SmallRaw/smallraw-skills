@@ -36,7 +36,13 @@ const DENIED_DOMAINS = new Set([
   "server.rs",
 ]);
 const TRUSTED_FILELIKE_DOMAINS = new Set(["docs.rs", "crates.rs", "lib.rs"]);
-const CREDENTIAL_STORE_DIRECTORY_NAMES = new Set([".ssh", ".gnupg", ".aws", ".kube"]);
+const CREDENTIAL_STORE_DIRECTORY_NAMES = new Set([
+  ".ssh",
+  ".gnupg",
+  ".aws",
+  ".kube",
+  ".password-store",
+]);
 // Matched only by name, not by proven content: inside the workspace these
 // confirm with the user instead of denying absolutely.
 const NAME_HEURISTIC_DIRECTORY_NAMES = new Set([
@@ -66,6 +72,12 @@ const PROTECTED_BASENAMES = new Set([
   ".pypirc",
   ".netrc",
   ".git-credentials",
+  // Established credential stores, matched by their exact conventional names
+  // rather than a "password" substring that mostly hits ordinary source files.
+  ".htpasswd",
+  ".pgpass",
+  ".my.cnf",
+  ".authinfo",
   ".bash_history",
   ".zsh_history",
   ".python_history",
@@ -211,6 +223,8 @@ function classifyAbsolutePath(resolved, inWorkspace) {
     basename.startsWith(".yarnrc") ||
     /^client_secret.*\.json$/u.test(basename) ||
     /^service[-_]account.*\.json$/u.test(basename) ||
+    // Only the system shadow file itself; "shadow" is too common a directory name.
+    resolved === "/etc/shadow" ||
     isCoreDumpFile(resolved, basename)
   ) {
     return blocked(
