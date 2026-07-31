@@ -12,4 +12,5 @@ license: MIT
 - Destruction needs a nameable target: state the exact paths and why they are yours to change. Workspace-internal cleanup is routine; system roots, devices, and the home directory itself are never targets.
 - Never escalate privileges, write block devices, or erase disks — report the need and stop.
 - Do not wrap commands in `bash -c`, `eval`, or a nested shell to get past a gate; run the inner command directly so it can be classified.
+- Reach for the allowed form first rather than discovering it from a block: workspace-relative targets, a specific PID over a pattern kill, the inner command over a wrapper. In an unattended run, raise anything gated before starting it.
 - Keep native permissions and sandboxing on; this is a fast gate, not complete shell mediation, and these rules bind commands it cannot see, such as substitutions.
