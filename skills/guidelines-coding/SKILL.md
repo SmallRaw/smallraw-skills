@@ -77,3 +77,19 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Once the implementation has settled, run the relevant module or package tests, formatting, lint, and build checks once.
 - Run full-repository tests or end-to-end checks only for cross-cutting changes, shared core behavior, repository requirements, explicit user requests, or release readiness.
 - Don't repeat a check unless relevant code or conditions have changed.
+
+## 6. Sequence Gated Steps
+
+**Cluster the steps that stop for the user at the edges, not through the middle.**
+
+Some operations wait for a human — pushes, dependency installs, anything reaching outside
+the workspace. A conversational go-ahead does not clear them in advance, so where they sit
+in the plan decides whether a long run flows or stalls halfway.
+
+- Put prerequisites first, while the user is still around: installs, setup, scaffolding.
+- Keep the middle to work that needs no approval — edits, tests, commits, local cleanup.
+- Save outputs for the end and raise them together: push, pull request, cleanup elsewhere.
+- Commit as each coherent unit lands. Commits need no approval, so they are the cheap
+  checkpoint in a long run — frequency follows the work, not a quota.
+- When a step will stop and the user is away, finish what does not need them and report
+  what is left. Never look for a way around the prompt.
