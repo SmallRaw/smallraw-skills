@@ -36,7 +36,13 @@ const DENIED_DOMAINS = new Set([
   "server.rs",
 ]);
 const TRUSTED_FILELIKE_DOMAINS = new Set(["docs.rs", "crates.rs", "lib.rs"]);
-const CREDENTIAL_STORE_DIRECTORY_NAMES = new Set([".ssh", ".gnupg", ".aws", ".kube"]);
+const CREDENTIAL_STORE_DIRECTORY_NAMES = new Set([
+  ".ssh",
+  ".gnupg",
+  ".aws",
+  ".kube",
+  ".password-store",
+]);
 // Matched only by name, not by proven content: inside the workspace these
 // confirm with the user instead of denying absolutely.
 const NAME_HEURISTIC_DIRECTORY_NAMES = new Set([
@@ -60,46 +66,18 @@ const PROTECTED_EXTENSIONS = new Set([
   ".crash",
   ".dmp",
 ]);
-// Source, docs, and test files routinely discuss passwords without holding one;
-// only non-code files named after a secret are treated as protected.
-const CODE_LIKE_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".py",
-  ".rb",
-  ".go",
-  ".rs",
-  ".java",
-  ".kt",
-  ".swift",
-  ".c",
-  ".h",
-  ".cc",
-  ".cpp",
-  ".cs",
-  ".php",
-  ".sh",
-  ".css",
-  ".scss",
-  ".html",
-  ".vue",
-  ".svelte",
-  ".md",
-  ".mdx",
-  ".sql",
-  ".proto",
-  ".snap",
-]);
 const PROTECTED_BASENAMES = new Set([
   ".npmrc",
   ".pnpmrc",
   ".pypirc",
   ".netrc",
   ".git-credentials",
+  // Established credential stores, matched by their exact conventional names
+  // rather than a "password" substring that mostly hits ordinary source files.
+  ".htpasswd",
+  ".pgpass",
+  ".my.cnf",
+  ".authinfo",
   ".bash_history",
   ".zsh_history",
   ".python_history",
@@ -245,10 +223,8 @@ function classifyAbsolutePath(resolved, inWorkspace) {
     basename.startsWith(".yarnrc") ||
     /^client_secret.*\.json$/u.test(basename) ||
     /^service[-_]account.*\.json$/u.test(basename) ||
-    (/(?:^|[-_. ])(?:password|passwd|passphrase)s?(?:[-_. ]|$)/u.test(
-      basename.slice(0, basename.length - extension.length) || basename,
-    ) &&
-      !CODE_LIKE_EXTENSIONS.has(extension)) ||
+    // Only the system shadow file itself; "shadow" is too common a directory name.
+    resolved === "/etc/shadow" ||
     isCoreDumpFile(resolved, basename)
   ) {
     return blocked(

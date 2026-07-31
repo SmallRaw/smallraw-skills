@@ -33,23 +33,27 @@ test("blocks protected targets reached through a symlink", (context) => {
   assert.equal(evaluatePath(path.join(root, "current", "value.txt")).decision, "deny");
 });
 
-test("blocks secret-named data files but not password-related source", () => {
+test("blocks established credential stores by their conventional names", () => {
   for (const target of [
-    "/workspace/config/db-password.txt",
-    "/workspace/passwords.csv",
-    "/workspace/vault/passphrase",
-    "/workspace/app-passwd.json",
-    "/workspace/notes/PASSWORD.txt",
+    "/workspace/.htpasswd",
+    "~/.pgpass",
+    "~/.my.cnf",
+    "~/.authinfo",
+    "/etc/shadow",
   ]) {
     assert.equal(evaluatePath(target).ruleId, "protected-credential-file", target);
   }
+  assert.equal(evaluatePath("~/.password-store/github.gpg").decision, "deny");
+
+  // Ordinary names that merely mention a secret concept stay readable.
   for (const target of [
     "/workspace/src/password-reset.tsx",
     "/workspace/lib/passwordStrength.ts",
     "/workspace/docs/password-policy.md",
     "/workspace/components/PasswordInput.vue",
-    "/workspace/test/password.test.js",
-    "/workspace/src/passwordless/index.ts",
+    "/workspace/config/db-password.txt",
+    "/workspace/styles/shadow",
+    "/workspace/src/shadow/index.ts",
   ]) {
     assert.equal(evaluatePath(target).decision, "allow", target);
   }
