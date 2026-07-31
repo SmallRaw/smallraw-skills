@@ -90,7 +90,7 @@ def resolve_output_dir(app_path: Path, output_arg: str | None) -> Path:
         out = Path(output_arg)
     else:
         app_name = derive_app_name(app_path)
-        out = Path("./docs/dump") / f"{app_name}.analysis"
+        out = Path.home() / ".cache" / "app-analyzer" / f"{app_name}.analysis"
     out.mkdir(parents=True, exist_ok=True)
     return out.resolve()
 
@@ -1101,7 +1101,7 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument(
             "--output",
             default=None,
-            help="Output directory (default: ./docs/dump/<AppName>.analysis/)",
+            help="Output directory (default: ~/.cache/app-analyzer/<AppName>.analysis/)",
         )
 
     # --- app_info ---

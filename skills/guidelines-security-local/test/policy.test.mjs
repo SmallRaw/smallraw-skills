@@ -222,6 +222,20 @@ test("checks protected paths and URLs in the same tool call", () => {
   );
 });
 
+test("CLI runs and emits a verdict when invoked through a symlink", (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "local-policy-link-"));
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const link = path.join(root, "policy.mjs");
+  fs.symlinkSync(policyScript, link);
+
+  const run = spawnSync(process.execPath, [link], {
+    input: JSON.stringify({ kind: "command", target: "env" }),
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 2);
+  assert.equal(JSON.parse(run.stdout).ruleId, "process-environment-access");
+});
+
 test("CLI emits stable JSON and exits 2 on denial", () => {
   const run = spawnSync(process.execPath, [policyScript], {
     input: JSON.stringify({ kind: "path", target: ".env.local" }),

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -15,6 +18,51 @@ test("allows read-only Git inspection", () => {
   assert.equal(evaluateCommand("git -C repo diff --cached").decision, "allow");
   assert.equal(evaluateCommand("git branch --show-current").decision, "allow");
   assert.equal(evaluateCommand("git remote -v").decision, "allow");
+});
+
+test("allows common read-only inspection forms without confirmation", () => {
+  for (const command of [
+    "git merge-base --is-ancestor abc123 origin/main",
+    "git rev-list --count HEAD",
+    "git describe --tags",
+    "git check-ignore workspaces/foo",
+    "git show-ref --heads",
+    "git ls-remote origin main",
+    "git diff-tree --no-commit-id --name-only HEAD",
+    "git branch -a",
+    "git branch -vv",
+    "git tag -n9",
+    "git stash list",
+    "git stash show",
+    "git worktree list",
+    "git symbolic-ref --short HEAD",
+    "git reflog",
+    "git cherry -v",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "allow", command);
+  }
+  assert.equal(evaluateCommand("git branch -d feature").decision, "confirm");
+  assert.equal(evaluateCommand("git stash push").decision, "confirm");
+  assert.equal(evaluateCommand("git worktree add ../wt").decision, "confirm");
+  assert.equal(
+    evaluateCommand("git symbolic-ref HEAD refs/heads/other").decision,
+    "confirm",
+  );
+  assert.equal(evaluateCommand("git reflog expire --all").decision, "confirm");
+});
+
+test("CLI runs and emits a verdict when invoked through a symlink", (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "git-policy-link-"));
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const link = path.join(root, "policy.mjs");
+  fs.symlinkSync(policyScript, link);
+
+  const run = spawnSync(process.execPath, [link], {
+    input: JSON.stringify({ kind: "command", target: "gh auth setup-git" }),
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 2);
+  assert.equal(JSON.parse(run.stdout).decision, "deny");
 });
 
 test("allows explicit staging and normal commits", () => {

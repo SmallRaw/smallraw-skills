@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 const DENIED_DOMAINS = new Set([
@@ -679,6 +679,22 @@ async function main() {
     decision.decision === "allow" ? 0 : decision.decision === "confirm" ? 1 : 2;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node resolves symlinks when loading a module, so import.meta.url is the real
+// path while argv[1] is whatever the caller typed. Comparing them directly makes
+// the gate silently do nothing when invoked through a symlinked skill directory —
+// exit 0, no verdict, which reads as "allowed". Compare resolved paths instead.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  const self = fileURLToPath(import.meta.url);
+  if (entry === self) return true;
+  try {
+    return fs.realpathSync(entry) === fs.realpathSync(self);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   main();
 }

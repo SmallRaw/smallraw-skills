@@ -16,8 +16,8 @@ disable-model-invocation: false
 3. **架构识别靠指纹组合** — 读 [架构指纹表](knowledge/arch-fingerprints.md) 了解每种架构的识别模式
 4. **源码目录必须逐文件标注** — 提取出的源码目录，每个文件/目录都要标注用途，禁止只列文件名
 5. **报告自适应** — 4 个核心章节必出，其余章节按发现生成，没分析到的留 `[待深入]` 占位
-6. **执行前 cd 到 skill 目录** — `cd` 到包含此 SKILL.md 的目录再调用脚本
-7. **产物输出到 `./docs/dump/<AppName>.analysis/`** — 脚本自动建目录，提取的文件保持原始结构
+6. **从仓库根目录执行** — 用 `<skill-dir>/scripts/app_analyzer.py` 定位脚本，不要切换到 Skill 目录
+7. **产物输出到 `~/.cache/app-analyzer/<AppName>.analysis/`** — 用户级 cache 目录，脚本自动建目录，提取的文件保持原始结构；同一 App 重复分析永远复用这一个目录（需要干净结果就先清空它），产物一律不落入项目仓库
 
 ## Gotchas
 

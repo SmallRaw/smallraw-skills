@@ -1,13 +1,13 @@
 # app-analyzer 工具完整文档
 
-所有工具通过 `python scripts/app_analyzer.py <command>` 调用。
+在仓库根目录通过 `python <skill-dir>/scripts/app_analyzer.py <command>` 调用所有工具。
 
 ## 公共参数
 
 | 参数 | 必选 | 说明 |
 |------|------|------|
 | `--app` | 是 | .app bundle 路径（脚本验证路径存在 + Contents/Info.plist） |
-| `--output` | 否 | 产物输出目录，默认 `./docs/dump/<AppName>.analysis/` |
+| `--output` | 否 | 产物输出目录，默认 `~/.cache/app-analyzer/<AppName>.analysis/` |
 
 ## 错误处理
 
@@ -39,7 +39,7 @@
 **场景**：分析的第一步，拿到 App 基本身份。
 
 ```bash
-python scripts/app_analyzer.py app_info --app /path/to/X.app
+python <skill-dir>/scripts/app_analyzer.py app_info --app /path/to/X.app
 ```
 
 ---
@@ -56,7 +56,7 @@ python scripts/app_analyzer.py app_info --app /path/to/X.app
 **场景**：看全貌，发现关键目录（Frameworks/、Resources/、PlugIns/ 等）。
 
 ```bash
-python scripts/app_analyzer.py app_tree --app /path/to/X.app --depth 4
+python <skill-dir>/scripts/app_analyzer.py app_tree --app /path/to/X.app --depth 4
 ```
 
 ---
@@ -73,7 +73,7 @@ python scripts/app_analyzer.py app_tree --app /path/to/X.app --depth 4
 **场景**：确认文件类型（二进制？脚本？图片？数据库？）
 
 ```bash
-python scripts/app_analyzer.py file_type --app /path/to/X.app --path Contents/MacOS/X
+python <skill-dir>/scripts/app_analyzer.py file_type --app /path/to/X.app --path Contents/MacOS/X
 ```
 
 ---
@@ -90,7 +90,7 @@ python scripts/app_analyzer.py file_type --app /path/to/X.app --path Contents/Ma
 **场景**：深入读取 Info.plist 以外的配置文件（如 Entitlements.plist、某个 framework 的 Info.plist）。
 
 ```bash
-python scripts/app_analyzer.py plist_read --app /path/to/X.app --path Contents/Resources/Settings.plist
+python <skill-dir>/scripts/app_analyzer.py plist_read --app /path/to/X.app --path Contents/Resources/Settings.plist
 ```
 
 ---
@@ -110,7 +110,7 @@ python scripts/app_analyzer.py plist_read --app /path/to/X.app --path Contents/R
 **场景**：了解二进制大小、架构（arm64/x86_64/Universal）、类型。
 
 ```bash
-python scripts/app_analyzer.py binary_info --app /path/to/X.app
+python <skill-dir>/scripts/app_analyzer.py binary_info --app /path/to/X.app
 ```
 
 ---
@@ -128,7 +128,7 @@ python scripts/app_analyzer.py binary_info --app /path/to/X.app
 **场景**：识别系统框架依赖（AppKit、WebKit、Metal 等）、发现非系统库。
 
 ```bash
-python scripts/app_analyzer.py dylib_list --app /path/to/X.app
+python <skill-dir>/scripts/app_analyzer.py dylib_list --app /path/to/X.app
 ```
 
 ---
@@ -145,7 +145,7 @@ python scripts/app_analyzer.py dylib_list --app /path/to/X.app
 **场景**：分析 rpath 配置、最低 OS 版本、代码签名标志等深层信息。建议用 `--section` 过滤，否则输出很大。
 
 ```bash
-python scripts/app_analyzer.py headers_dump --app /path/to/X.app --section LC_RPATH
+python <skill-dir>/scripts/app_analyzer.py headers_dump --app /path/to/X.app --section LC_RPATH
 ```
 
 ---
@@ -166,7 +166,7 @@ python scripts/app_analyzer.py headers_dump --app /path/to/X.app --section LC_RP
 **场景**：从符号表推断模块架构（Rust crate 路径、Swift 模块名、ObjC 类名）。
 
 ```bash
-python scripts/app_analyzer.py symbols --app /path/to/X.app --filter "agent" --demangle --limit 500
+python <skill-dir>/scripts/app_analyzer.py symbols --app /path/to/X.app --filter "agent" --demangle --limit 500
 ```
 
 ---
@@ -185,9 +185,9 @@ python scripts/app_analyzer.py symbols --app /path/to/X.app --filter "agent" --d
 **场景**：搜索 URL、API endpoint、框架标识（`tauri`、`electron`）、协议名、密钥等。symbols 失败时的 fallback。
 
 ```bash
-python scripts/app_analyzer.py strings_grep --app /path/to/X.app --pattern "https?://"
-python scripts/app_analyzer.py strings_grep --app /path/to/X.app --pattern "tauri|wry|webkit"
-python scripts/app_analyzer.py strings_grep --app /path/to/X.app --pattern "_OBJC_CLASS_\$_"
+python <skill-dir>/scripts/app_analyzer.py strings_grep --app /path/to/X.app --pattern "https?://"
+python <skill-dir>/scripts/app_analyzer.py strings_grep --app /path/to/X.app --pattern "tauri|wry|webkit"
+python <skill-dir>/scripts/app_analyzer.py strings_grep --app /path/to/X.app --pattern "_OBJC_CLASS_\$_"
 ```
 
 ---
@@ -207,7 +207,7 @@ python scripts/app_analyzer.py strings_grep --app /path/to/X.app --pattern "_OBJ
 **场景**：查看开发团队、签名链、App 申请的系统权限（Camera、Location、Microphone 等）。
 
 ```bash
-python scripts/app_analyzer.py codesign_info --app /path/to/X.app
+python <skill-dir>/scripts/app_analyzer.py codesign_info --app /path/to/X.app
 ```
 
 ---
@@ -229,7 +229,7 @@ python scripts/app_analyzer.py codesign_info --app /path/to/X.app
 **场景**：识别嵌入的第三方框架（Electron Framework、Sparkle、Chromium Embedded Framework 等）。
 
 ```bash
-python scripts/app_analyzer.py framework_list --app /path/to/X.app
+python <skill-dir>/scripts/app_analyzer.py framework_list --app /path/to/X.app
 ```
 
 ---
@@ -250,7 +250,7 @@ python scripts/app_analyzer.py framework_list --app /path/to/X.app
 **场景**：提取感兴趣的资源（前端代码、配置文件、技能包、脚本等）供深入分析。
 
 ```bash
-python scripts/app_analyzer.py resource_extract --app /path/to/X.app --path Contents/Resources/browser-runtime
+python <skill-dir>/scripts/app_analyzer.py resource_extract --app /path/to/X.app --path Contents/Resources/browser-runtime
 ```
 
 ---
@@ -272,7 +272,7 @@ python scripts/app_analyzer.py resource_extract --app /path/to/X.app --path Cont
 **场景**：提取 Electron App 的前端源码和 package.json。
 
 ```bash
-python scripts/app_analyzer.py asar_extract --app /path/to/X.app
+python <skill-dir>/scripts/app_analyzer.py asar_extract --app /path/to/X.app
 ```
 
 ---
@@ -294,5 +294,5 @@ python scripts/app_analyzer.py asar_extract --app /path/to/X.app
 **场景**：分析 Electron App 提取出的 package.json，了解前端依赖和构建脚本。
 
 ```bash
-python scripts/app_analyzer.py npm_package --path /path/to/extracted/package.json
+python <skill-dir>/scripts/app_analyzer.py npm_package --path /path/to/extracted/package.json
 ```

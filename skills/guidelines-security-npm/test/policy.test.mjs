@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -15,6 +18,21 @@ test("allows routine scripts without forcing a rescan", () => {
   assert.equal(evaluateCommand("pnpm run lint").decision, "allow");
   assert.equal(evaluateCommand("yarn build").decision, "allow");
   assert.equal(evaluateCommand("bun run test").decision, "allow");
+  assert.equal(evaluateCommand("npm cache clean --force").decision, "allow");
+});
+
+test("CLI runs and emits a verdict when invoked through a symlink", (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "npm-policy-link-"));
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const link = path.join(root, "policy.mjs");
+  fs.symlinkSync(policyScript, link);
+
+  const run = spawnSync(process.execPath, [link], {
+    input: JSON.stringify({ kind: "command", target: "npx cowsay hi" }),
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 2);
+  assert.equal(JSON.parse(run.stdout).ruleId, "one-off-package-runner");
 });
 
 test("blocks dependency graph changes across supported package managers", () => {
