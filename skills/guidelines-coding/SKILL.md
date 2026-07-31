@@ -91,5 +91,6 @@ in the plan decides whether a long run flows or stalls halfway.
 - Save outputs for the end and raise them together: push, pull request, cleanup elsewhere.
 - Commit as each coherent unit lands. Commits need no approval, so they are the cheap
   checkpoint in a long run — frequency follows the work, not a quota.
-- When a step will stop and the user is away, finish what does not need them and report
-  what is left. Never look for a way around the prompt.
+
+Which operations are gated, and what to reach for instead, is each domain guideline's own
+subject; this section is only about where they sit in the plan.
