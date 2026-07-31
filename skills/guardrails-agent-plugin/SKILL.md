@@ -50,6 +50,10 @@ another Agent.
 ## Gotchas
 
 - This Skill supplies hook mechanics, not Git, npm, secret, deployment, or database rules.
+- Never build a bypass the Agent can invoke. The hook's whole value is holding when the
+  model is persuaded, so an exemption the model can trigger is one a prompt injection can
+  trigger too. A grant, if the user explicitly asks for one, is theirs to create — narrow,
+  single-use, and expiring — never something the Agent grants itself to keep working.
 - Registered, trusted, and active are three different states. Treating "registered but not
   yet trusted" as "not installed" leads to duplicate installs and invented plugins.
 - Installing the same policy again must update or reuse its existing registration, not
