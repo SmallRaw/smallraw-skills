@@ -21,9 +21,34 @@ A collection of AI development skills compatible with [Claude Code](https://code
 /plugin install guidelines-git@smallraw-skills
 /plugin install guidelines-security-local@smallraw-skills
 /plugin install guidelines-security-npm@smallraw-skills
+/plugin install guidelines-security-shell@smallraw-skills
+/plugin install guardrails-agent-plugin@smallraw-skills
 ```
 
 各 Skill 会按其 `SKILL.md` 中的触发条件自动生效；支持手动调用的 Skill 也可以通过对应的 `/skill-name` 命令使用。
+
+### 安全护栏（guidelines-security-* / guidelines-git）
+
+这四个 Skill 的规则写在确定性的 `scripts/policy.mjs` 里（输出 `allow` / `confirm` / `deny`），
+SKILL.md 只保留少量无法从代码推导的约定，因此几乎不占用上下文。
+
+**它们以 Hook 为准入前提：安装插件即自动注册 `PreToolUse` Hook，重启会话后生效。**
+Hook 在模型之外强制执行，因此模型被提示注入说服时依然拦得住；模型也不会在对话里
+重复确认 Hook 已经把关的操作。未注册 Hook 时，Skill 会先提出安装而不是继续执行受控操作。
+
+| 门禁 | 覆盖范围 |
+|------|----------|
+| `guidelines-git` | Git 写操作、GitHub 写入、目录级 SSH 身份 |
+| `guidelines-security-local` | `.env`、密钥、凭据存储、认证仓、环境变量转储、文件名伪装域名 |
+| `guidelines-security-npm` | 依赖图变更、一次性包运行器、未审代码执行、发布 |
+| `guidelines-security-shell` | 提权、越界删除与改权限、磁盘/设备操作、进程清扫、Shell 间接层 |
+
+日常命令保持静默（`git status`、`npm test`、工作区内 `rm -rf node_modules`、`bash build.sh`、
+`diskutil list` 等均直接放行）；危险操作按 `deny` / `confirm` 分级，并附带规则 ID 与补救建议。
+
+其他 Agent（Codex、Cursor、Copilot、Pi、OpenCode 等）通过
+[guardrails-agent-plugin](skills/guardrails-agent-plugin/) 复用同一份 policy，
+由它按目标 Host 的官方 Hook 机制生成适配层。
 
 ### 手动安装
 
@@ -55,10 +80,12 @@ cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 | [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | Marketplace |
 | [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | Marketplace |
 | [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | Marketplace |
+| [guardrails-agent-plugin](skills/guardrails-agent-plugin/) | 跨 Agent Hook 实现层 - 将领域 Skill 的规则、预检和阻断要求转换为原生 Hook | Marketplace |
 | [guidelines-coding](skills/guidelines-coding/) | 编码行为准则 - 分阶段控制验证范围与频率 | Marketplace |
 | [guidelines-git](skills/guidelines-git/) | Git 行为准则 - 保护现有状态、明确操作授权并使用仓库专属 SSH 身份 | Marketplace |
 | [guidelines-security-local](skills/guidelines-security-local/) | 本地安全红线 - 禁止访问敏感数据并阻断文件名伪装域名 | Marketplace |
 | [guidelines-security-npm](skills/guidelines-security-npm/) | npm 供应链安全准则 - 隔离审查依赖变更、执行与发布风险 | Marketplace |
+| [guidelines-security-shell](skills/guidelines-security-shell/) | 破坏性 Shell 门禁 - 拦截提权、越界删除、磁盘操作与 Shell 间接层，工作区内清理零打扰 | Marketplace |
 | [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | Marketplace |
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | Marketplace |
 | [rule-gardener](skills/rule-gardener/) | 项目规则园丁 - 培育项目规范有机生长 | Marketplace |
