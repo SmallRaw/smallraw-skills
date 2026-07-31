@@ -276,30 +276,30 @@ function evaluateManager(manager, args) {
     ) {
       return confirm(
         "npm-registry-write",
-        `yarn npm ${nestedCommand} changes externally visible registry state.`,
-        "Require explicit approval for the exact package, version, registry, and operation after the supply-chain gate passes.",
+        `yarn npm ${nestedCommand} 会改变外部可见的 registry 状态。`,
+        "供应链门禁通过后，仍需就确切的包名、版本、registry 和操作取得明确批准。",
       );
     }
   }
   if (ONE_OFF_SUBCOMMANDS[manager]?.has(subcommand)) {
     return deny(
       "one-off-package-runner",
-      `${manager} ${subcommand} can download and execute unreviewed package code.`,
-      "Review the exact package version with guidelines-security-npm before running it.",
+      `${manager} ${subcommand} 会下载并执行未经审查的包代码。`,
+      "运行前用 guidelines-security-npm 审查该确切的包版本。",
     );
   }
   if (PUBLISH_COMMANDS.has(subcommand)) {
     return confirm(
       "npm-registry-write",
-      `${manager} ${subcommand} changes externally visible registry state.`,
-      "Require explicit approval for the exact package, version, registry, and operation after the supply-chain gate passes.",
+      `${manager} ${subcommand} 会改变外部可见的 registry 状态。`,
+      "供应链门禁通过后，仍需就确切的包名、版本、registry 和操作取得明确批准。",
     );
   }
   if (manager === "npm" && subcommand === "audit" && args.includes("fix")) {
     return deny(
       "automatic-audit-fix",
-      "npm audit fix changes the resolved dependency graph and may execute package code.",
-      "Review the proposed exact dependency changes through the normal supply-chain gate.",
+      "npm audit fix 会改变解析后的依赖图，并可能执行包代码。",
+      "通过常规供应链门禁审查这些确切的依赖变更。",
     );
   }
   if (
@@ -309,8 +309,8 @@ function evaluateManager(manager, args) {
   ) {
     return deny(
       "dependency-manifest-change",
-      "npm pkg changes package manifest state and may alter dependency resolution.",
-      "Review the exact manifest and resulting lockfile changes through the supply-chain gate.",
+      "npm pkg 会改变包 manifest 状态，并可能影响依赖解析。",
+      "通过供应链门禁审查确切的 manifest 及其引发的 lockfile 变更。",
     );
   }
   if (
@@ -319,8 +319,8 @@ function evaluateManager(manager, args) {
   ) {
     return deny(
       "dependency-manifest-change",
-      `npm ${subcommand} changes executable or resolved package state.`,
-      "Review the exact manifest and lockfile changes through the supply-chain gate.",
+      `npm ${subcommand} 会改变可执行内容或已解析的包状态。`,
+      "通过供应链门禁审查确切的 manifest 和 lockfile 变更。",
     );
   }
   if (MUTATING_COMMANDS[manager]?.has(subcommand)) {
@@ -332,35 +332,35 @@ function evaluateManager(manager, args) {
     if (lockfileOnly && scriptsDisabled) {
       return confirm(
         "isolated-lockfile-resolution",
-        "This command avoids lifecycle scripts but still resolves untrusted dependency metadata.",
-        "Run it only in the isolated review workspace, then apply the lockfile preflight and remaining required review levels.",
+        "该命令虽然不执行生命周期脚本，但仍会解析不受信任的依赖元数据。",
+        "只在隔离审查工作区中运行，随后执行 lockfile 预检和其余必需的审查层级。",
       );
     }
     if (scriptsDisabled) {
       return confirm(
         "scripts-disabled-install",
-        `${manager} ${subcommand || "install"} materializes the dependency graph without running lifecycle scripts.`,
-        "Confirm the lockfile and packages are already trusted; the no-execution rule still binds the installed tree until the gate passes.",
+        `${manager} ${subcommand || "install"} 会在不执行生命周期脚本的前提下落地依赖图。`,
+        "确认 lockfile 和依赖包已被信任；在门禁通过前，禁止执行已安装依赖树的规则依然有效。",
       );
     }
     return deny(
       "dependency-state-change",
-      `${manager} ${subcommand || "install"} changes or materializes the dependency graph.`,
-      "Apply guidelines-security-npm to the exact changed scope before executing installed package code.",
+      `${manager} ${subcommand || "install"} 会改变或落地依赖图。`,
+      "在执行已安装的包代码前，对确切的变更范围套用 guidelines-security-npm 审查。",
     );
   }
   if (FETCH_COMMANDS.has(subcommand)) {
     if (hasAll(args, ["--ignore-scripts"])) {
       return confirm(
         "artifact-acquisition",
-        "Package acquisition is allowed only as static review input in an isolated workspace.",
-        "Acquire the exact artifact without scripts, verify integrity, and inspect it before any execution.",
+        "只允许在隔离工作区中，以静态审查素材的形式获取包。",
+        "在禁用脚本的前提下获取该确切产物，校验完整性并检查内容，之后才谈执行。",
       );
     }
     return deny(
       "artifact-acquisition-with-scripts",
-      `${manager} ${subcommand} may run package lifecycle scripts.`,
-      "Repeat only in an isolated review workspace with scripts disabled.",
+      `${manager} ${subcommand} 可能执行包的生命周期脚本。`,
+      "仅可在禁用脚本的隔离审查工作区中重试。",
     );
   }
   if (
@@ -370,15 +370,15 @@ function evaluateManager(manager, args) {
   ) {
     return confirm(
       "package-manager-config-write",
-      `${manager} config changes can alter registry, authentication, or execution behavior.`,
-      "Review the exact key, scope, and non-secret value before changing configuration.",
+      `${manager} config 变更会影响 registry、认证或执行行为。`,
+      "修改配置前审查确切的配置项、作用域和不含密钥的值。",
     );
   }
   if (manager === "npm" && subcommand === "version") {
     return confirm(
       "package-version-write",
-      "npm version changes package metadata and can create Git commits and tags.",
-      "Require explicit approval for the exact version and Git effects before running it.",
+      "npm version 会修改包元数据，并可能创建 Git 提交和标签。",
+      "运行前就确切的版本号及其 Git 副作用取得明确批准。",
     );
   }
   if (
@@ -388,8 +388,8 @@ function evaluateManager(manager, args) {
   ) {
     return confirm(
       "unclassified-npm-command",
-      "This npm pkg operation is not proven read-only.",
-      "Inspect the documented manifest effects before proceeding.",
+      "该 npm pkg 操作无法确认是只读的。",
+      "继续前查阅其对 manifest 的官方说明。",
     );
   }
   if (
@@ -403,8 +403,8 @@ function evaluateManager(manager, args) {
   if (manager === "npm" && !NPM_ROUTINE_COMMANDS.has(subcommand)) {
     return confirm(
       "unclassified-npm-command",
-      `npm ${subcommand}`.trim() + " is not classified as a trusted routine command.",
-      "Inspect the command's documented install, execution, manifest, registry, and lifecycle effects before proceeding.",
+      `npm ${subcommand}`.trim() + " 未被归类为可信的常规命令。",
+      "继续前查阅该命令在安装、执行、manifest、registry 和生命周期脚本方面的官方说明。",
     );
   }
 
@@ -416,8 +416,8 @@ function evaluateSegment(segment) {
   if (!rawTokens) {
     return confirm(
       "ambiguous-shell-syntax",
-      "The command contains unmatched quoting and cannot be classified safely.",
-      "Provide the normalized executable and argv, or simplify the command before review.",
+      "命令存在未闭合的引号，无法安全分类。",
+      "请提供规范化的可执行文件和参数，或先简化命令再审查。",
     );
   }
   const tokens = stripInvocationPrefixes(rawTokens);
@@ -438,15 +438,15 @@ function evaluateSegment(segment) {
       if (offline) {
         return confirm(
           "cache-only-package-runner",
-          "npx --offline executes a package from the local npm cache without network access.",
-          "Confirm the cached package version was previously reviewed before executing it.",
+          "npx --offline 会在无网络访问的情况下执行本地 npm 缓存中的包。",
+          "执行前确认该缓存中的包版本此前已通过审查。",
         );
       }
     }
     return deny(
       "one-off-package-runner",
-      `${executable} can download and execute unreviewed package code.`,
-      "Run an already reviewed local binary through node_modules/.bin or a package script instead; otherwise pin and review the exact package version with guidelines-security-npm first.",
+      `${executable} 会下载并执行未经审查的包代码。`,
+      "改用 node_modules/.bin 里已审查的本地二进制或包脚本；否则先锁定版本并用 guidelines-security-npm 审查该确切版本。",
     );
   }
   if (executable === "corepack") {
@@ -454,8 +454,8 @@ function evaluateSegment(segment) {
     if (["use", "install", "prepare", "pack", "up", "hydrate"].includes(sub)) {
       return deny(
         "package-manager-acquisition",
-        `corepack ${sub} downloads or materializes package manager code.`,
-        "Review the exact package manager version through the supply-chain gate before activating it.",
+        `corepack ${sub} 会下载或落地包管理器代码。`,
+        "启用前通过供应链门禁审查该包管理器的确切版本。",
       );
     }
     if (["", "--version", "-v", "help", "--help"].includes(sub)) {
@@ -463,8 +463,8 @@ function evaluateSegment(segment) {
     }
     return confirm(
       "package-manager-activation",
-      `corepack ${sub} changes which package manager binaries execute.`,
-      "Confirm the exact corepack change and its effect on binary resolution before proceeding.",
+      `corepack ${sub} 会改变实际执行的包管理器二进制。`,
+      "继续前确认该 corepack 变更的确切内容及其对二进制解析的影响。",
     );
   }
   if (!PACKAGE_MANAGERS.has(executable)) return allow();
@@ -475,8 +475,8 @@ export function evaluateCommand(command) {
   if (typeof command !== "string" || command.trim() === "") {
     return deny(
       "invalid-command-input",
-      "The shell command is missing or malformed.",
-      "Provide the normalized command without reading credentials or package code.",
+      "Shell 命令缺失或格式错误。",
+      "提供规范化的命令，不要读取凭据或包代码。",
     );
   }
 
@@ -509,16 +509,16 @@ export function evaluatePolicy(input) {
     if (command === null) {
       return deny(
         "invalid-policy-input",
-        "Policy input must be a normalized JSON object.",
-        "Provide the tool name and command without including credentials.",
+        "策略输入必须是规范化的 JSON 对象。",
+        "提供工具名和命令，不要包含凭据。",
       );
     }
     return evaluateCommand(command);
   } catch {
     return deny(
       "policy-evaluation-error",
-      "The npm security policy could not classify the operation safely.",
-      "Stop before package execution and review the normalized command manually.",
+      "npm 安全策略无法安全地判定该操作。",
+      "在执行包代码前停下，手动审查规范化后的命令。",
     );
   }
 }
@@ -537,8 +537,8 @@ async function main() {
     if (Buffer.byteLength(raw) > MAX_INPUT_BYTES) {
       const result = deny(
         "policy-input-too-large",
-        "The npm policy input exceeds its size limit.",
-        "Pass only the normalized tool call.",
+        "npm 策略的输入超过大小限制。",
+        "只传入规范化的工具调用。",
       );
       process.stdout.write(`${JSON.stringify(result)}\n`);
       process.exitCode = 2;
@@ -552,8 +552,8 @@ async function main() {
   } catch {
     const result = deny(
       "invalid-policy-json",
-      "The npm policy input is not valid JSON.",
-      "Pass one normalized tool-call JSON object.",
+      "npm 策略的输入不是合法 JSON。",
+      "传入一个规范化的工具调用 JSON 对象。",
     );
     process.stdout.write(`${JSON.stringify(result)}\n`);
     process.exitCode = 2;

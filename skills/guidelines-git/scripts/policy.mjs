@@ -288,8 +288,8 @@ function evaluateGit(args) {
     if (rest.some(isBroadStageToken)) {
       return confirm(
         "broad-staging",
-        "Broad staging can capture unrelated user-owned changes.",
-        "Inspect the index and stage only the exact paths belonging to the current coherent change.",
+        "宽泛暂存会把用户自己的无关改动一并纳入。",
+        "检查暂存区，只暂存属于当前这次完整改动的确切路径。",
       );
     }
     return allow("explicit-staging");
@@ -301,8 +301,8 @@ function evaluateGit(args) {
     ) {
       return confirm(
         "history-rewrite",
-        "Amending or fixup commits changes existing history.",
-        "Require explicit authorization for the exact commit and inspect the staged diff first.",
+        "amend 或 fixup 提交会改写已有历史。",
+        "先检查已暂存的 diff，并就该具体提交取得明确授权。",
       );
     }
     if (
@@ -313,8 +313,8 @@ function evaluateGit(args) {
     ) {
       return confirm(
         "commit-pathspec",
-        "Committing a pathspec can bypass or combine with the inspected index.",
-        "Inspect the exact pathspec, worktree diff, and staged diff before authorizing the commit.",
+        "带 pathspec 提交可能绕过或混入已检查的暂存区内容。",
+        "授权提交前，先检查确切的 pathspec、工作区 diff 和暂存 diff。",
       );
     }
     if (
@@ -323,8 +323,8 @@ function evaluateGit(args) {
     ) {
       return confirm(
         "broad-staging",
-        "git commit --all stages tracked changes that may be user-owned.",
-        "Inspect the index and stage only the exact paths or hunks belonging to the current coherent change.",
+        "git commit --all 会暂存所有已跟踪改动，其中可能有用户自己的改动。",
+        "检查暂存区，只暂存属于当前这次完整改动的确切路径或代码块。",
       );
     }
     return allow("normal-commit");
@@ -333,14 +333,14 @@ function evaluateGit(args) {
     if (args.includes("--global") || args.includes("--system")) {
       return deny(
         "global-git-config-write",
-        "Global or system Git configuration can change identity and credentials for unrelated repositories.",
-        "Use repository-local configuration only, after inspecting the existing local value.",
+        "全局或系统级 Git 配置会改变其他无关仓库的身份和凭据。",
+        "先查看仓库内现有配置值，且只修改仓库级配置。",
       );
     }
     return confirm(
       "repository-git-config-write",
-      "Repository Git configuration changes identity, transport, or command behavior.",
-      "Confirm the exact local key and non-secret value before changing it.",
+      "仓库级 Git 配置会改变身份、传输方式或命令行为。",
+      "修改前确认确切的本地配置项和不含密钥的值。",
     );
   }
   if (subcommand === "push") {
@@ -352,24 +352,24 @@ function evaluateGit(args) {
     ) {
       return deny(
         "default-github-transport",
-        "The default github.com transport does not prove this directory's configured SSH identity.",
-        "Use the repository's configured push remote and directory-specific SSH host alias; do not fall back to HTTPS, tokens, or another identity.",
+        "默认的 github.com 传输方式无法证明使用的是本目录配置的 SSH 身份。",
+        "使用本仓库配置的推送远端和目录专属 SSH 别名；不得回落到 HTTPS、令牌或其他账号。",
       );
     }
     return confirm(
       rest.some((value) => value === "--force" || value === "-f" || value.startsWith("--force-with-lease"))
         ? "force-push"
         : "git-push",
-      "Pushing changes remote state and requires exact authorization.",
-      "Confirm the repository push remote, SSH host alias, destination ref, and commit range before pushing.",
+      "推送会改变远端状态，需要针对该操作的明确授权。",
+      "推送前确认仓库的推送远端、SSH 别名、目标 ref 和提交范围。",
     );
   }
   if (subcommand === "fetch") {
     if (rest.some((value) => !value.startsWith("-") && value.includes(":"))) {
       return confirm(
         "fetch-local-ref-update",
-        "A fetch refspec with a destination can update local refs.",
-        "Confirm the exact refspec and affected local refs before fetching.",
+        "带目标端的 fetch refspec 会更新本地 ref。",
+        "fetch 前确认确切的 refspec 和会被影响的本地 ref。",
       );
     }
     return allow("fetch-remote-tracking");
@@ -377,29 +377,29 @@ function evaluateGit(args) {
   if (REMOTE_MUTATIONS.has(subcommand)) {
     return confirm(
       "remote-or-worktree-mutation",
-      `git ${subcommand} changes local refs, history, or filesystem state.`,
-      "Require explicit authorization for the exact remote, ref, destination, and affected worktree.",
+      `git ${subcommand} 会改变本地 ref、历史或文件系统状态。`,
+      "就确切的远端、ref、目标位置和受影响的工作区取得明确授权。",
     );
   }
   if (HISTORY_OR_BRANCH_MUTATIONS.has(subcommand)) {
     return confirm(
       "history-or-branch-mutation",
-      `git ${subcommand} can change branches, history, the index, or user-owned worktree changes.`,
-      "Inspect status and diffs, then require explicit authorization for the exact affected refs and paths.",
+      `git ${subcommand} 可能改变分支、历史、暂存区，或用户自己的工作区改动。`,
+      "先查看状态和 diff，再就受影响的确切 ref 和路径取得明确授权。",
     );
   }
   if (["branch", "tag", "remote", "worktree", "submodule", "init"].includes(subcommand)) {
     return confirm(
       "repository-structure-mutation",
-      `git ${subcommand} can change repository refs, remotes, configuration, or worktrees.`,
-      "Confirm the exact mutation and its scope before proceeding.",
+      `git ${subcommand} 可能改变仓库的 ref、远端、配置或工作区。`,
+      "继续前确认这次改动的确切内容和影响范围。",
     );
   }
 
   return confirm(
     "unclassified-git-command",
-    `git ${subcommand} is not classified as read-only.`,
-    "Inspect the command's documented effects and require authorization if it mutates repository or remote state.",
+    `git ${subcommand} 未被归类为只读操作。`,
+    "查阅该命令的官方说明；若会改变仓库或远端状态，则需取得授权。",
   );
 }
 
@@ -411,8 +411,8 @@ function evaluateGh(args) {
     if (action === "status") return allow("read-only-gh");
     return deny(
       action === "setup-git" ? "gh-auth-setup-git" : "gh-auth-mutation",
-      "GitHub CLI authentication changes can replace or bypass this directory's SSH identity.",
-      "Do not change or reuse default gh authentication; use the repository's configured SSH identity.",
+      "修改 GitHub CLI 认证会替换或绕过本目录的 SSH 身份。",
+      "不要修改或复用默认的 gh 认证；使用本仓库配置的 SSH 身份。",
     );
   }
   if (group === "api") {
@@ -432,8 +432,8 @@ function evaluateGh(args) {
     if (writeFlag) {
       return deny(
         "default-gh-write",
-        "A GitHub API write through default gh authentication is prohibited.",
-        "Use the directory-specific authorized identity and obtain explicit approval for the exact write.",
+        "禁止通过默认 gh 认证进行 GitHub API 写操作。",
+        "使用本目录授权的身份，并就该具体写操作取得明确批准。",
       );
     }
     return allow("read-only-gh");
@@ -441,8 +441,8 @@ function evaluateGh(args) {
   if (GH_WRITE_GROUPS.get(group)?.has(action)) {
     return deny(
       "default-gh-write",
-      `gh ${group} ${action} writes through default GitHub CLI authentication.`,
-      "Do not use default gh for pushes, pull requests, comments, or other writes; use the directory-specific authorized identity.",
+      `gh ${group} ${action} 会通过默认 GitHub CLI 认证写入。`,
+      "不要用默认 gh 做推送、PR、评论等写操作；使用本目录授权的身份。",
     );
   }
   const readOnlyActions = new Set([
@@ -459,8 +459,8 @@ function evaluateGh(args) {
   }
   return confirm(
     "unclassified-gh-command",
-    `gh ${group} ${action}`.trim() + " is not proven read-only.",
-    "Inspect the command and do not execute it if it writes through default gh authentication.",
+    `gh ${group} ${action}`.trim() + " 无法确认是只读操作。",
+    "检查该命令；若它通过默认 gh 认证写入，则不要执行。",
   );
 }
 
@@ -469,8 +469,8 @@ function evaluateSegment(segment) {
   if (!rawTokens) {
     return confirm(
       "ambiguous-shell-syntax",
-      "The command contains unmatched quoting and cannot be classified safely.",
-      "Provide the normalized executable and argv, or simplify the command before review.",
+      "命令存在未闭合的引号，无法安全分类。",
+      "请提供规范化的可执行文件和参数，或先简化命令再审查。",
     );
   }
   const tokens = stripInvocationPrefixes(rawTokens);
@@ -486,19 +486,30 @@ export function evaluateCommand(command) {
   if (typeof command !== "string" || command.trim() === "") {
     return deny(
       "invalid-command-input",
-      "The shell command is missing or malformed.",
-      "Provide the normalized command without credentials.",
+      "Shell 命令缺失或格式错误。",
+      "提供规范化的命令，不要包含凭据。",
     );
   }
 
+  const segments = commandSegments(command);
   let strongest = allow();
-  for (const segment of commandSegments(command)) {
+  for (const segment of segments) {
     const value = evaluateSegment(segment);
-    if (value.decision === "deny") return value;
+    if (value.decision === "deny") return withVisibilityHint(value, segments.length);
     if (value.decision === "confirm") strongest = value;
     else if (strongest.decision === "allow") strongest = value;
   }
-  return strongest;
+  return withVisibilityHint(strongest, segments.length);
+}
+
+// A gated write chained behind other work is invisible in the approval prompt:
+// the user sees the harmless prefix and approves the tail without reading it.
+function withVisibilityHint(value, segmentCount) {
+  if (segmentCount < 2 || value.decision === "allow") return value;
+  return {
+    ...value,
+    nextAction: `${value.nextAction ?? ""} 请把该操作单独作为一条命令重新发出，不要串在命令链里，好让审批提示准确显示被批准的内容。`.trim(),
+  };
 }
 
 function normalizeInput(input) {
@@ -520,16 +531,16 @@ export function evaluatePolicy(input) {
     if (command === null) {
       return deny(
         "invalid-policy-input",
-        "Policy input must contain a normalized shell command.",
-        "Provide the tool name and command without credentials.",
+        "策略输入必须包含规范化的 shell 命令。",
+        "提供工具名和命令，不要包含凭据。",
       );
     }
     return evaluateCommand(command);
   } catch {
     return deny(
       "policy-evaluation-error",
-      "The Git policy could not classify the operation safely.",
-      "Stop before mutation and inspect the normalized command manually.",
+      "Git 策略无法安全地判定该操作。",
+      "在改动前停下，手动检查规范化后的命令。",
     );
   }
 }
@@ -548,8 +559,8 @@ async function main() {
     if (Buffer.byteLength(raw) > MAX_INPUT_BYTES) {
       const value = deny(
         "policy-input-too-large",
-        "The Git policy input exceeds its size limit.",
-        "Pass only the normalized tool call.",
+        "Git 策略的输入超过大小限制。",
+        "只传入规范化的工具调用。",
       );
       process.stdout.write(`${JSON.stringify(value)}\n`);
       process.exitCode = 2;
@@ -563,8 +574,8 @@ async function main() {
   } catch {
     const value = deny(
       "invalid-policy-json",
-      "The Git policy input is not valid JSON.",
-      "Pass one normalized tool-call JSON object.",
+      "Git 策略的输入不是合法 JSON。",
+      "传入一个规范化的工具调用 JSON 对象。",
     );
     process.stdout.write(`${JSON.stringify(value)}\n`);
     process.exitCode = 2;

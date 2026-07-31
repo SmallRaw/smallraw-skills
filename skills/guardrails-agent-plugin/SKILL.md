@@ -12,27 +12,52 @@ Act as the hook implementation layer. The caller owns the domain policy; transla
 policy into the active Agent's native hook without replacing it with a capability catalog
 or fixed `check`/`install` commands.
 
-## Implement the Guardrail
+## For the Bundled Guidelines Policies, Run the Installer
+
+Never hand-edit host configuration or create a plugin for these. `scripts/install-or-update.mjs`
+owns the host table, registration paths, matchers, and the idempotency marker:
+
+1. `node scripts/install-or-update.mjs --check` — reports the host and, per policy,
+   `not-registered` / `registered-stale` / `registered`. It scans every known registration
+   point, so an existing install is found even when host detection is uncertain.
+2. Resolve the host before installing. The script never guesses: `UNRESOLVED` with a
+   `candidate` means ask the user and re-run with `--host <name>`; `unknown-host` means ask
+   which Agent is running or use a reference below. Do not infer the host from a config
+   file's existence — that proves it is installed, not that it is running.
+3. `node scripts/install-or-update.mjs --install` — idempotent upsert. It updates its own
+   entries in place, preserves unrelated hooks, and writes a `.guardrails-backup` first.
+   Exit 2 means it refused; read the reported `nextAction` instead of working around it.
+4. Report the printed `nextAction` verbatim, including any trust step. **Registered is not
+   active**: a host that records trust against the hook's hash needs a `/hooks` review, and
+   editing a hook invalidates prior trust. A session restart is required either way.
+5. `node scripts/install-or-update.mjs --verify` — self-tests the guard pipeline, then run
+   the printed in-session checks. Only a real blocked command carrying a `[rule-id]` prefix
+   proves the host fires the hooks; a block without one came from another layer.
+
+Installable hosts are the ones whose blocking semantics were verified: Claude Code, Codex,
+and Cursor. Every other host is scanned for an existing install but never written blindly —
+a hook that registers and silently no-ops is worse than none, because it reads as protection.
+
+## For Any Other Policy or Host
 
 1. Preserve the caller's exact allow, confirm, deny, preflight, and remediation semantics.
    Clarify only when a missing choice would materially change enforcement.
-2. Detect the active Agent, requested scope, existing hook configuration, and reusable
-   scripts. Read only the matching host reference below.
+2. Check the host's real registration point and any existing entry for this policy's stable
+   ID first. Update that entry; never append a duplicate or create a plugin to work around it.
 3. Choose the narrowest deterministic lifecycle event and matcher. Prefer a command or
    native callback over an LLM-backed prompt or agent hook.
-4. Reuse a caller-provided policy module. If the caller supplies only rules, materialize
+4. Reuse a caller-provided policy module, and reuse `scripts/guard.mjs` on any host that
+   accepts Claude-compatible hook payloads. If the caller supplies only rules, materialize
    them once as a host-neutral policy module; keep every host adapter limited to input
    normalization, policy invocation, and decision translation.
-5. Give the policy a stable identity supplied by the caller or derived from domain Skill,
-   policy name, and scope. Merge by that identity, preserving unrelated hooks and paths.
-6. Strictly validate policy output. Errors, timeouts, unknown decisions, and malformed
+5. Strictly validate policy output. Errors, timeouts, unknown decisions, and malformed
    blocks must use the host's explicit blocking path where possible; report unavoidable
    fail-open behavior.
-7. Use native confirmation when available. Otherwise treat `confirm` as `deny` and report
+6. Use native confirmation when available. Otherwise treat `confirm` as `deny` and report
    the semantic gap unless the caller explicitly requests a session-scoped, single-use
    approval bound to the normalized operation. Never weaken `confirm` or `deny` to `allow`.
-8. Verify the settled implementation once with harmless allow and block cases, then
-   report the files, scope, active events, and residual coverage gaps.
+7. Verify once with harmless allow and block cases, then report the files, scope, active
+   events, trust state, and residual coverage gaps.
 
 ## Host References
 
@@ -47,6 +72,8 @@ thin adapter to the caller's policy. Do not infer wire formats from another Agen
 ## Gotchas
 
 - This Skill supplies hook mechanics, not Git, npm, secret, deployment, or database rules.
+- Registered, trusted, and active are three different states. Treating "registered but not
+  yet trusted" as "not installed" leads to duplicate installs and invented plugins.
 - Installing the same policy again must update or reuse its existing registration, not
   append a duplicate hook.
 - Open Plugins standardizes packaging and events more than decision and failure semantics;

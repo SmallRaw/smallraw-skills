@@ -253,17 +253,17 @@ function evaluateDeletion(executable, args, cwd) {
   if (scope === "critical") {
     return deny(
       "critical-root-deletion",
-      `${executable} targets a system root or the home directory itself.`,
-      "Never delete system roots or the whole home directory; name the exact owned paths instead.",
+      `${executable} 的目标是系统根目录或主目录本身。`,
+      "绝不删除系统根目录或整个主目录；请写明确切的、属于自己的路径。",
     );
   }
   if (scope === "inside") return allow("workspace-deletion");
   return confirm(
     scope === "unknown" ? "unknown-scope-deletion" : "outside-workspace-deletion",
     scope === "unknown"
-      ? `${executable} has no explicit path targets, so the deletion scope is unknown.`
-      : `${executable} deletes paths outside the current workspace.`,
-    "Name the exact paths, confirm they are yours to delete, and prefer workspace-relative targets.",
+      ? `${executable} 没有明确的路径目标，删除范围未知。`
+      : `${executable} 会删除当前工作区之外的路径。`,
+    "写明确切路径，确认这些内容确实归你删除，并优先使用工作区内的相对路径。",
   );
 }
 
@@ -273,15 +273,15 @@ function evaluateOwnership(executable, args, cwd) {
   if (scope === "critical") {
     return deny(
       "critical-root-permission-change",
-      `${executable} rewrites permissions on a system root or the home directory itself.`,
-      "Never re-permission system roots; change only exact owned paths.",
+      `${executable} 会改写系统根目录或主目录本身的权限。`,
+      "绝不修改系统根目录的权限；只改动确切的、属于自己的路径。",
     );
   }
   if (scope === "inside") return allow("workspace-permission-change");
   return confirm(
     "outside-workspace-permission-change",
-    `${executable} changes permissions or ownership outside the current workspace.`,
-    "Confirm the exact paths and desired mode before changing them.",
+    `${executable} 会改变当前工作区之外的权限或归属。`,
+    "修改前确认确切的路径和目标权限。",
   );
 }
 
@@ -290,8 +290,8 @@ function evaluateSegment(segment, cwd) {
   if (!rawTokens) {
     return confirm(
       "ambiguous-shell-syntax",
-      "The command contains unmatched quoting and cannot be classified safely.",
-      "Provide the normalized executable and argv, or simplify the command before review.",
+      "命令存在未闭合的引号，无法安全分类。",
+      "请提供规范化的可执行文件和参数，或先简化命令再审查。",
     );
   }
   const tokens = stripInvocationPrefixes(rawTokens);
@@ -303,36 +303,36 @@ function evaluateSegment(segment, cwd) {
   if (PRIVILEGE_ESCALATION.has(executable)) {
     return deny(
       "privilege-escalation",
-      `${executable} escalates privileges beyond the agent's granted scope.`,
-      "Report why elevated access seems needed and let the user run it themselves.",
+      `${executable} 会把权限提升到 Agent 被授予的范围之外。`,
+      "说明为何需要提升权限，并交由用户自己执行。",
     );
   }
   if (executable === "shred") {
     return deny(
       "data-destruction",
-      "shred irrecoverably destroys file contents.",
-      "Use a normal deletion of an exact owned path if removal is actually needed.",
+      "shred 会不可恢复地销毁文件内容。",
+      "若确实需要删除，请对确切的、属于自己的路径使用普通删除。",
     );
   }
   if (executable === "mkfs" || executable.startsWith("mkfs.")) {
     return deny(
       "disk-destruction",
-      "mkfs reformats a device and destroys its contents.",
-      "Never format devices; report the need and stop.",
+      "mkfs 会重新格式化设备并销毁其中所有内容。",
+      "绝不格式化设备；说明需求后停下。",
     );
   }
   if (executable === "dd") {
     if (args.some((value) => /^of=\/dev\//iu.test(value))) {
       return deny(
         "disk-destruction",
-        "dd writing to a block device destroys its contents.",
-        "Never write block devices; report the need and stop.",
+        "dd 写入块设备会销毁设备上的内容。",
+        "绝不写入块设备；说明需求后停下。",
       );
     }
     return confirm(
       "raw-copy",
-      "dd performs raw copies that can silently overwrite files.",
-      "Confirm the exact if=/of= targets before running it.",
+      "dd 是裸复制，可能静默覆盖文件。",
+      "运行前确认确切的 if=/of= 目标。",
     );
   }
   if (executable === "diskutil") {
@@ -343,14 +343,14 @@ function evaluateSegment(segment, cwd) {
     if (DISK_ERASE_VERBS.has(verb) || (verb === "apfs" && /delete/iu.test(args.join(" ")))) {
       return deny(
         "disk-destruction",
-        `diskutil ${verb} erases or repartitions storage.`,
-        "Never erase or repartition disks; report the need and stop.",
+        `diskutil ${verb} 会抹除存储或重新分区。`,
+        "绝不抹除或重新分区磁盘；说明需求后停下。",
       );
     }
     return confirm(
       "disk-state-change",
-      `diskutil ${verb} changes disk or volume state.`,
-      "Confirm the exact device and operation before proceeding.",
+      `diskutil ${verb} 会改变磁盘或卷的状态。`,
+      "继续前确认确切的设备和操作。",
     );
   }
   if (DELETERS.has(executable)) return evaluateDeletion(executable, args, cwd);
@@ -358,8 +358,8 @@ function evaluateSegment(segment, cwd) {
   if (PROCESS_SWEEPERS.has(executable)) {
     return confirm(
       "process-sweep",
-      `${executable} terminates processes by pattern and can hit unrelated ones.`,
-      "Confirm the exact match pattern, or target a specific PID with kill instead.",
+      `${executable} 按模式匹配终止进程，可能误杀无关进程。`,
+      "确认确切的匹配模式，或改用 kill 指定具体 PID。",
     );
   }
   if (executable === "docker" || executable === "podman") {
@@ -373,8 +373,8 @@ function evaluateSegment(segment, cwd) {
     ) {
       return confirm(
         "container-destruction",
-        `${executable} ${verbs.slice(0, 2).join(" ")} destroys containers, images, or volumes that may hold data.`,
-        "Confirm the exact containers, images, or volumes before removing them.",
+        `${executable} ${verbs.slice(0, 2).join(" ")} 会销毁可能含有数据的容器、镜像或数据卷。`,
+        "删除前确认确切的容器、镜像或数据卷。",
       );
     }
     return allow();
@@ -382,23 +382,23 @@ function evaluateSegment(segment, cwd) {
   if (executable === "twine" && (args[0] ?? "").toLowerCase() === "upload") {
     return confirm(
       "package-publish",
-      "twine upload publishes packages to an external registry.",
-      "Require explicit approval for the exact package, version, and registry.",
+      "twine upload 会把包发布到外部 registry。",
+      "就确切的包名、版本和 registry 取得明确批准。",
     );
   }
   if (executable === "eval") {
     return deny(
       "shell-indirection",
-      "eval executes dynamically assembled input that the policy cannot classify.",
-      "Run the underlying command directly so it can be classified.",
+      "eval 会执行动态拼接的内容，策略无法对其分类。",
+      "直接执行底层命令，好让它能被分类。",
     );
   }
   if (SHELLS.has(executable)) {
     if (args.length === 0 || args.includes("-c") || args.includes("-i")) {
       return deny(
         "shell-indirection",
-        `${executable} ${args.includes("-c") ? "-c wraps commands the policy cannot classify" : "starts an unclassifiable interactive shell"}.`,
-        "Run the inner command directly so it can be classified.",
+        `${executable} ${args.includes("-c") ? "-c 包裹的命令策略无法分类" : "会启动无法分类的交互式 shell"}。`,
+        "直接执行内层命令，好让它能被分类。",
       );
     }
     return allow("script-execution");
@@ -411,8 +411,8 @@ export function evaluateCommand(command, cwd) {
   if (typeof command !== "string" || command.trim() === "") {
     return deny(
       "invalid-command-input",
-      "The shell command is missing or malformed.",
-      "Provide the normalized command.",
+      "Shell 命令缺失或格式错误。",
+      "提供规范化的命令。",
     );
   }
 
@@ -448,16 +448,16 @@ export function evaluatePolicy(input) {
     if (normalized === null || normalized.command === null) {
       return deny(
         "invalid-policy-input",
-        "Policy input must contain a normalized shell command.",
-        "Provide the tool name and command.",
+        "策略输入必须包含规范化的 shell 命令。",
+        "提供工具名和命令。",
       );
     }
     return evaluateCommand(normalized.command, normalized.cwd);
   } catch {
     return deny(
       "policy-evaluation-error",
-      "The shell policy could not classify the operation safely.",
-      "Stop before destructive action and inspect the normalized command manually.",
+      "Shell 策略无法安全地判定该操作。",
+      "在执行破坏性操作前停下，手动检查规范化后的命令。",
     );
   }
 }
@@ -476,8 +476,8 @@ async function main() {
     if (Buffer.byteLength(raw) > MAX_INPUT_BYTES) {
       const value = deny(
         "policy-input-too-large",
-        "The shell policy input exceeds its size limit.",
-        "Pass only the normalized tool call.",
+        "Shell 策略的输入超过大小限制。",
+        "只传入规范化的工具调用。",
       );
       process.stdout.write(`${JSON.stringify(value)}\n`);
       process.exitCode = 2;
@@ -491,8 +491,8 @@ async function main() {
   } catch {
     const value = deny(
       "invalid-policy-json",
-      "The shell policy input is not valid JSON.",
-      "Pass one normalized tool-call JSON object.",
+      "Shell 策略的输入不是合法 JSON。",
+      "传入一个规范化的工具调用 JSON 对象。",
     );
     process.stdout.write(`${JSON.stringify(value)}\n`);
     process.exitCode = 2;

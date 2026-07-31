@@ -119,7 +119,7 @@ function blocked(ruleId, reason) {
   return deny(
     ruleId,
     reason,
-    "Use a sanitized example, redacted output, non-secret schema, synthetic placeholder, or a user-run diagnostic that returns only a non-sensitive result.",
+    "改用脱敏示例、打码输出、不含密钥的结构说明、合成占位值，或由用户自己执行、只返回非敏感结果的诊断命令。",
   );
 }
 
@@ -209,12 +209,12 @@ function classifyAbsolutePath(resolved, inWorkspace) {
     // Template conventions carry no live values; .env.example.production stays blocked.
     !/\.(?:example|sample|template)$/u.test(basename)
   ) {
-    return blocked("protected-env-file", "Access to .env files is prohibited.");
+    return blocked("protected-env-file", "禁止访问 .env 文件。");
   }
   if (segments.some((segment) => CREDENTIAL_STORE_DIRECTORY_NAMES.has(segment))) {
     return blocked(
       "protected-directory",
-      "Access to protected credential, key, or secret directories is prohibited.",
+      "禁止访问受保护的凭据、密钥或机密目录。",
     );
   }
   if (
@@ -229,7 +229,7 @@ function classifyAbsolutePath(resolved, inWorkspace) {
   ) {
     return blocked(
       "protected-credential-file",
-      "Access to protected authentication, key, keystore, or infrastructure state files is prohibited.",
+      "禁止访问受保护的认证、密钥、keystore 或基础设施状态文件。",
     );
   }
 
@@ -252,7 +252,7 @@ function classifyAbsolutePath(resolved, inWorkspace) {
     ) {
       return blocked(
         "protected-authentication-store",
-        "Access to authentication stores, browser login data, keychains, or shell sessions is prohibited.",
+        "禁止访问认证仓库、浏览器登录数据、钥匙串或 shell 会话记录。",
       );
     }
   }
@@ -266,13 +266,13 @@ function classifyAbsolutePath(resolved, inWorkspace) {
     if (inWorkspace) {
       return confirmDecision(
         "workspace-name-heuristic",
-        "This workspace path is matched only by a secret-like name and may hold real secrets.",
-        "Proceed only after the user explicitly confirms this exact path holds no real secrets.",
+        "该工作区路径仅因名称疑似机密而命中，可能含有真实密钥。",
+        "仅在用户明确确认该具体路径不含真实密钥后才可继续。",
       );
     }
     return blocked(
       "name-heuristic-path",
-      "Access to secret-like named paths outside the workspace is prohibited.",
+      "禁止访问工作区之外、名称疑似机密的路径。",
     );
   }
 
@@ -281,7 +281,7 @@ function classifyAbsolutePath(resolved, inWorkspace) {
 
 export function evaluatePath(target, cwd = process.cwd()) {
   if (typeof target !== "string" || target.length === 0 || target.includes("\0")) {
-    return blocked("invalid-path-input", "The requested path is missing or malformed.");
+    return blocked("invalid-path-input", "请求的路径缺失或格式错误。");
   }
 
   const expanded = expandHomePath(target);
@@ -313,12 +313,12 @@ function isTrustedDomainLookalike(hostname, trusted) {
 
 export function evaluateUrl(target) {
   if (typeof target !== "string" || target.length === 0) {
-    return blocked("invalid-url-input", "The requested network target is missing.");
+    return blocked("invalid-url-input", "请求的网络目标缺失。");
   }
   if (/[\u0000-\u001f\u007f\\]/u.test(target)) {
     return blocked(
       "ambiguous-url",
-      "The requested network target contains ambiguous or unsafe URL characters.",
+      "请求的网络目标包含有歧义或不安全的 URL 字符。",
     );
   }
 
@@ -327,7 +327,7 @@ export function evaluateUrl(target) {
   if (!trimmed.includes("://") && DENIED_DOMAINS.has(bareHost)) {
     return blocked(
       "filelike-name-is-local",
-      "The requested name is a local filename, not a network host.",
+      "请求的名称是本地文件名，不是网络主机。",
     );
   }
 
@@ -335,18 +335,18 @@ export function evaluateUrl(target) {
   try {
     parsed = new URL(trimmed);
   } catch {
-    return blocked("invalid-url", "The requested network target is not a valid URL.");
+    return blocked("invalid-url", "请求的网络目标不是合法 URL。");
   }
   if (!["https:", "http:"].includes(parsed.protocol)) {
     return blocked(
       "unsupported-network-scheme",
-      "Only an explicitly reviewed HTTP or HTTPS target may be considered.",
+      "只有经过明确审查的 HTTP 或 HTTPS 目标才可考虑。",
     );
   }
   if (parsed.username || parsed.password) {
     return blocked(
       "url-userinfo",
-      "URLs with user information are prohibited because they can disguise the real host.",
+      "禁止带用户信息的 URL，因为它会掩盖真实主机。",
     );
   }
 
@@ -358,7 +358,7 @@ export function evaluateUrl(target) {
     if (isTrustedDomainLookalike(hostname, trusted)) {
       return blocked(
         "trusted-domain-lookalike",
-        "The requested host is not the exact trusted file-like domain.",
+        "请求的主机不是那个确切的可信文件名域名。",
       );
     }
   }
@@ -366,7 +366,7 @@ export function evaluateUrl(target) {
     if (hostname === denied || hostname.endsWith(`.${denied}`)) {
       return blocked(
         "filelike-domain",
-        "The requested host is a prohibited file-like domain.",
+        "请求的主机是被禁止的文件名伪装域名。",
       );
     }
   }
@@ -455,7 +455,7 @@ function pathCandidateFromToken(token) {
 
 function evaluateCommand(command, cwd) {
   if (typeof command !== "string") {
-    return blocked("invalid-command-input", "The shell command is missing.");
+    return blocked("invalid-command-input", "Shell 命令缺失。");
   }
 
   if (
@@ -482,7 +482,7 @@ function evaluateCommand(command, cwd) {
   ) {
     return blocked(
       "process-environment-access",
-      "Dumping process or shell environment data is prohibited.",
+      "禁止导出进程或 shell 的环境变量数据。",
     );
   }
 
@@ -494,7 +494,7 @@ function evaluateCommand(command, cwd) {
     if (pathDecision.decision === "deny") {
       return blocked(
         "protected-path-in-command",
-        `The shell command references protected local content (${pathDecision.ruleId}).`,
+        `该 shell 命令引用了受保护的本地内容（${pathDecision.ruleId}）。`,
       );
     }
     strongest = strongerOf(strongest, pathDecision);
@@ -512,7 +512,7 @@ function evaluateCommand(command, cwd) {
   ) {
     return blocked(
       "protected-path-in-command",
-      "The shell command references protected local content.",
+      "该 shell 命令引用了受保护的本地内容。",
     );
   }
 
@@ -523,8 +523,8 @@ function evaluateCommand(command, cwd) {
   ) {
     strongest = confirmDecision(
       "workspace-name-heuristic",
-      "The shell command references a path matched only by a secret-like name.",
-      "Proceed only after the user explicitly confirms the exact path holds no real secrets.",
+      "该 shell 命令引用了仅因名称疑似机密而命中的路径。",
+      "仅在用户明确确认该具体路径不含真实密钥后才可继续。",
     );
   }
 
@@ -545,7 +545,7 @@ function evaluateCommand(command, cwd) {
   ) {
     return blocked(
       "filelike-domain-in-network-command",
-      "The network command targets a prohibited file-like domain.",
+      "该网络命令指向被禁止的文件名伪装域名。",
     );
   }
 
@@ -554,7 +554,7 @@ function evaluateCommand(command, cwd) {
 
 function normalizeInput(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
-    return { error: "Policy input must be a JSON object." };
+    return { error: "策略输入必须是一个 JSON 对象。" };
   }
   if (input.kind && input.target !== undefined) {
     return {
@@ -647,7 +647,7 @@ export function evaluatePolicy(input) {
   } catch {
     return blocked(
       "policy-evaluation-error",
-      "The local security policy could not evaluate the operation safely.",
+      "本地安全策略无法安全地判定该操作。",
     );
   }
 }
@@ -666,7 +666,7 @@ async function main() {
     if (Buffer.byteLength(raw) > MAX_INPUT_BYTES) {
       const decision = blocked(
         "policy-input-too-large",
-        "The local security policy input exceeds its size limit.",
+        "本地安全策略的输入超过大小限制。",
       );
       process.stdout.write(`${JSON.stringify(decision)}\n`);
       process.exitCode = 2;
@@ -680,7 +680,7 @@ async function main() {
   } catch {
     const decision = blocked(
       "invalid-policy-json",
-      "The local security policy input is not valid JSON.",
+      "本地安全策略的输入不是合法 JSON。",
     );
     process.stdout.write(`${JSON.stringify(decision)}\n`);
     process.exitCode = 2;

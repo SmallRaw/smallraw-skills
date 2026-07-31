@@ -15,6 +15,9 @@ const policies = {
   npm: fileURLToPath(
     new URL("../../guidelines-security-npm/scripts/policy.mjs", import.meta.url),
   ),
+  shell: fileURLToPath(
+    new URL("../../guidelines-security-shell/scripts/policy.mjs", import.meta.url),
+  ),
 };
 
 function runGuard(policy, payload, extraArgs = []) {
@@ -48,7 +51,7 @@ test("translates confirm to ask with the policy reason and next action", () => {
   const push = runGuard(policies.git, bashPayload("git push origin HEAD"));
   assert.equal(push.permissionDecision, "ask");
   assert.match(push.permissionDecisionReason, /^\[git-push\]/u);
-  assert.match(push.permissionDecisionReason, /Confirm the repository push remote/u);
+  assert.match(push.permissionDecisionReason, /推送前确认仓库的推送远端/u);
 
   const install = runGuard(policies.npm, bashPayload("npm ci --ignore-scripts"));
   assert.equal(install.permissionDecision, "ask");
@@ -83,6 +86,35 @@ test("asks for name-heuristic workspace paths through the local policy", (contex
   );
   assert.equal(result.permissionDecision, "ask");
   assert.match(result.permissionDecisionReason, /^\[workspace-name-heuristic\]/u);
+});
+
+test("raises the configured deny exit code for fail-open hosts", () => {
+  const denyPayload = JSON.stringify({
+    hook_event_name: "PreToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "sudo id" },
+  });
+  const withCode = spawnSync(process.execPath, [guardScript, policies.shell, "--deny-exit", "2"], {
+    input: denyPayload,
+    encoding: "utf8",
+  });
+  assert.equal(withCode.status, 2);
+  assert.equal(JSON.parse(withCode.stdout).hookSpecificOutput.permissionDecision, "deny");
+
+  // Default stays 0 so the JSON verdict is the only signal where that is enough.
+  const without = spawnSync(process.execPath, [guardScript, policies.shell], {
+    input: denyPayload,
+    encoding: "utf8",
+  });
+  assert.equal(without.status, 0);
+
+  // An allow never raises the code, whatever the host needs.
+  const allowed = spawnSync(process.execPath, [guardScript, policies.shell, "--deny-exit", "2"], {
+    input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "ls -la" } }),
+    encoding: "utf8",
+  });
+  assert.equal(allowed.status, 0);
+  assert.equal(allowed.stdout.trim(), "");
 });
 
 test("fails closed on misconfiguration and malformed payloads", () => {

@@ -1,5 +1,10 @@
 # Open Plugins and Claude-Compatible Hosts
 
+> Read this only when installing a policy the bundled installer does not cover, or on a
+> host it refuses. For the bundled guidelines policies, `scripts/install-or-update.mjs`
+> already encodes these paths and matchers — packaging a new plugin is the wrong move when
+> a user-level registration already exists.
+
 Use this route for Claude Code, Codex, Cursor, GitHub Copilot, and hosts that explicitly
 support Claude-compatible hooks. Open Plugins is the packaging layer; host behavior still
 decides the final tool names, decisions, timeouts, and failure mode.
@@ -87,7 +92,7 @@ For the widest command-hook compatibility:
 | Host | Configuration and mapping | Important limit |
 | --- | --- | --- |
 | Claude Code | User/project settings or plugin `hooks/hooks.json`; `PreToolUse` supports `allow`, `deny`, `ask`, and `defer`. | Hooks run with the user's environment and credentials. |
-| Codex | User/project hooks or plugin hook; input follows the Claude-style fields. Existing native approval flows can also be filtered with `PermissionRequest`. | `PreToolUse` supports useful `allow` and `deny` decisions, not `ask`. Treat a new confirmation requirement as deny unless native approval already applies or a one-use grant is explicitly requested. |
+| Codex | `~/.codex/hooks.json` (or `$CODEX_HOME`), project `<repo>/.codex/hooks.json`, or inline in `config.toml`. `PreToolUse` matches `Bash`, `apply_patch`/`Edit`/`Write`, and MCP tool names. `permissionDecision` supports `allow`, `deny`, and `ask`. | Hooks are on by default but **untrusted until reviewed**: Codex records trust against the hook's current hash, so any edit invalidates it and `/hooks` review is required again. A registered-but-untrusted hook does not run — it is not the same as "not installed". |
 | Cursor | Native `.cursor/hooks.json`, or load Claude hooks when third-party compatibility is enabled. It accepts Claude's nested output and maps Claude tool names. | Native hook failures may be fail-open unless the relevant hook is configured to fail closed. |
 | GitHub Copilot | Repository `.github/hooks/*.json`, user hooks, or a plugin. PascalCase `PreToolUse` selects Claude-compatible fields and matcher semantics. | Cloud runs cannot answer `ask`; command-hook timeouts are fail-open. |
 | Factory Droid | User/project `.factory/hooks.json` or plugin hook; Claude-style input/output and plugin-root aliases are supported. | It is Claude-compatible but is not a substitute for verifying Open Plugins discovery on the installed version. |
@@ -111,12 +116,10 @@ Keep the domain policy host-neutral:
 
 Translate at the edge:
 
-- Claude Code: `confirm` becomes `ask`.
+- Claude Code and Codex: `confirm` becomes `ask` (both accept the same
+  `permissionDecision` values).
 - Codex `PermissionRequest`: map `deny` to deny; return no decision for `allow` or
   `confirm` so the native approval prompt remains authoritative.
-- Codex `PreToolUse`: for `confirm`, return no decision only when that exact operation is
-  guaranteed to trigger `PermissionRequest`; otherwise deny with an actionable reason.
-  Never return `allow` merely to manufacture a later prompt.
 - Cursor: use `ask` only where that event supports it; otherwise deny and report the gap.
 - GitHub Copilot cloud: `confirm` must block because no user is present.
 - A hard `deny` remains a deny on every host.

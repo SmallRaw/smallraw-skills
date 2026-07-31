@@ -151,6 +151,25 @@ test("finds Git mutations in shell chains and normalized hook payloads", () => {
   assert.equal(evaluatePolicy({ tool_name: "Read", tool_input: { path: "README.md" } }).decision, "allow");
 });
 
+test("tells the agent to unchain a gated write hidden in a command chain", () => {
+  const chained = evaluateCommand("npm test && git commit -m x && git push origin HEAD");
+  assert.equal(chained.decision, "confirm");
+  assert.match(chained.nextAction, /单独作为一条命令/u);
+
+  // A standalone gated write is already visible; no extra nagging.
+  const alone = evaluateCommand("git push origin HEAD");
+  assert.equal(alone.decision, "confirm");
+  assert.doesNotMatch(alone.nextAction, /单独作为一条命令/u);
+
+  // Denials in a chain get the same hint.
+  const denied = evaluateCommand("make build && gh pr create --title x");
+  assert.equal(denied.decision, "deny");
+  assert.match(denied.nextAction, /单独作为一条命令/u);
+
+  // Allowed chains stay untouched.
+  assert.equal(evaluateCommand("npm test && git status").decision, "allow");
+});
+
 test("fails conservatively on malformed input", () => {
   assert.equal(evaluateCommand('git commit -m "unfinished').decision, "confirm");
   assert.equal(evaluatePolicy(null).decision, "deny");
