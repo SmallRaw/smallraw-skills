@@ -73,6 +73,18 @@ test("allows explicit staging and normal commits", () => {
   assert.equal(evaluateCommand('git commit -m "Refine Git guideline"').decision, "allow");
 });
 
+test("treats git rm and git mv on explicit paths like staging", () => {
+  // Recoverable from git and refused by git itself when work is uncommitted,
+  // so the safer spelling must not cost more friction than a plain rm.
+  assert.equal(evaluateCommand("git rm -r -q docs/superpowers").decision, "allow");
+  assert.equal(evaluateCommand("git rm --cached secrets.env").decision, "allow");
+  assert.equal(evaluateCommand("git mv old.ts new.ts").ruleId, "tracked-path-index-change");
+
+  assert.equal(evaluateCommand("git rm -r .").ruleId, "broad-staging");
+  assert.equal(evaluateCommand('git rm -- "*.log"').ruleId, "broad-staging");
+  assert.equal(evaluateCommand("git rm -f modified.ts").ruleId, "forced-index-removal");
+});
+
 test("requires confirmation for broad staging and commit rewrites", () => {
   assert.equal(evaluateCommand("git add -A").ruleId, "broad-staging");
   assert.equal(evaluateCommand("git add -- :/").ruleId, "broad-staging");

@@ -294,6 +294,26 @@ function evaluateGit(args) {
     }
     return allow("explicit-staging");
   }
+  // Index operations on tracked paths: the content stays recoverable from git,
+  // and git itself refuses to drop uncommitted work unless forced. Treat them
+  // like staging — broad pathspecs and --force are what need a look.
+  if (subcommand === "rm" || subcommand === "mv") {
+    if (rest.some(isBroadStageToken)) {
+      return confirm(
+        "broad-staging",
+        `git ${subcommand} 的宽泛 pathspec 会波及用户自己的无关文件。`,
+        "只写明属于当前这次改动的确切路径。",
+      );
+    }
+    if (rest.some((value) => value === "-f" || value === "--force")) {
+      return confirm(
+        "forced-index-removal",
+        `git ${subcommand} --force 会丢弃尚未提交的改动。`,
+        "先确认这些路径没有需要保留的未提交改动。",
+      );
+    }
+    return allow("tracked-path-index-change");
+  }
   if (subcommand === "commit") {
     if (
       rest.includes("--amend") ||
