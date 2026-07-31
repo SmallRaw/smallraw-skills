@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 const RUNNERS = new Set(["npx", "bunx"]);
@@ -88,6 +89,7 @@ const NPM_ROUTINE_COMMANDS = new Set([
   "",
   "audit",
   "bin",
+  "cache",
   "doctor",
   "explain",
   "fund",
@@ -563,6 +565,22 @@ async function main() {
   process.exitCode = result.decision === "allow" ? 0 : result.decision === "confirm" ? 1 : 2;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node resolves symlinks when loading a module, so import.meta.url is the real
+// path while argv[1] is whatever the caller typed. Comparing them directly makes
+// the gate silently do nothing when invoked through a symlinked skill directory —
+// exit 0, no verdict, which reads as "allowed". Compare resolved paths instead.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  const self = fileURLToPath(import.meta.url);
+  if (entry === self) return true;
+  try {
+    return realpathSync(entry) === realpathSync(self);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   main();
 }

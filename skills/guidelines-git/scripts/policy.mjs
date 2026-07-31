@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 const READ_ONLY_GIT_COMMANDS = new Set([
@@ -19,6 +20,19 @@ const READ_ONLY_GIT_COMMANDS = new Set([
   "for-each-ref",
   "count-objects",
   "fsck",
+  "merge-base",
+  "rev-list",
+  "describe",
+  "check-ignore",
+  "check-attr",
+  "check-mailmap",
+  "show-ref",
+  "ls-remote",
+  "diff-tree",
+  "diff-index",
+  "diff-files",
+  "cherry",
+  "var",
 ]);
 const HISTORY_OR_BRANCH_MUTATIONS = new Set([
   "checkout",
@@ -180,17 +194,31 @@ function gitSubcommand(args) {
 function isReadOnlyBranch(args) {
   return (
     args.length === 0 ||
-    args.includes("--list") ||
-    args.includes("-l") ||
-    args.includes("--show-current") ||
-    args.includes("--contains") ||
-    args.includes("--merged") ||
-    args.includes("--no-merged")
+    args.some(
+      (value) =>
+        [
+          "--list",
+          "--show-current",
+          "--contains",
+          "--merged",
+          "--no-merged",
+          "--all",
+          "--remotes",
+          "--verbose",
+        ].includes(value) || /^-[alrv]+$/u.test(value),
+    )
   );
 }
 
 function isReadOnlyTag(args) {
-  return args.length === 0 || args.includes("--list") || args.includes("-l") || args.includes("--contains");
+  return (
+    args.length === 0 ||
+    args.some(
+      (value) =>
+        ["--list", "-l", "--contains", "--points-at"].includes(value) ||
+        /^-n\d*$/u.test(value),
+    )
+  );
 }
 
 function isReadOnlyRemote(args) {
@@ -240,6 +268,21 @@ function evaluateGit(args) {
   if (subcommand === "tag" && isReadOnlyTag(rest)) return allow("read-only-git");
   if (subcommand === "remote" && isReadOnlyRemote(rest)) return allow("read-only-git");
   if (subcommand === "config" && isReadOnlyConfig(rest)) return allow("read-only-git");
+  if (subcommand === "reflog" && (rest.length === 0 || rest[0] === "show" || rest[0].startsWith("-"))) {
+    return allow("read-only-git");
+  }
+  if (subcommand === "stash" && ["list", "show"].includes(rest[0] ?? "")) {
+    return allow("read-only-git");
+  }
+  if (subcommand === "worktree" && rest[0] === "list") return allow("read-only-git");
+  if (
+    subcommand === "symbolic-ref" &&
+    !rest.includes("-d") &&
+    !rest.includes("--delete") &&
+    rest.filter((value) => !value.startsWith("-")).length <= 1
+  ) {
+    return allow("read-only-git");
+  }
 
   if (subcommand === "add") {
     if (rest.some(isBroadStageToken)) {
@@ -533,6 +576,22 @@ async function main() {
   process.exitCode = value.decision === "allow" ? 0 : value.decision === "confirm" ? 1 : 2;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node resolves symlinks when loading a module, so import.meta.url is the real
+// path while argv[1] is whatever the caller typed. Comparing them directly makes
+// the gate silently do nothing when invoked through a symlinked skill directory —
+// exit 0, no verdict, which reads as "allowed". Compare resolved paths instead.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  const self = fileURLToPath(import.meta.url);
+  if (entry === self) return true;
+  try {
+    return realpathSync(entry) === realpathSync(self);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   main();
 }
