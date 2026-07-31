@@ -33,6 +33,28 @@ test("blocks protected targets reached through a symlink", (context) => {
   assert.equal(evaluatePath(path.join(root, "current", "value.txt")).decision, "deny");
 });
 
+test("blocks secret-named data files but not password-related source", () => {
+  for (const target of [
+    "/workspace/config/db-password.txt",
+    "/workspace/passwords.csv",
+    "/workspace/vault/passphrase",
+    "/workspace/app-passwd.json",
+    "/workspace/notes/PASSWORD.txt",
+  ]) {
+    assert.equal(evaluatePath(target).ruleId, "protected-credential-file", target);
+  }
+  for (const target of [
+    "/workspace/src/password-reset.tsx",
+    "/workspace/lib/passwordStrength.ts",
+    "/workspace/docs/password-policy.md",
+    "/workspace/components/PasswordInput.vue",
+    "/workspace/test/password.test.js",
+    "/workspace/src/passwordless/index.ts",
+  ]) {
+    assert.equal(evaluatePath(target).decision, "allow", target);
+  }
+});
+
 test("does not block ordinary source names containing token", () => {
   assert.equal(evaluatePath("/workspace/src/token_bucket.ts").decision, "allow");
   assert.equal(evaluatePath("/workspace/client_secretary_notes.md").decision, "allow");

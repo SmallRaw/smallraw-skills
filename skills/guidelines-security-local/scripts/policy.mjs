@@ -60,6 +60,40 @@ const PROTECTED_EXTENSIONS = new Set([
   ".crash",
   ".dmp",
 ]);
+// Source, docs, and test files routinely discuss passwords without holding one;
+// only non-code files named after a secret are treated as protected.
+const CODE_LIKE_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".rb",
+  ".go",
+  ".rs",
+  ".java",
+  ".kt",
+  ".swift",
+  ".c",
+  ".h",
+  ".cc",
+  ".cpp",
+  ".cs",
+  ".php",
+  ".sh",
+  ".css",
+  ".scss",
+  ".html",
+  ".vue",
+  ".svelte",
+  ".md",
+  ".mdx",
+  ".sql",
+  ".proto",
+  ".snap",
+]);
 const PROTECTED_BASENAMES = new Set([
   ".npmrc",
   ".pnpmrc",
@@ -211,6 +245,10 @@ function classifyAbsolutePath(resolved, inWorkspace) {
     basename.startsWith(".yarnrc") ||
     /^client_secret.*\.json$/u.test(basename) ||
     /^service[-_]account.*\.json$/u.test(basename) ||
+    (/(?:^|[-_. ])(?:password|passwd|passphrase)s?(?:[-_. ]|$)/u.test(
+      basename.slice(0, basename.length - extension.length) || basename,
+    ) &&
+      !CODE_LIKE_EXTENSIONS.has(extension)) ||
     isCoreDumpFile(resolved, basename)
   ) {
     return blocked(
