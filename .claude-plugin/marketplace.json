@@ -125,6 +125,26 @@
       }
     },
     {
+      "name": "guidelines-security-shell",
+      "description": "破坏性 Shell 门禁 - 拦截提权、越界删除、磁盘操作与 shell 间接层，工作区内清理零打扰",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/guidelines-security-shell"],
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-shell/scripts/policy.mjs\""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "name": "guardrails-agent-plugin",
       "description": "跨 Agent Hook 实现层 - 将领域 Skill 的规则、预检和阻断要求转换为当前 Agent 的原生 Hook",
       "source": "./",
