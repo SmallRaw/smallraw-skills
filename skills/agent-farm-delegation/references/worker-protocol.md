@@ -53,13 +53,13 @@ acpx --cwd /path/to/repo qwen -s backend "<task>"
 Use JSON output when another agent or script needs to parse progress:
 
 ```bash
-acpx --cwd /path/to/repo --format json pi exec "<task>" > .agent-runs/task-id/events.ndjson
+acpx --cwd /path/to/repo --format json pi exec "<task>" > workspaces/agent-farm-delegation/runs/task-id/events.ndjson
 ```
 
 For long-running tasks, keep a small task artifact directory if useful:
 
 ```text
-.agent-runs/<task-id>/
+workspaces/agent-farm-delegation/runs/<task-id>/
   task.md
   events.ndjson
   review.md

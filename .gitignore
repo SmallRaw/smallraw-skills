@@ -19,9 +19,6 @@ memory/
 .codex-delegate-worker.json
 
 
-# test workspace
-mcp-lazy-cli-workspace/
-github-kb-workspace/
-
-# analysis dumps
-docs/dump/
+# generated workspaces
+workspaces/*
+!workspaces/README.md
