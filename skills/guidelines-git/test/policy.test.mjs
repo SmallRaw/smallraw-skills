@@ -42,7 +42,7 @@ test("allows common read-only inspection forms without confirmation", () => {
     assert.equal(evaluateCommand(command).decision, "allow", command);
   }
   assert.equal(evaluateCommand("git branch -d feature").decision, "confirm");
-  assert.equal(evaluateCommand("git stash push").decision, "confirm");
+  assert.equal(evaluateCommand("git stash drop").decision, "confirm");
   assert.equal(evaluateCommand("git worktree add ../wt").decision, "confirm");
   assert.equal(
     evaluateCommand("git symbolic-ref HEAD refs/heads/other").decision,
@@ -108,11 +108,33 @@ test("requires confirmation for broad staging and commit rewrites", () => {
   assert.equal(evaluateCommand("git commit --amend --no-edit").ruleId, "history-rewrite");
 });
 
-test("requires confirmation for branch, history, and destructive convenience mutations", () => {
-  assert.equal(evaluateCommand("git switch main").decision, "confirm");
+test("allows recoverable branch, stash, and replay work", () => {
+  for (const command of [
+    "git switch main",
+    "git checkout main",
+    "git checkout -b feature/login",
+    "git switch -c feature/login",
+    "git cherry-pick abc1234",
+    "git cherry-pick --abort",
+    "git revert abc1234",
+    "git stash push",
+    "git stash pop",
+    "git stash apply",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "allow", command);
+  }
+});
+
+test("still gates the forms that discard work for good", () => {
+  // A pathspec checkout is the one git command with no undo anywhere.
+  assert.equal(evaluateCommand("git checkout -- src/app.ts").ruleId, "worktree-discard");
+  assert.equal(evaluateCommand("git checkout .").ruleId, "worktree-discard");
+  assert.equal(evaluateCommand("git checkout README.md").ruleId, "worktree-discard");
+  assert.equal(evaluateCommand("git stash drop").ruleId, "stash-destruction");
+  assert.equal(evaluateCommand("git stash clear").ruleId, "stash-destruction");
   assert.equal(evaluateCommand("git reset --hard HEAD").decision, "confirm");
-  assert.equal(evaluateCommand("git stash push").decision, "confirm");
   assert.equal(evaluateCommand("git clean -fd").decision, "confirm");
+  assert.equal(evaluateCommand("git restore src/app.ts").decision, "confirm");
 });
 
 test("allows plain fetches but confirms local-ref-updating refspecs and pulls", () => {

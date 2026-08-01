@@ -256,6 +256,13 @@ function isBroadStageToken(value) {
   );
 }
 
+// A bare name is read as a branch; `.` and anything with a file extension is
+// read as a path, which is the form that discards work.
+function isDiscardingPathspec(value) {
+  if (value.startsWith("-")) return false;
+  return value === "." || value === "./" || value.startsWith("./") || /\.[A-Za-z0-9]+$/u.test(value);
+}
+
 function evaluateGit(args) {
   const parsed = gitSubcommand(args);
   const subcommand = parsed.subcommand;
@@ -393,6 +400,34 @@ function evaluateGit(args) {
       );
     }
     return allow("fetch-remote-tracking");
+  }
+  // Moving between branches is recoverable and git refuses to clobber uncommitted
+  // work. A pathspec checkout is the exception: it discards those changes with no
+  // undo anywhere, so it stays gated even though its branch sibling does not.
+  if (subcommand === "checkout" || subcommand === "switch") {
+    if (rest.includes("--") || rest.some(isDiscardingPathspec)) {
+      return confirm(
+        "worktree-discard",
+        `git ${subcommand} 带路径会丢弃这些文件尚未提交的修改，且无法撤销。`,
+        "先提交或 stash 这些改动再切换；若确实要丢弃，逐一确认路径。",
+      );
+    }
+    return allow("branch-move");
+  }
+  // Applies a commit onto the current branch; git refuses on a dirty worktree,
+  // the result is a new commit, and --abort or the reflog undoes it.
+  if (subcommand === "cherry-pick" || subcommand === "revert") {
+    return allow("recoverable-commit-application");
+  }
+  if (subcommand === "stash") {
+    if (["drop", "clear"].includes(rest[0] ?? "")) {
+      return confirm(
+        "stash-destruction",
+        `git stash ${rest[0]} 会删除暂存条目，之后只能从悬空对象里勉强找回。`,
+        "先确认这些暂存条目已经不需要，或改用 git stash list 检查内容。",
+      );
+    }
+    return allow("recoverable-stash");
   }
   if (REMOTE_MUTATIONS.has(subcommand)) {
     return confirm(
