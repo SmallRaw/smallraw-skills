@@ -125,7 +125,49 @@ test("allows recoverable branch, stash, and replay work", () => {
   }
 });
 
+test("allows dry runs, help, ref creation, and in-progress control", () => {
+  for (const command of [
+    "git clean -n",
+    "git clean --dry-run",
+    "git apply --check patch.diff",
+    "git format-patch -1 HEAD",
+    "git archive --format=tar HEAD",
+    "git bundle create out.bundle HEAD",
+    "git submodule status",
+    "git notes list",
+    "git notes add -m note",
+    "git bisect log",
+    "git bisect reset",
+    "git range-diff main...HEAD",
+    "git verify-commit HEAD",
+    "git instaweb --help",
+    "git branch feature/new",
+    "git tag v1.0.0",
+    "git tag -a v1.0.0 -m release",
+    "git rebase --abort",
+    "git rebase --continue",
+    "git merge --abort",
+    "git am --abort",
+    "git reset --soft HEAD~1",
+    "git reset HEAD file.ts",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "allow", command);
+  }
+});
+
 test("still gates the forms that discard work for good", () => {
+  assert.equal(evaluateCommand("git branch -D feature").decision, "confirm");
+  assert.equal(evaluateCommand("git branch -m old new").decision, "confirm");
+  assert.equal(evaluateCommand("git tag -d v1.0.0").decision, "confirm");
+  assert.equal(evaluateCommand("git tag -f v1.0.0").decision, "confirm");
+  assert.equal(evaluateCommand("git notes remove").ruleId, "notes-removal");
+  assert.equal(evaluateCommand("git bundle unbundle in.bundle").ruleId, "bundle-unpack");
+  assert.equal(evaluateCommand("git submodule update --init").decision, "confirm");
+  assert.equal(evaluateCommand("git reset --merge").decision, "confirm");
+  assert.equal(evaluateCommand("git apply patch.diff").decision, "confirm");
+});
+
+test("still gates the forms that discard work for good (worktree)", () => {
   // A pathspec checkout is the one git command with no undo anywhere.
   assert.equal(evaluateCommand("git checkout -- src/app.ts").ruleId, "worktree-discard");
   assert.equal(evaluateCommand("git checkout .").ruleId, "worktree-discard");

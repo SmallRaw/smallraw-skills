@@ -33,7 +33,19 @@ const READ_ONLY_GIT_COMMANDS = new Set([
   "diff-files",
   "cherry",
   "var",
+  "format-patch",
+  "archive",
+  "verify-commit",
+  "verify-tag",
+  "range-diff",
+  "whatchanged",
 ]);
+// Resuming or abandoning an in-progress operation restores the state it began
+// from; it is the way out of trouble, not a way into it.
+const IN_PROGRESS_CONTROL = new Set(["--abort", "--continue", "--skip", "--quit", "--edit-todo"]);
+// Only these reset modes touch the working tree; the rest move HEAD and leave
+// the changes on disk, recoverable through the reflog.
+const WORKTREE_RESET_MODES = new Set(["--hard", "--merge", "--keep"]);
 const HISTORY_OR_BRANCH_MUTATIONS = new Set([
   "checkout",
   "switch",
@@ -221,6 +233,18 @@ function isReadOnlyTag(args) {
   );
 }
 
+// The same letter means different things per subcommand: -m renames a branch
+// but only carries a message on a tag.
+const DESTRUCTIVE_REF_FLAGS = {
+  branch: ["-d", "-D", "--delete", "-m", "-M", "--move", "-c", "-C", "--copy", "-f", "--force"],
+  tag: ["-d", "--delete", "-f", "--force"],
+};
+
+function hasDestructiveRefFlag(subcommand, args) {
+  const flags = DESTRUCTIVE_REF_FLAGS[subcommand] ?? [];
+  return args.some((value) => flags.includes(value));
+}
+
 function isReadOnlyRemote(args) {
   return (
     args.length === 0 ||
@@ -271,8 +295,55 @@ function evaluateGit(args) {
   if (!subcommand || READ_ONLY_GIT_COMMANDS.has(subcommand)) {
     return allow("read-only-git");
   }
+  // Asking a command to explain itself, or to say what it would do, changes nothing.
+  if (rest.includes("--help") || rest.includes("--dry-run")) return allow("read-only-git");
+  if (subcommand === "clean" && (rest.includes("-n") || rest.includes("--dry-run"))) {
+    return allow("read-only-git");
+  }
+  if (
+    subcommand === "apply" &&
+    rest.some((value) => ["--check", "--stat", "--summary", "--numstat"].includes(value))
+  ) {
+    return allow("read-only-git");
+  }
+  if (rest.some((value) => IN_PROGRESS_CONTROL.has(value))) {
+    return allow("in-progress-control");
+  }
+
   if (subcommand === "branch" && isReadOnlyBranch(rest)) return allow("read-only-git");
   if (subcommand === "tag" && isReadOnlyTag(rest)) return allow("read-only-git");
+  // Adding a ref or a note takes nothing away; removing or renaming one does.
+  if (subcommand === "branch" && !hasDestructiveRefFlag("branch", rest)) return allow("ref-creation");
+  if (subcommand === "tag" && !hasDestructiveRefFlag("tag", rest)) return allow("ref-creation");
+  if (subcommand === "notes") {
+    const verb = rest.find((value) => !value.startsWith("-")) ?? "";
+    if (["remove", "prune"].includes(verb)) {
+      return confirm(
+        "notes-removal",
+        "git notes 删除会移除已有的注记。",
+        "确认这些注记不再需要，或先用 git notes list 查看。",
+      );
+    }
+    return allow("notes-write");
+  }
+  // Bisect only moves HEAD around existing commits, and reset returns to the start.
+  if (subcommand === "bisect") return allow("bisect-navigation");
+  if (subcommand === "bundle") {
+    if ((rest[0] ?? "") === "unbundle") {
+      return confirm(
+        "bundle-unpack",
+        "git bundle unbundle 会把外部 bundle 里的 ref 写进本仓库。",
+        "确认 bundle 来源可信，并检查它会创建哪些 ref。",
+      );
+    }
+    return allow("read-only-git");
+  }
+  if (subcommand === "submodule" && ["status", "summary"].includes(rest[0] ?? "")) {
+    return allow("read-only-git");
+  }
+  if (subcommand === "reset" && !rest.some((value) => WORKTREE_RESET_MODES.has(value))) {
+    return allow("index-only-reset");
+  }
   if (subcommand === "remote" && isReadOnlyRemote(rest)) return allow("read-only-git");
   if (subcommand === "config" && isReadOnlyConfig(rest)) return allow("read-only-git");
   if (subcommand === "reflog" && (rest.length === 0 || rest[0] === "show" || rest[0].startsWith("-"))) {
