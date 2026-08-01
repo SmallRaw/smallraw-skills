@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-shell/scripts/policy.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-shell/scripts/policy.mjs\" || exit 2"
           }
         ]
       }

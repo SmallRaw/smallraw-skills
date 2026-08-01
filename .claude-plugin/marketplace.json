@@ -13,63 +13,81 @@
       "description": "项目规则园丁 - 从问题和重复指令中发现、推荐、植入 AGENTS.md 规则，培育项目规范有机生长",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/rule-gardener"]
+      "skills": [
+        "./skills/rule-gardener"
+      ]
     },
     {
       "name": "fractal-docs",
       "description": "分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/fractal-docs"]
+      "skills": [
+        "./skills/fractal-docs"
+      ]
     },
     {
       "name": "excel-lite-cli",
       "description": "Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出新文件",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/excel-lite-cli"]
+      "skills": [
+        "./skills/excel-lite-cli"
+      ]
     },
     {
       "name": "openclaw-tmux-agent",
       "description": "通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/openclaw-tmux-agent"]
+      "skills": [
+        "./skills/openclaw-tmux-agent"
+      ]
     },
     {
       "name": "mcp-lazy-cli",
       "description": "MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/mcp-lazy-cli"]
+      "skills": [
+        "./skills/mcp-lazy-cli"
+      ]
     },
     {
       "name": "github-kb",
       "description": "GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图），中文输出",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/github-kb"]
+      "skills": [
+        "./skills/github-kb"
+      ]
     },
     {
       "name": "codex-delegate-worker",
       "description": "把任务交给外部 Agent：用一次性 codex exec 启动隔离的 provider worker",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/codex-delegate-worker"]
+      "skills": [
+        "./skills/codex-delegate-worker"
+      ]
     },
     {
       "name": "guidelines-coding",
       "description": "编码行为准则 - 减少常见 AI 编码错误，并按任务阶段控制验证范围与频率",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guidelines-coding"]
+      "skills": [
+        "./skills/guidelines-coding"
+      ]
     },
     {
       "name": "guidelines-git",
       "description": "Git 行为准则 - 保护现有状态、明确操作授权并使用仓库专属 SSH 身份",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guidelines-git"],
+      "skills": [
+        "./skills/guidelines-git"
+      ],
       "hooks": {
         "PreToolUse": [
           {
@@ -77,7 +95,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-git/scripts/policy.mjs\""
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-git/scripts/policy.mjs\" || exit 2"
               }
             ]
           }
@@ -89,7 +107,9 @@
       "description": "本地安全红线 - 禁止访问敏感数据并阻断文件名伪装域名",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guidelines-security-local"],
+      "skills": [
+        "./skills/guidelines-security-local"
+      ],
       "hooks": {
         "PreToolUse": [
           {
@@ -97,7 +117,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-local/scripts/policy.mjs\""
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-local/scripts/policy.mjs\" || exit 2"
               }
             ]
           }
@@ -109,7 +129,9 @@
       "description": "npm 供应链安全准则 - 隔离审查依赖变更、执行与发布风险",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guidelines-security-npm"],
+      "skills": [
+        "./skills/guidelines-security-npm"
+      ],
       "hooks": {
         "PreToolUse": [
           {
@@ -117,7 +139,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-npm/scripts/policy.mjs\""
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-npm/scripts/policy.mjs\" || exit 2"
               }
             ]
           }
@@ -129,7 +151,9 @@
       "description": "破坏性 Shell 门禁 - 拦截提权、越界删除、磁盘操作与 shell 间接层，工作区内清理零打扰",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guidelines-security-shell"],
+      "skills": [
+        "./skills/guidelines-security-shell"
+      ],
       "hooks": {
         "PreToolUse": [
           {
@@ -137,7 +161,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-shell/scripts/policy.mjs\""
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/guardrails-agent-plugin/scripts/guard.mjs\" \"${CLAUDE_PLUGIN_ROOT}/skills/guidelines-security-shell/scripts/policy.mjs\" || exit 2"
               }
             ]
           }
@@ -149,7 +173,9 @@
       "description": "跨 Agent Hook 实现层 - 将领域 Skill 的规则、预检和阻断要求转换为当前 Agent 的原生 Hook",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/guardrails-agent-plugin"]
+      "skills": [
+        "./skills/guardrails-agent-plugin"
+      ]
     }
   ]
 }

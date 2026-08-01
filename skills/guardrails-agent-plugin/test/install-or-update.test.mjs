@@ -38,6 +38,9 @@ test("installs every policy and is idempotent on re-run", (context) => {
   const first = run(env, ["--install", "--host", "claude-code"]);
   assert.equal(first.status, 0);
   assert.equal(ourEntries(file).length, 4);
+  for (const entry of ourEntries(file)) {
+    assert.match(entry.command, /\|\| exit 2$/u, "every entry must fail closed on a crash");
+  }
 
   const second = run(env, ["--install", "--host", "claude-code"]);
   assert.equal(second.status, 0);
@@ -118,6 +121,7 @@ test("compensates for a fail-open host with an explicit deny exit code", (contex
   const config = JSON.parse(fs.readFileSync(path.join(home, ".cursor", "hooks.json"), "utf8"));
   const command = config.hooks.PreToolUse[0].hooks[0].command;
   assert.match(command, /--deny-exit 2/u);
+  assert.match(command, /\|\| exit 2$/u, "a crashed guard must still block");
 
   // Claude Code keeps exit 0; the JSON verdict is authoritative there.
   const claude = sandbox(context);

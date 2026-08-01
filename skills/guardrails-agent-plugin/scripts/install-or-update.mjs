@@ -117,10 +117,14 @@ function markerFor(policyName) {
   return `${MARKER}:${policyName}`;
 }
 
+// `|| exit 2` is the fail-closed compensation, not decoration: hosts treat a
+// non-2 exit as a non-blocking error and run the command anyway, so a guard
+// that cannot start at all would silently wave everything through. The guard
+// itself exits 0 for both allow and deny, so this fires only on a real crash.
 function hookCommand(policyName, hostName) {
   const denyExit = HOSTS[hostName]?.denyExit;
   const suffix = denyExit ? ` --deny-exit ${denyExit}` : "";
-  return `node ${JSON.stringify(GUARD)} ${JSON.stringify(policyPath(policyName))}${suffix}`;
+  return `node ${JSON.stringify(GUARD)} ${JSON.stringify(policyPath(policyName))}${suffix} || exit 2`;
 }
 
 function readJson(file) {

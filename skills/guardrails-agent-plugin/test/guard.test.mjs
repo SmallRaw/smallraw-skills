@@ -117,6 +117,35 @@ test("raises the configured deny exit code for fail-open hosts", () => {
   assert.equal(allowed.stdout.trim(), "");
 });
 
+test("echoes the incoming hook event so a reply stays valid off PreToolUse", () => {
+  const result = runGuard(policies.shell, {
+    hook_event_name: "PermissionRequest",
+    tool_name: "Bash",
+    tool_input: { command: "sudo id" },
+  });
+  assert.equal(result.hookEventName, "PermissionRequest");
+  assert.equal(result.permissionDecision, "deny");
+
+  // Absent field keeps the documented default.
+  const fallback = runGuard(policies.shell, {
+    tool_name: "Bash",
+    tool_input: { command: "sudo id" },
+  });
+  assert.equal(fallback.hookEventName, "PreToolUse");
+});
+
+test("a guard that cannot start must not read as approval", () => {
+  // Hosts treat a non-2 exit as a non-blocking error and run the command, so
+  // the registered command pairs the guard with `|| exit 2`. Prove the crash
+  // path exits non-zero and prints nothing that could be read as a verdict.
+  const crashed = spawnSync(process.execPath, [`${guardScript}.missing`], {
+    input: "{}",
+    encoding: "utf8",
+  });
+  assert.notEqual(crashed.status, 0);
+  assert.equal(crashed.stdout.trim(), "");
+});
+
 test("fails closed on misconfiguration and malformed payloads", () => {
   assert.equal(runGuard(null, "{}").permissionDecision, "deny");
   assert.equal(runGuard(policies.git, "not json").permissionDecision, "deny");

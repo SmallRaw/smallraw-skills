@@ -10,12 +10,16 @@ import { pathToFileURL } from "node:url";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 
+// Echoing the incoming event keeps the reply valid if this guard is ever
+// registered on something other than PreToolUse.
+let hookEventName = "PreToolUse";
+
 function emit(decision, reason) {
   if (decision === "deny") process.exitCode = denyExitCode();
   process.stdout.write(
     `${JSON.stringify({
       hookSpecificOutput: {
-        hookEventName: "PreToolUse",
+        hookEventName,
         permissionDecision: decision,
         permissionDecisionReason: reason,
       },
@@ -67,6 +71,9 @@ async function main() {
     emit("deny", "[guard-invalid-json] hook 载荷不是合法 JSON。");
     return;
   }
+  if (typeof input?.hook_event_name === "string" && input.hook_event_name) {
+    hookEventName = input.hook_event_name;
+  }
 
   let evaluatePolicy;
   try {
@@ -77,7 +84,8 @@ async function main() {
     return;
   }
 
-  const value = evaluatePolicy(input);
+  // await tolerates a policy that returns a promise; a sync one is unaffected.
+  const value = await evaluatePolicy(input);
   if (
     !value ||
     typeof value !== "object" ||
