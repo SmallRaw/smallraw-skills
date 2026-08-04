@@ -214,6 +214,21 @@ test("uses the command tool workdir when resolving relative protected paths", ()
   );
 });
 
+test("does not read a grep pattern as an unsafe URL", () => {
+  // The backslash is regex alternation, not part of the address.
+  for (const command of [
+    'grep -rn "https://cdn\\|unpkg.com" web/',
+    "grep -o 'src=\"[^\"]*\"\\|href=\"[^\"]*\"' index.html",
+    'git diff | grep -iE "http://|https://|cdn\\."',
+  ]) {
+    assert.equal(
+      evaluatePolicy({ tool_name: "Bash", tool_input: { command } }).decision,
+      "allow",
+      command,
+    );
+  }
+});
+
 test("blocks file-like URLs embedded in shell commands", () => {
   assert.equal(
     evaluatePolicy({

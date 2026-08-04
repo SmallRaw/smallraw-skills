@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
+import path from "node:path";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -263,6 +265,33 @@ function hasAll(args, required) {
   return required.every((flag) => args.includes(flag));
 }
 
+// `npx tsc` in a repo that already depends on typescript runs node_modules/.bin/tsc
+// and fetches nothing — it is the same reviewed code a package script would run,
+// just spelled differently. Only an unresolvable name reaches the registry.
+function locallyInstalledBinary(args, cwd) {
+  let index = 0;
+  while (index < args.length && args[index].startsWith("-")) {
+    // These name a package to fetch, or run arbitrary shell, so the first
+    // positional no longer says what will actually execute.
+    if (/^(?:--package|-p|--call|-c)(?:=|$)/u.test(args[index])) return null;
+    index += 1;
+  }
+  const spec = args[index];
+  if (!spec || spec.startsWith("-")) return null;
+  // An explicit version always means "go get that one".
+  if (spec.lastIndexOf("@") > 0) return null;
+  const binary = spec.startsWith("@") ? spec.split("/").at(-1) : spec;
+  if (!binary || binary.includes("/") || binary.includes("\\")) return null;
+
+  let dir = path.resolve(cwd || process.cwd());
+  for (;;) {
+    if (fs.existsSync(path.join(dir, "node_modules", ".bin", binary))) return binary;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 function evaluateManager(manager, args) {
   const subcommand = findSubcommand(manager, args);
 
@@ -411,7 +440,7 @@ function evaluateManager(manager, args) {
   return allow("routine-package-manager-command");
 }
 
-function evaluateSegment(segment) {
+function evaluateSegment(segment, cwd) {
   const rawTokens = tokenize(segment);
   if (!rawTokens) {
     return confirm(
@@ -426,6 +455,8 @@ function evaluateSegment(segment) {
   // pnpm@8.6.0-style invocations resolve to the bare manager name.
   const executable = tokens[0].split("/").at(-1).toLowerCase().split("@")[0];
   if (RUNNERS.has(executable)) {
+    const local = locallyInstalledBinary(tokens.slice(1), cwd);
+    if (local) return allow("installed-binary-runner");
     if (executable === "npx") {
       let index = 1;
       let offline = false;
@@ -471,7 +502,7 @@ function evaluateSegment(segment) {
   return evaluateManager(executable, tokens.slice(1));
 }
 
-export function evaluateCommand(command) {
+export function evaluateCommand(command, cwd) {
   if (typeof command !== "string" || command.trim() === "") {
     return deny(
       "invalid-command-input",
@@ -482,7 +513,7 @@ export function evaluateCommand(command) {
 
   let strongest = allow();
   for (const segment of commandSegments(command)) {
-    const result = evaluateSegment(segment);
+    const result = evaluateSegment(segment, cwd);
     if (result.decision === "deny") return result;
     if (result.decision === "confirm") strongest = result;
     else if (strongest.decision === "allow") strongest = result;
@@ -492,28 +523,33 @@ export function evaluateCommand(command) {
 
 function normalizeInput(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-  if (input.kind === "command") return input.target ?? input.command ?? null;
+  if (input.kind === "command") {
+    return { command: input.target ?? input.command ?? null, cwd: input.cwd };
+  }
 
   const toolName = String(input.tool_name ?? input.tool ?? "").toLowerCase();
   const toolInput = input.tool_input ?? input.input ?? input.args ?? {};
   if (toolName === "bash" || toolName === "exec_command") {
-    return toolInput.command ?? toolInput.cmd ?? null;
+    return {
+      command: toolInput.command ?? toolInput.cmd ?? null,
+      cwd: input.cwd ?? toolInput.cwd ?? toolInput.workdir,
+    };
   }
   return undefined;
 }
 
 export function evaluatePolicy(input) {
   try {
-    const command = normalizeInput(input);
-    if (command === undefined) return allow("tool-not-covered");
-    if (command === null) {
+    const normalized = normalizeInput(input);
+    if (normalized === undefined) return allow("tool-not-covered");
+    if (normalized === null || normalized.command === null) {
       return deny(
         "invalid-policy-input",
         "策略输入必须是规范化的 JSON 对象。",
         "提供工具名和命令，不要包含凭据。",
       );
     }
-    return evaluateCommand(command);
+    return evaluateCommand(normalized.command, normalized.cwd);
   } catch {
     return deny(
       "policy-evaluation-error",

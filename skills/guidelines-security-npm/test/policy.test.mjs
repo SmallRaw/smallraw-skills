@@ -54,6 +54,31 @@ test("blocks one-off package runners", () => {
   assert.equal(evaluateCommand("npm init vite app").decision, "deny");
 });
 
+test("runs an already installed binary through npx without asking", (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "npx-local-"));
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
+  fs.mkdirSync(path.join(root, "packages", "app"), { recursive: true });
+  fs.writeFileSync(path.join(root, "node_modules", ".bin", "tsc"), "");
+
+  const run = (command, cwd = root) =>
+    evaluatePolicy({ tool_name: "Bash", tool_input: { command }, cwd });
+
+  // Nothing is fetched: this is node_modules/.bin/tsc spelled differently.
+  assert.equal(run("npx tsc --noEmit").ruleId, "installed-binary-runner");
+  // Resolution walks up, the way npx itself does.
+  assert.equal(
+    run("npx tsc -p tsconfig.json", path.join(root, "packages", "app")).decision,
+    "allow",
+  );
+
+  // Anything that would actually reach the registry still stops.
+  assert.equal(run("npx cowsay hello").ruleId, "one-off-package-runner");
+  assert.equal(run("npx tsc@5.0.0 --noEmit").ruleId, "one-off-package-runner");
+  assert.equal(run("npx --package=evil tsc").ruleId, "one-off-package-runner");
+  assert.equal(run("npx -y create-app").ruleId, "one-off-package-runner");
+});
+
 test("confirms cache-only npx runs but blocks flags that still download", () => {
   const offline = evaluateCommand("npx --offline prettier --check .");
   assert.equal(offline.decision, "confirm");

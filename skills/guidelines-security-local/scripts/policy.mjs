@@ -528,7 +528,9 @@ function evaluateCommand(command, cwd) {
     );
   }
 
-  for (const match of command.matchAll(/https?:\/\/[^\s'"`]+/giu)) {
+  // Stop at a backslash or pipe: in `grep -iE "http://|https://|cdn\."` those
+  // are regex syntax, and swallowing them turned a search into a bad-URL denial.
+  for (const match of command.matchAll(/https?:\/\/[^\s'"`\\|]+/giu)) {
     const decision = evaluateUrl(match[0]);
     if (decision.decision === "deny") return decision;
   }
