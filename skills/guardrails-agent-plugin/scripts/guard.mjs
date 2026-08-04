@@ -71,22 +71,44 @@ function extractEmbeddedCommands(source) {
   return { commands, dynamic };
 }
 
+// Any tool whose name says it runs things. Guessing which field carries the
+// command is what let a payload through once; for these, search the whole
+// thing rather than a field name someone happened to think of.
+const EXECUTION_TOOL = /^(?:bash|sh|shell|exec|exec_command|run|run_command|run_terminal|terminal|command|process)/iu;
+
+function collectStrings(value, out = [], depth = 0) {
+  if (depth > 6 || out.length > 64) return out;
+  if (typeof value === "string") out.push(value);
+  else if (Array.isArray(value)) for (const item of value) collectStrings(item, out, depth + 1);
+  else if (value && typeof value === "object") {
+    for (const item of Object.values(value)) collectStrings(item, out, depth + 1);
+  }
+  return out;
+}
+
 // Returns the shell commands a payload will run, however the host spells it.
 function commandsFrom(input) {
   const toolInput = input?.tool_input ?? input?.input ?? input?.args ?? {};
   const direct = toolInput?.command ?? toolInput?.cmd;
   if (typeof direct === "string") return { commands: [direct], dynamic: false };
 
-  const source =
-    typeof toolInput === "string"
-      ? toolInput
-      : typeof toolInput?.input === "string"
-        ? toolInput.input
-        : typeof input?.input === "string"
-          ? input.input
-          : null;
-  if (source) return extractEmbeddedCommands(source);
-  return { commands: [], dynamic: false };
+  if (!EXECUTION_TOOL.test(String(input?.tool_name ?? input?.tool ?? ""))) {
+    return { commands: [], dynamic: false };
+  }
+
+  const commands = [];
+  let dynamic = false;
+  for (const source of collectStrings(toolInput).concat(
+    typeof input?.input === "string" ? [input.input] : [],
+  )) {
+    const found = extractEmbeddedCommands(source);
+    commands.push(...found.commands);
+    dynamic ||= found.dynamic;
+  }
+  // A tool that exists to run things, whose command we could not read, is not
+  // evidence that nothing runs.
+  if (commands.length === 0) dynamic = true;
+  return { commands, dynamic };
 }
 
 const RANK = { allow: 0, confirm: 1, deny: 2 };

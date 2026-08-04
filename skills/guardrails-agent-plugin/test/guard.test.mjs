@@ -180,6 +180,49 @@ test("reads commands out of a payload that carries them inside source", () => {
   assert.equal(plain.permissionDecision, "deny");
 });
 
+test("a spelling the extraction did not anticipate must not read as approval", () => {
+  // Each of these runs `gh auth setup-git`. Guessing which field carries the
+  // command is what let one through, so an execution-named tool whose command
+  // cannot be read is treated as unread, not as harmless.
+  const payloads = [
+    { tool_name: "exec", input: 'await tools.exec_command({ "cmd": "gh auth setup-git" });' },
+    { tool_name: "exec", input: "await tools.exec_command({ 'cmd': 'gh auth setup-git' });" },
+    { tool_name: "exec", input: 'await tools.exec_command({ cmd: "gh auth " + "setup-git" });' },
+    { tool_name: "exec", input: 'await tools.exec_command({ cmd: ["gh","auth","setup-git"] });' },
+    { tool_name: "exec", input: 'await tools.exec_command({ script: "gh auth setup-git" });' },
+    {
+      tool_name: "exec",
+      tool_input: { arguments: 'await tools.exec_command({ cmd: "gh auth setup-git" });' },
+    },
+    { tool_name: "run_terminal", tool_input: { command: "gh auth setup-git" } },
+    { tool_name: "shell_exec", input: 'await tools.exec_command({ cmd: "gh auth setup-git" });' },
+  ];
+  for (const payload of payloads) {
+    const result = runGuard(policies.git, payload);
+    assert.ok(result, `silently allowed: ${JSON.stringify(payload).slice(0, 70)}`);
+    assert.notEqual(result.permissionDecision, "allow");
+  }
+});
+
+test("does not treat ordinary work as an unreadable command", () => {
+  // Deep search only applies to tools that exist to run things, so file content
+  // that merely mentions a command stays out of it.
+  assert.equal(
+    runGuard(policies.local, {
+      tool_name: "Write",
+      tool_input: { file_path: "a.js", content: 'const x = { cmd: "rm -rf /" };' },
+    }),
+    null,
+  );
+  assert.equal(
+    runGuard(policies.git, {
+      tool_name: "exec",
+      input: 'await tools.exec_command({ cmd: "git status --short" });',
+    }),
+    null,
+  );
+});
+
 test("fails closed on misconfiguration and malformed payloads", () => {
   assert.equal(runGuard(null, "{}").permissionDecision, "deny");
   assert.equal(runGuard(policies.git, "not json").permissionDecision, "deny");
