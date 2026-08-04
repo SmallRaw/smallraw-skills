@@ -1,24 +1,12 @@
 # OpenCode Adapter
 
-OpenCode uses a JavaScript or TypeScript plugin callback rather than a command hook, so
-`scripts/guard.mjs` does not apply.
+OpenCode uses a plugin callback, not a command hook, so `scripts/guard.mjs` does not apply.
+Checked against the plugin docs on 2026-08-04.
 
-Verified against the OpenCode plugin docs on 2026-08-04.
+Plugins load from `~/.config/opencode/opencode.json`, project `opencode.json`,
+`~/.config/opencode/plugins/`, then `.opencode/plugins/`.
 
-## Plugin Locations
-
-Loaded in this order — the config files register a trusted npm plugin, the directories hold
-local files:
-
-1. `~/.config/opencode/opencode.json`
-2. `opencode.json` (project)
-3. `~/.config/opencode/plugins/`
-4. `.opencode/plugins/`
-
-## Tool Adapter
-
-`tool.execute.before` is the equivalent of `PreToolUse`, and throwing from it blocks the
-call. That is the documented way to stop a tool.
+`tool.execute.before` is the `PreToolUse` equivalent, and throwing from it blocks the call.
 
 ```ts
 export const GuardrailsPlugin = async () => {
@@ -28,41 +16,25 @@ export const GuardrailsPlugin = async () => {
         tool: input.tool,
         input: output.args,
       });
-
       if (decision.decision === "allow") return;
-
-      throw new Error(
-        [decision.reason, decision.nextAction].filter(Boolean).join("\n"),
-      );
+      throw new Error([decision.reason, decision.nextAction].filter(Boolean).join("\n"));
     },
   };
 };
 ```
 
-The callback may inspect or deliberately rewrite `output.args`; do not rewrite arguments
-unless the caller's policy explicitly requires it.
+The callback can rewrite `output.args`; don't, unless the policy requires it.
+`evaluateAndValidatePolicy` turns exceptions, unknown decisions, and malformed blocks into a
+deny, thrown the same way so it fails closed.
 
-`evaluateAndValidatePolicy` uses a bounded timeout and returns a valid deny for exceptions,
-unknown decisions, or malformed blocks. Throw that deny through the callback so it fails
-closed.
+A `permission.ask` hook exists, so a `confirm` could in principle reach the user. Do not use
+it untested: the project has open reports that it is bypassed for first-encounter commands
+([#19927](https://github.com/anomalyco/opencode/issues/19927)) and that it never fires
+([#7006](https://github.com/anomalyco/opencode/issues/7006)). A confirmation that silently
+no-ops is worse than a block, because the operation proceeds unreviewed. Until verified on
+the installed version, throw instead and report the degradation.
 
-## Confirmation
+Keep the adapter separate from the policy so the same policy also runs through Open Plugins
+or Pi.
 
-A `permission.ask` hook exists in the plugin API, so unlike a plain throw it can in
-principle represent a confirmation rather than a refusal. **Do not rely on it without
-testing the installed version**: as of this writing the project has open reports that the
-hook is bypassed for first-encounter commands (`needsAsk=true`) and, separately, that it is
-defined but never triggered. A confirmation that silently never fires is worse than one that
-blocks, because the operation proceeds unreviewed.
-
-Until it is verified on the installed version, degrade `confirm` to a thrown block and say
-so in the install report — a `confirm` reported as enforced when it is not is the failure
-this whole layer exists to prevent. Never weaken `confirm` or `deny` to allow.
-
-Keep this adapter separate from the policy so the same policy can also run through Open
-Plugins or Pi.
-
-Sources:
-- https://opencode.ai/docs/plugins/
-- https://github.com/anomalyco/opencode/issues/7006
-- https://github.com/anomalyco/opencode/issues/19927
+Source: https://opencode.ai/docs/plugins/

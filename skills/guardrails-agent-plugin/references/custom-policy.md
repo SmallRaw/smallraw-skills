@@ -10,13 +10,11 @@ and packaging a new plugin is the wrong move when a user-level registration alre
    ID first. Update that entry; never append a duplicate or create a plugin to work around it.
 3. Choose the narrowest deterministic lifecycle event and matcher. Prefer a command or
    native callback over an LLM-backed prompt or agent hook.
-4. Reuse `scripts/guard.mjs` on any host that accepts Claude-compatible hook payloads —
-   Codex and Cursor both do. Writing a second adapter duplicates the decision translation,
-   which is where a wrong conclusion gets baked in: one such adapter degraded `confirm` to
-   `deny` because a since-corrected reference claimed the host had no `ask`, and it kept
-   doing so long after the document was fixed. If a new adapter is genuinely unavoidable,
-   record in it which document and date it was built from, and give it the same
-   `statusMessage` marker so the installer can find it later.
+4. Reuse `scripts/guard.mjs` on any host that accepts Claude-compatible payloads — Codex and
+   Cursor both do. A second adapter duplicates the decision translation, which is where a
+   wrong capability claim gets baked in and outlives the document it came from. If one is
+   unavoidable, record the source document and date in it, and give it the same
+   `statusMessage` marker so the installer can find it.
 5. Reuse a caller-provided policy module. If the caller supplies only rules, materialize
    them once as a host-neutral policy module; keep every host adapter limited to input
    normalization, policy invocation, and decision translation.

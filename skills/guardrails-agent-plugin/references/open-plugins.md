@@ -1,10 +1,8 @@
 # Open Plugins and Claude-Compatible Hosts
 
-Verified against each host's own documentation on 2026-08-04. Treat any claim here as
-current only for that date: an earlier revision stated from memory that Codex had no `ask`
-decision, an adapter was generated that degraded every `confirm` to `deny`, and it kept
-doing so long after this file was corrected. Check the host's docs before trusting a
-capability claim, and never carry one over from another Agent.
+Checked against each host's own documentation on 2026-08-04; a capability claim is only as
+current as that date. Re-check before relying on one, and never carry it over from another
+Agent.
 
 > Read this only when installing a policy the bundled installer does not cover, or on a
 > host it refuses. For the bundled guidelines policies, `scripts/install-or-update.mjs`
