@@ -41,6 +41,56 @@ function denyExitCode() {
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
+// Codex's `exec` tool takes a JavaScript program that calls
+// tools.exec_command({ cmd }), so the shell command is a literal inside source
+// rather than a field the policy can read. Pull out what is statically knowable
+// and report whether anything was built at runtime, which cannot be read here.
+function extractEmbeddedCommands(source) {
+  const commands = [];
+  let dynamic = false;
+  const pattern =
+    /\b(?:cmd|command)\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|([A-Za-z_$][\w$]*))/g;
+
+  for (const match of source.matchAll(pattern)) {
+    const [, double, single, template, identifier] = match;
+    if (identifier) {
+      dynamic = true;
+      continue;
+    }
+    const raw = double ?? single ?? template;
+    if (raw === undefined) continue;
+    if (template !== undefined && /\$\{/u.test(template)) dynamic = true;
+    try {
+      commands.push(JSON.parse(`"${raw.replace(/"/g, '\\"').replace(/\\'/g, "'")}"`));
+    } catch {
+      commands.push(raw);
+    }
+  }
+  // An exec program that never names a command builds one some other way.
+  if (commands.length === 0 && /exec_command|spawn|shell/u.test(source)) dynamic = true;
+  return { commands, dynamic };
+}
+
+// Returns the shell commands a payload will run, however the host spells it.
+function commandsFrom(input) {
+  const toolInput = input?.tool_input ?? input?.input ?? input?.args ?? {};
+  const direct = toolInput?.command ?? toolInput?.cmd;
+  if (typeof direct === "string") return { commands: [direct], dynamic: false };
+
+  const source =
+    typeof toolInput === "string"
+      ? toolInput
+      : typeof toolInput?.input === "string"
+        ? toolInput.input
+        : typeof input?.input === "string"
+          ? input.input
+          : null;
+  if (source) return extractEmbeddedCommands(source);
+  return { commands: [], dynamic: false };
+}
+
+const RANK = { allow: 0, confirm: 1, deny: 2 };
+
 async function main() {
   const policyArg = process.argv[2];
 
@@ -84,8 +134,35 @@ async function main() {
     return;
   }
 
-  // await tolerates a policy that returns a promise; a sync one is unaffected.
-  const value = await evaluatePolicy(input);
+  // A nested payload carries its commands inside source code, so evaluate each
+  // one and keep the strictest verdict rather than handing the policy something
+  // it will read as "not a shell call" and wave through.
+  const embedded = commandsFrom(input);
+  let value;
+  if (embedded.commands.length > 1 || embedded.dynamic) {
+    value = { decision: "allow", ruleId: "no-command-found" };
+    for (const command of embedded.commands) {
+      const each = await evaluatePolicy({ ...input, tool_name: "Bash", tool_input: { command } });
+      if (RANK[each?.decision] > RANK[value.decision]) value = each;
+    }
+    if (embedded.dynamic && value.decision === "allow") {
+      value = {
+        decision: "confirm",
+        ruleId: "unreadable-embedded-command",
+        reason: "该调用在运行时拼装命令，静态检查读不到最终会执行什么。",
+        nextAction: "改用字面量命令，或确认这段程序实际会执行的内容。",
+      };
+    }
+  } else if (embedded.commands.length === 1) {
+    value = await evaluatePolicy({
+      ...input,
+      tool_name: "Bash",
+      tool_input: { ...(input?.tool_input ?? {}), command: embedded.commands[0] },
+    });
+  } else {
+    // await tolerates a policy that returns a promise; a sync one is unaffected.
+    value = await evaluatePolicy(input);
+  }
   if (
     !value ||
     typeof value !== "object" ||

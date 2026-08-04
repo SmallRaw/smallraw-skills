@@ -146,6 +146,40 @@ test("a guard that cannot start must not read as approval", () => {
   assert.equal(crashed.stdout.trim(), "");
 });
 
+test("reads commands out of a payload that carries them inside source", () => {
+  // Codex's exec tool takes a JS program, so the command is a literal in code
+  // rather than a field. Read as "not a shell call", it ran unguarded.
+  const exec = (source) => runGuard(policies.git, { tool_name: "exec", input: source });
+
+  const gated = exec('const r = await tools.exec_command({ cmd: "git update-ref refs/heads/x abc" });');
+  assert.equal(gated.permissionDecision, "ask");
+  assert.match(gated.permissionDecisionReason, /history-or-branch-mutation/u);
+
+  assert.equal(exec('await tools.exec_command({ cmd: "git status --short" });'), null);
+
+  // Several calls in one program: the strictest verdict wins.
+  const mixed = exec(
+    'await tools.exec_command({ cmd: "git status" });\nawait tools.exec_command({ cmd: "gh auth setup-git" });',
+  );
+  assert.equal(mixed.permissionDecision, "deny");
+
+  // A command assembled at runtime cannot be read statically; say so rather
+  // than treat unreadable as harmless.
+  const dynamic = exec("const c = buildCmd(); await tools.exec_command({ cmd: c });");
+  assert.equal(dynamic.permissionDecision, "ask");
+  assert.match(dynamic.permissionDecisionReason, /unreadable-embedded-command/u);
+
+  const interpolated = exec("await tools.exec_command({ cmd: `git push ${remote}` });");
+  assert.equal(interpolated.permissionDecision, "ask");
+
+  // The plain shape still works unchanged.
+  const plain = runGuard(policies.git, {
+    tool_name: "Bash",
+    tool_input: { command: "gh auth setup-git" },
+  });
+  assert.equal(plain.permissionDecision, "deny");
+});
+
 test("fails closed on misconfiguration and malformed payloads", () => {
   assert.equal(runGuard(null, "{}").permissionDecision, "deny");
   assert.equal(runGuard(policies.git, "not json").permissionDecision, "deny");

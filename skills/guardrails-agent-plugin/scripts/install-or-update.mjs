@@ -33,21 +33,21 @@ const GUARD = path.join(SKILL_ROOT, "scripts", "guard.mjs");
 const POLICIES = [
   {
     name: "guidelines-git",
-    matchers: { "claude-code": "Bash", codex: "Bash", cursor: "Bash" },
+    matchers: { "claude-code": "Bash", codex: "Bash|exec|exec_command|shell", cursor: "Bash" },
   },
   {
     name: "guidelines-security-npm",
-    matchers: { "claude-code": "Bash", codex: "Bash", cursor: "Bash" },
+    matchers: { "claude-code": "Bash", codex: "Bash|exec|exec_command|shell", cursor: "Bash" },
   },
   {
     name: "guidelines-security-shell",
-    matchers: { "claude-code": "Bash", codex: "Bash", cursor: "Bash" },
+    matchers: { "claude-code": "Bash", codex: "Bash|exec|exec_command|shell", cursor: "Bash" },
   },
   {
     name: "guidelines-security-local",
     matchers: {
       "claude-code": "Bash|Read|Write|Edit|NotebookEdit|Glob|Grep|WebFetch",
-      codex: "Bash|apply_patch|Edit|Write",
+      codex: "Bash|exec|exec_command|shell|apply_patch|Edit|Write",
       cursor: "Bash|Read|Write|Edit",
     },
   },
