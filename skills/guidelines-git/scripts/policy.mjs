@@ -33,6 +33,16 @@ const READ_ONLY_GIT_COMMANDS = new Set([
   "diff-files",
   "cherry",
   "var",
+  // Object plumbing writes into .git/objects without making anything reachable;
+  // an unreferenced object is inert and eventually collected. Preparing a
+  // rewritten history this way is safe — only the update-ref that publishes it
+  // changes what the repository points at.
+  "commit-tree",
+  "hash-object",
+  "mktree",
+  "write-tree",
+  "pack-objects",
+  "unpack-objects",
   "format-patch",
   "archive",
   "verify-commit",

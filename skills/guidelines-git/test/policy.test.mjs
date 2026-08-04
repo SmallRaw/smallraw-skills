@@ -125,6 +125,20 @@ test("allows recoverable branch, stash, and replay work", () => {
   }
 });
 
+test("allows object plumbing so a rewrite can be staged before it is published", () => {
+  // These write objects nothing points at yet; only update-ref makes them real.
+  for (const command of [
+    "git commit-tree abc123 -p def456 -m message",
+    "git hash-object -w file.txt",
+    "git mktree",
+    "git write-tree",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "allow", command);
+  }
+  // Publishing the result is the step that asks.
+  assert.equal(evaluateCommand("git update-ref refs/heads/x abc123").decision, "confirm");
+});
+
 test("allows dry runs, help, ref creation, and in-progress control", () => {
   for (const command of [
     "git clean -n",
