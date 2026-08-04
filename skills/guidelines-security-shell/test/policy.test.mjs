@@ -46,6 +46,27 @@ test("allows workspace-internal cleanup but confirms outside or unknown scopes",
   assert.equal(evaluateCommand("chown admin ~/Library/LaunchAgents", cwd).decision, "confirm");
 });
 
+test("asks before an installer from another ecosystem fetches code", () => {
+  for (const command of [
+    "pip3 install --user git-filter-repo",
+    "python3 -m pip install UnityPy Pillow",
+    "uv pip install ruff",
+    "cargo install cargo-xwin",
+    "go install golang.org/x/tools/cmd/goimports@latest",
+    "gem install bundler",
+    "brew install llvm",
+    "brew tap homebrew/cask",
+    "apt-get install -y jq",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).ruleId, "foreign-package-install", command);
+  }
+
+  // Reading or listing is not fetching.
+  for (const command of ["pip list", "brew --prefix lld", "cargo build", "go build ./...", "brew list"]) {
+    assert.equal(evaluateCommand(command, cwd).decision, "allow", command);
+  }
+});
+
 test("confirms process sweeps, container destruction, and publishing", () => {
   assert.equal(evaluateCommand("pkill -f 'node dev'", cwd).ruleId, "process-sweep");
   assert.equal(evaluateCommand("killall Dock", cwd).decision, "confirm");

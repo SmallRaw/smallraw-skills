@@ -72,6 +72,14 @@ test("runs an already installed binary through npx without asking", (context) =>
     "allow",
   );
 
+  // `cd repo && npx tsc` must read the same as running it from repo; judging it
+  // against the session's directory made the identical command deny instead.
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "npx-elsewhere-"));
+  context.after(() => fs.rmSync(elsewhere, { recursive: true, force: true }));
+  assert.equal(run(`cd ${root} && npx tsc --noEmit`, elsewhere).decision, "allow");
+  assert.equal(run(`cd ${root}; npx tsc -p tsconfig.json`, elsewhere).decision, "allow");
+  assert.equal(run(`cd ${elsewhere} && npx tsc`, root).ruleId, "one-off-package-runner");
+
   // Anything that would actually reach the registry still stops.
   assert.equal(run("npx cowsay hello").ruleId, "one-off-package-runner");
   assert.equal(run("npx tsc@5.0.0 --noEmit").ruleId, "one-off-package-runner");

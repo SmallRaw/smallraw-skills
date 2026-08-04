@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -292,6 +293,19 @@ function locallyInstalledBinary(args, cwd) {
   }
 }
 
+function cdTarget(segment, cwd) {
+  const tokens = tokenize(segment);
+  if (!tokens || tokens[0] !== "cd") return null;
+  const target = tokens.find((value, index) => index > 0 && !value.startsWith("-"));
+  if (!target) return null;
+  const expanded = target.startsWith("~/")
+    ? path.join(os.homedir(), target.slice(2))
+    : target === "~"
+      ? os.homedir()
+      : target;
+  return path.resolve(cwd || process.cwd(), expanded);
+}
+
 function evaluateManager(manager, args) {
   const subcommand = findSubcommand(manager, args);
 
@@ -511,9 +525,18 @@ export function evaluateCommand(command, cwd) {
     );
   }
 
+  // `cd repo && npx tsc` resolves the binary from repo, not from where the
+  // session happens to sit; follow the cd so the same command is judged the
+  // same way however it is spelled.
+  let current = cwd;
   let strongest = allow();
   for (const segment of commandSegments(command)) {
-    const result = evaluateSegment(segment, cwd);
+    const moved = cdTarget(segment, current);
+    if (moved) {
+      current = moved;
+      continue;
+    }
+    const result = evaluateSegment(segment, current);
     if (result.decision === "deny") return result;
     if (result.decision === "confirm") strongest = result;
     else if (strongest.decision === "allow") strongest = result;

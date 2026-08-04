@@ -30,6 +30,30 @@ const CRITICAL_ROOTS = new Set([
   "/var",
   "/volumes",
 ]);
+// Fetching and running third-party code is the same risk whatever ecosystem it
+// comes from. guidelines-security-npm reviews the npm graph in depth; these have
+// no equivalent pipeline, so they get a look rather than a full gate.
+const FOREIGN_INSTALLERS = [
+  { match: (exe, args) => ["pip", "pip3", "uv"].includes(exe) && args.includes("install") },
+  {
+    match: (exe, args) =>
+      ["python", "python3"].includes(exe) &&
+      args.includes("pip") &&
+      args.includes("install"),
+  },
+  { match: (exe, args) => exe === "cargo" && args[0] === "install" },
+  { match: (exe, args) => exe === "go" && args[0] === "install" },
+  { match: (exe, args) => exe === "gem" && args[0] === "install" },
+  {
+    match: (exe, args) =>
+      exe === "brew" && ["install", "reinstall", "upgrade", "tap"].includes(args[0]),
+  },
+  {
+    match: (exe, args) =>
+      ["apt", "apt-get", "dnf", "yum", "pacman", "apk"].includes(exe) &&
+      args.some((value) => ["install", "-S", "add"].includes(value)),
+  },
+];
 const DISK_ERASE_VERBS = new Set([
   "erasedisk",
   "erasevolume",
@@ -351,6 +375,13 @@ function evaluateSegment(segment, cwd) {
       "disk-state-change",
       `diskutil ${verb} 会改变磁盘或卷的状态。`,
       "继续前确认确切的设备和操作。",
+    );
+  }
+  if (FOREIGN_INSTALLERS.some((entry) => entry.match(executable, args))) {
+    return confirm(
+      "foreign-package-install",
+      `${executable} 会从外部仓库下载并执行第三方代码。`,
+      "确认包名、来源与版本；这类生态没有 npm 那样的深度审查流程，所以由你把关。",
     );
   }
   if (DELETERS.has(executable)) return evaluateDeletion(executable, args, cwd);
