@@ -24,13 +24,18 @@ owns the host table, registration paths, matchers, and the idempotency marker:
    `candidate` means ask the user and re-run with `--host <name>`; `unknown-host` means ask
    which Agent is running or use a reference below. Do not infer the host from a config
    file's existence — that proves it is installed, not that it is running.
-3. `node scripts/install-or-update.mjs --install` — idempotent upsert. It updates its own
+3. Clear any `registered-unmarked` finding before installing. Those point at the same
+   policies but were written by something else, so installing adds a second copy and every
+   command runs the policy twice through two adapters — where they disagree the stricter
+   verdict wins, and a `confirm` surfaces as a hard block with no way to approve. Removing
+   another tool's entry is the user's call; report it and wait.
+4. `node scripts/install-or-update.mjs --install` — idempotent upsert. It updates its own
    entries in place, preserves unrelated hooks, and writes a `.guardrails-backup` first.
    Exit 2 means it refused; read the reported `nextAction` instead of working around it.
-4. Report the printed `nextAction` verbatim, including any trust step. **Registered is not
+5. Report the printed `nextAction` verbatim, including any trust step. **Registered is not
    active**: a host that records trust against the hook's hash needs a `/hooks` review, and
    editing a hook invalidates prior trust. A session restart is required either way.
-5. `node scripts/install-or-update.mjs --verify` — self-tests the guard pipeline, then run
+6. `node scripts/install-or-update.mjs --verify` — self-tests the guard pipeline, then run
    the printed in-session checks. Only a real blocked command carrying a `[rule-id]` prefix
    proves the host fires the hooks; a block without one came from another layer.
 

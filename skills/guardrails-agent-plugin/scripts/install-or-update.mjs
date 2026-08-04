@@ -202,6 +202,38 @@ function inspect() {
         command: found.hook.command,
       });
     }
+    findings.push(...unmarkedRegistrations(container, name, file));
+  }
+  return findings;
+}
+
+// A registration this installer did not write is invisible to it: --install
+// adds its own alongside, and every command then runs the same policy twice
+// through two adapters. Where those adapters disagree the stricter one wins,
+// which is how a confirm silently became a hard block. Report them; removing
+// someone else's entry is the user's call, not this script's.
+function unmarkedRegistrations(container, host, file) {
+  const findings = [];
+  for (const groups of Object.values(container)) {
+    if (!Array.isArray(groups)) continue;
+    for (const group of groups) {
+      for (const hook of group?.hooks ?? []) {
+        const command = hook?.command ?? "";
+        if (String(hook?.statusMessage ?? "").startsWith(`${MARKER}:`)) continue;
+        const policy = POLICIES.find((entry) =>
+          command.includes(`${entry.name}/scripts/policy.mjs`),
+        );
+        if (!policy) continue;
+        findings.push({
+          host,
+          file,
+          policy: policy.name,
+          state: "registered-unmarked",
+          matcher: group?.matcher,
+          command,
+        });
+      }
+    }
   }
   return findings;
 }
@@ -247,6 +279,18 @@ function checkCommand(hostInfo, asJson) {
     for (const entry of perPolicy) process.stdout.write(`  ${entry.state.padEnd(18)} ${entry.policy}\n`);
     for (const finding of findings) {
       process.stdout.write(`  found in ${finding.host}: ${finding.policy} [${finding.state}] ${finding.file}\n`);
+    }
+    const unmarked = findings.filter((f) => f.state === "registered-unmarked");
+    if (unmarked.length) {
+      process.stdout.write(
+        `\n  ${unmarked.length} registration(s) point at these policies but were not written here.\n` +
+          "  Each one runs the same policy a second time through a different adapter; if they\n" +
+          "  disagree the stricter verdict wins, so a confirm can surface as a hard block.\n" +
+          "  Review and remove them before installing:\n",
+      );
+      for (const f of unmarked) {
+        process.stdout.write(`    ${f.host}: ${f.policy}\n      ${f.command.slice(0, 120)}\n`);
+      }
     }
     if (missingPolicies.length) {
       process.stdout.write(`  missing policy modules: ${missingPolicies.join(", ")}\n`);

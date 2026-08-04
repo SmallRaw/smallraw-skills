@@ -139,6 +139,47 @@ test("surfaces the Codex trust step", (context) => {
   assert.match(result.stdout, /trust/iu);
 });
 
+test("reports a registration it did not write instead of shadowing it", (context) => {
+  const { home, env } = sandbox(context);
+  const file = path.join(home, ".claude", "settings.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Something else already gates the same policy through its own adapter.
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "Bash",
+            hooks: [
+              {
+                type: "command",
+                command: 'node "/somewhere/other-guard.mjs" "/skills/guidelines-git/scripts/policy.mjs"',
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+
+  const check = run(env, ["--check", "--host", "claude-code"]);
+  assert.match(check.stdout, /registered-unmarked/u);
+  assert.match(check.stdout, /not written here/u, "must explain why it matters");
+  assert.match(check.stdout, /stricter verdict wins/u);
+
+  const report = JSON.parse(run(env, ["--check", "--host", "claude-code", "--json"]).stdout);
+  const unmarked = report.existingRegistrations.filter((f) => f.state === "registered-unmarked");
+  assert.equal(unmarked.length, 1);
+  assert.equal(unmarked[0].policy, "guidelines-git");
+
+  // Removing another tool's entry is the user's call, so install leaves it alone.
+  run(env, ["--install", "--host", "claude-code"]);
+  const after = JSON.parse(fs.readFileSync(file, "utf8"));
+  const commands = after.hooks.PreToolUse.flatMap((g) => g.hooks).map((h) => h.command);
+  assert.ok(commands.some((c) => c.includes("other-guard.mjs")), "foreign entry survives");
+});
+
 test("refuses to guess the host", (context) => {
   const { home, env } = sandbox(context);
   assert.equal(run(env, ["--check"]).status, 2, "no evidence means unresolved");

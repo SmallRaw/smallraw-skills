@@ -10,17 +10,23 @@ and packaging a new plugin is the wrong move when a user-level registration alre
    ID first. Update that entry; never append a duplicate or create a plugin to work around it.
 3. Choose the narrowest deterministic lifecycle event and matcher. Prefer a command or
    native callback over an LLM-backed prompt or agent hook.
-4. Reuse a caller-provided policy module, and reuse `scripts/guard.mjs` on any host that
-   accepts Claude-compatible hook payloads. If the caller supplies only rules, materialize
+4. Reuse `scripts/guard.mjs` on any host that accepts Claude-compatible hook payloads —
+   Codex and Cursor both do. Writing a second adapter duplicates the decision translation,
+   which is where a wrong conclusion gets baked in: one such adapter degraded `confirm` to
+   `deny` because a since-corrected reference claimed the host had no `ask`, and it kept
+   doing so long after the document was fixed. If a new adapter is genuinely unavoidable,
+   record in it which document and date it was built from, and give it the same
+   `statusMessage` marker so the installer can find it later.
+5. Reuse a caller-provided policy module. If the caller supplies only rules, materialize
    them once as a host-neutral policy module; keep every host adapter limited to input
    normalization, policy invocation, and decision translation.
-5. Strictly validate policy output. Errors, timeouts, unknown decisions, and malformed
+6. Strictly validate policy output. Errors, timeouts, unknown decisions, and malformed
    blocks must use the host's explicit blocking path where possible; report unavoidable
    fail-open behavior.
-6. Use native confirmation when available. Otherwise treat `confirm` as `deny` and report
+7. Use native confirmation when available. Otherwise treat `confirm` as `deny` and report
    the semantic gap unless the caller explicitly requests a session-scoped, single-use
    approval bound to the normalized operation. Never weaken `confirm` or `deny` to `allow`.
-7. Verify once with harmless allow and block cases, then report the files, scope, active
+8. Verify once with harmless allow and block cases, then report the files, scope, active
    events, trust state, and residual coverage gaps.
 
 ## Before Adding a Host to the Installer
