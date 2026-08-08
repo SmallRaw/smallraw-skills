@@ -1,6 +1,7 @@
 ---
 name: agent-farm-delegation
 description: Use when the user explicitly invokes $agent-farm-delegation or asks to delegate a small, already-scoped task to an ACPX-backed Pi, Codex, or local ACP worker. Do not use for ordinary planning, broad architecture work, local model setup without delegation, ambiguous coding tasks, or implicit subagent use.
+disable-model-invocation: true
 ---
 
 # Agent Farm Delegation

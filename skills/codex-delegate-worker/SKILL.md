@@ -1,6 +1,7 @@
 ---
 name: codex-delegate-worker
 description: Run a one-off Codex worker through the configured custom model node. Use only when the user explicitly requests the custom worker or custom node. Do not use for native Codex subagents, parallel agents, ChatGPT subscription usage, or OpenAI GPT models; those must use Codex's native agent path.
+disable-model-invocation: true
 ---
 
 # Codex Delegate Worker

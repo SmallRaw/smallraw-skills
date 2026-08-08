@@ -1,0 +1,5 @@
+# Mirrors disable-model-invocation in SKILL.md: Codex reads this file, not the
+# frontmatter, so without it the skill fires implicitly here while staying
+# manual in Claude Code. Explicit $skill invocation still works.
+policy:
+  allow_implicit_invocation: false

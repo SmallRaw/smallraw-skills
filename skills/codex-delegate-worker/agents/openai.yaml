@@ -1,3 +1,9 @@
 interface:
   display_name: "Codex Delegate Worker"
   short_description: "Launch one-off Codex workers on custom providers"
+
+# The description says to use this only on an explicit request; without this
+# Codex would still pick it up implicitly, since it does not read the SKILL.md
+# frontmatter. Explicit $skill invocation still works.
+policy:
+  allow_implicit_invocation: false
