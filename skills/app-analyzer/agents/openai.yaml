@@ -1,0 +1,3 @@
+interface:
+  display_name: "macOS App 分析器"
+  short_description: "拆解 .app 的技术栈、Bundle、资源与二进制"

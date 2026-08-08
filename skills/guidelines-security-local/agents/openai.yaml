@@ -1,0 +1,3 @@
+interface:
+  display_name: "本地安全红线"
+  short_description: "禁止访问密钥凭据，阻断文件名伪装域名"

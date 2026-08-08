@@ -1,0 +1,3 @@
+interface:
+  display_name: "GitHub 知识库"
+  short_description: "搜索仓库/Issue/PR，生成中文仓库蓝图"

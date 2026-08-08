@@ -1,0 +1,3 @@
+interface:
+  display_name: "Excel 报表助手"
+  short_description: "复杂报表清洗、查询与导出，不改原文件"

@@ -1,0 +1,3 @@
+interface:
+  display_name: "护栏安装层"
+  short_description: "把领域策略装成当前 Agent 的原生 Hook"

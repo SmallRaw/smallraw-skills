@@ -1,0 +1,3 @@
+interface:
+  display_name: "Git 行为准则"
+  short_description: "保护现有状态、仓库专属 SSH 身份"

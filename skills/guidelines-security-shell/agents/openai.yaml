@@ -1,0 +1,3 @@
+interface:
+  display_name: "破坏性 Shell 门禁"
+  short_description: "拦提权、越界删除、磁盘操作与 shell 间接层"

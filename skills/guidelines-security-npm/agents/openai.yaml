@@ -1,0 +1,3 @@
+interface:
+  display_name: "npm 供应链门禁"
+  short_description: "隔离审查依赖变更、执行与发布风险"

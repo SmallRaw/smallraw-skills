@@ -1,0 +1,3 @@
+interface:
+  display_name: "编码行为准则"
+  short_description: "减少常见 AI 编码错误，控制验证节奏"

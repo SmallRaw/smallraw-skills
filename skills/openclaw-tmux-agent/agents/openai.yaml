@@ -1,0 +1,3 @@
+interface:
+  display_name: "tmux 多 Agent 协作"
+  short_description: "用 tmux 调度多个 AI CLI 实例"

@@ -1,0 +1,3 @@
+interface:
+  display_name: "MCP 按需调用"
+  short_description: "不预加载 MCP server，省上下文"
