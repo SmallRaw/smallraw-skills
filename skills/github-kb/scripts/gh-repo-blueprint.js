@@ -8,7 +8,18 @@
  */
 
 const path = require("path");
-const { gh, ensureDir, writeArticle, today, safeName, preflight, DEFAULT_OUTPUT_DIR } = require("./utils");
+const {
+  gh,
+  ensureDir,
+  writeArticle,
+  today,
+  nowIso,
+  yamlString,
+  safeName,
+  validateRepo,
+  preflight,
+  DEFAULT_OUTPUT_DIR,
+} = require("./utils");
 
 const repo = process.argv[2];
 const outputDir = process.argv[3] || DEFAULT_OUTPUT_DIR;
@@ -18,6 +29,7 @@ if (!repo) {
   process.exit(1);
 }
 
+validateRepo(repo);
 preflight();
 ensureDir(outputDir);
 
@@ -27,7 +39,13 @@ console.log(`==> Generating blueprint for ${repo} ...`);
 
 console.log("  [1/8] Repo metadata");
 const meta = gh(
-  `repo view ${repo} --json name,description,stargazerCount,forkCount,primaryLanguage,licenseInfo,createdAt,pushedAt,url,homepageUrl,repositoryTopics,defaultBranchRef,isArchived,isFork`,
+  [
+    "repo",
+    "view",
+    repo,
+    "--json",
+    "name,description,stargazerCount,forkCount,primaryLanguage,licenseInfo,createdAt,pushedAt,url,homepageUrl,repositoryTopics,defaultBranchRef,isArchived,isFork",
+  ],
   { json: true }
 );
 if (!meta) {
@@ -50,9 +68,15 @@ const topics = topicsList.join(", ") || "N/A";
 const archived = meta.isArchived;
 const isFork = meta.isFork;
 const defaultBranch = meta.defaultBranchRef?.name || "main";
+const commitData = gh(["api", `repos/${repo}/commits/${encodeURIComponent(defaultBranch)}`], { json: true });
+const resolvedSha = commitData.sha;
+const rootTreeSha = commitData.commit?.tree?.sha;
+if (!resolvedSha || !rootTreeSha) {
+  throw new Error(`Cannot resolve ${repo}@${defaultBranch}`);
+}
 
 console.log("  [2/8] Language distribution");
-const langData = gh(`api repos/${repo}/languages`, { json: true });
+const langData = gh(["api", `repos/${repo}/languages`], { json: true });
 let langBreakdown = "(unable to fetch)";
 if (langData && typeof langData === "object") {
   const totalBytes = Object.values(langData).reduce((a, b) => a + b, 0);
@@ -68,10 +92,11 @@ if (langData && typeof langData === "object") {
 }
 
 console.log("  [3/8] Directory structure");
-const treeData = gh(`api repos/${repo}/git/trees/${defaultBranch}`, { json: true });
+const treeData = gh(["api", `repos/${repo}/git/trees/${rootTreeSha}`], { json: true });
 let tree = "(unable to fetch)";
+let treeSummary = "root tree unavailable";
 if (treeData?.tree) {
-  const items = treeData.tree.slice(0, 60);
+  const items = treeData.tree;
   const lines = [];
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -81,16 +106,20 @@ if (treeData?.tree) {
     lines.push(`${prefix}${item.path}${suffix}`);
   }
   tree = lines.join("\n");
+  treeSummary = `${items.length} root entries, non-recursive, complete=${treeData.truncated !== true}`;
 }
 
 console.log("  [4/8] Releases");
-const releasesData = gh(`api "repos/${repo}/releases?per_page=5"`, { json: true });
+const releasesData = gh(["api", `repos/${repo}/releases?per_page=5`], { json: true });
 const releases = releasesData?.length
   ? releasesData.map((r) => `- **${r.tag_name}** (${(r.published_at || "").slice(0, 10)}): ${r.name || r.tag_name}`).join("\n")
   : "(no releases)";
 
 console.log("  [5/8] Top open issues");
-const issuesData = gh(`issue list --repo ${repo} --limit 10 --state open --json number,title,labels,createdAt`, { json: true });
+const issuesData = gh(
+  ["issue", "list", "--repo", repo, "--limit", "10", "--state", "open", "--json", "number,title,labels,createdAt"],
+  { json: true }
+);
 const issues = issuesData?.length
   ? issuesData
       .map((i) => {
@@ -101,7 +130,10 @@ const issues = issuesData?.length
   : "(no open issues)";
 
 console.log("  [6/8] Recently merged PRs");
-const prsData = gh(`pr list --repo ${repo} --state merged --limit 5 --json number,title,mergedAt`, { json: true });
+const prsData = gh(
+  ["pr", "list", "--repo", repo, "--state", "merged", "--limit", "5", "--json", "number,title,mergedAt"],
+  { json: true }
+);
 const prs = prsData?.length
   ? prsData
       .map((p) => `- [#${p.number}](https://github.com/${repo}/pull/${p.number}) ${p.title} (${(p.mergedAt || "").slice(0, 10)})`)
@@ -109,7 +141,7 @@ const prs = prsData?.length
   : "(no merged PRs)";
 
 console.log("  [7/8] Top contributors");
-const contribData = gh(`api "repos/${repo}/contributors?per_page=10"`, { json: true });
+const contribData = gh(["api", `repos/${repo}/contributors?per_page=10`], { json: true });
 const contributors = contribData?.length
   ? contribData.map((c) => `- [@${c.login}](https://github.com/${c.login}) — ${c.contributions} commits`).join("\n")
   : "(unable to fetch)";
@@ -122,21 +154,45 @@ const descWords = desc
   .filter((w) => w.length > 3)
   .slice(0, 4)
   .join(" ");
-const langFilter = lang !== "N/A" ? `--language ${lang}` : "";
+const langFilter = lang !== "N/A" ? ["--language", lang] : [];
 
 // 策略1：用描述关键词搜索
-const similar1 = gh(
-  `search repos "${descWords}" --sort stars --limit 8 ${langFilter} --json fullName,stargazersCount,description,updatedAt`,
-  { json: true }
-) || [];
+const similar1 = descWords
+  ? gh(
+      [
+        "search",
+        "repos",
+        descWords,
+        "--sort",
+        "stars",
+        "--limit",
+        "8",
+        ...langFilter,
+        "--json",
+        "fullName,stargazersCount,description,updatedAt",
+      ],
+      { json: true }
+    )
+  : [];
 
 // 策略2：用第一个 topic 搜索（更广泛）
 const topicSearch = topicsList[0] || "";
 const similar2 = topicSearch
   ? gh(
-      `search repos "${topicSearch}" --sort stars --limit 8 ${langFilter} --json fullName,stargazersCount,description,updatedAt`,
+      [
+        "search",
+        "repos",
+        topicSearch,
+        "--sort",
+        "stars",
+        "--limit",
+        "8",
+        ...langFilter,
+        "--json",
+        "fullName,stargazersCount,description,updatedAt",
+      ],
       { json: true }
-    ) || []
+    )
   : [];
 
 // 合并去重，排除自身，按 star 排序
@@ -163,11 +219,15 @@ if (merged.length) {
 // --- 生成蓝图 ---
 
 const outputFile = path.join(outputDir, `${safeName(repo)}-blueprint.md`);
+const accessedAt = nowIso();
 
 const blueprint = `---
-repo: ${repo}
+repo: ${yamlString(repo)}
 generated: ${today()}
 type: blueprint
+source_ref: ${yamlString(defaultBranch)}
+resolved_sha: ${yamlString(resolvedSha)}
+accessed_at: ${yamlString(accessedAt)}
 ---
 
 # ${name} Blueprint
@@ -186,6 +246,7 @@ type: blueprint
 | License | ${license} |
 | Created | ${created} |
 | Last Push | ${updated} |
+| Revision | ${resolvedSha} |
 | Topics | ${topics} |
 | Archived | ${archived} |
 | Is Fork | ${isFork} |
@@ -195,6 +256,8 @@ type: blueprint
 ${langBreakdown}
 
 ## 目录结构
+
+> ${treeSummary}
 
 \`\`\`
 ${tree}
@@ -224,7 +287,7 @@ ${similarRepos}
 
 ---
 
-> 以上为脚本自动采集的原始数据。接下来请阅读该仓库的 README（\`gh repo view ${repo}\`），按 references/blueprint-format.md 的结构完成蓝图撰写。
+> 以上为脚本自动采集的候选数据，不是最终架构结论。接下来按需阅读固定 revision 的 README、关键源码和测试，再按 references/blueprint-format.md 完成分析。
 `;
 
 writeArticle(outputFile, blueprint);
