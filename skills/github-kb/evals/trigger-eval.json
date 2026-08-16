@@ -1,0 +1,82 @@
+[
+  {
+    "query": "帮我看一下 facebook/react 现在的 compiler pipeline 是怎么组织的，尤其是 HIR 优化和代码生成之间怎么衔接。",
+    "should_trigger": true
+  },
+  {
+    "query": "这个 https://github.com/astral-sh/uv/issues/12345 到底是修了还是只是关掉了？我现在的版本能不能用里面的 workaround？",
+    "should_trigger": true
+  },
+  {
+    "query": "GitHub 上搜一下有没有维护得比较好的 TypeScript AST diff 库，给我几个真实候选和取舍。",
+    "should_trigger": true
+  },
+  {
+    "query": "我们本地要做 cancellable tool call，研究一下 openai/openai-agents-python 是怎么处理取消、cleanup 和 tracing 的，再对照当前项目。",
+    "should_trigger": true
+  },
+  {
+    "query": "next.js 15 到 16 的缓存行为为什么变了？请沿 vercel/next.js 的 release、PR 和关键源码搞清楚，不要只抄 changelog。",
+    "should_trigger": true
+  },
+  {
+    "query": "我记得 rust-analyzer 有个增量计算的设计，没记住文件名。去它 GitHub 仓库里找入口和相关测试。",
+    "should_trigger": true
+  },
+  {
+    "query": "搜一下 GitHub，最近有没有专门解决 MCP tool schema 太大的开源项目？Stars 不是唯一标准，最好看最近维护和 issue 质量。",
+    "should_trigger": true
+  },
+  {
+    "query": "深挖一下 tokio-rs/tokio 的 task cancellation safety；哪些结论是 API 契约，哪些只是当前实现？",
+    "should_trigger": true
+  },
+  {
+    "query": "看看 cordiverse/paper 的记忆模型能否用于 /Users/me/work/agent，来源实现和本地目标两边都要核对。",
+    "should_trigger": true
+  },
+  {
+    "query": "给 https://github.com/cli/cli/pull/10000 做个摘要，重点看改动文件、review 争议和最后为什么合并。",
+    "should_trigger": true
+  },
+  {
+    "query": "我本地这个 repo 有三个未提交文件，帮我 review diff，别联网，也不要看任何远程仓库。",
+    "should_trigger": false
+  },
+  {
+    "query": "给当前项目写一个 GitHub Actions workflow：Node 22，pnpm test，main 分支 push 和 PR 时运行。",
+    "should_trigger": false
+  },
+  {
+    "query": "把 README 里的 github.com/example/oldrepo 链接换成 github.com/example/newrepo，然后跑测试。",
+    "should_trigger": false
+  },
+  {
+    "query": "实现一个 parseGitHubUrl(input) TypeScript 函数，支持 issue 和 pull URL；只写代码和单测，不需要访问 GitHub。",
+    "should_trigger": false
+  },
+  {
+    "query": "列一下我 ~/docs/github-article/ 里之前保存过的所有 Next.js 报告，按修改时间排序，不要重新研究。",
+    "should_trigger": false
+  },
+  {
+    "query": "当前分支 rebase 到 main 后冲突了，帮我只处理本地冲突，不要 fetch。",
+    "should_trigger": false
+  },
+  {
+    "query": "这个 YAML 为什么报错？文件是 .github/workflows/release.yml，但问题只是第 18 行缩进。",
+    "should_trigger": false
+  },
+  {
+    "query": "给我们内部的 GitHub webhook payload 类型补一个 installation 字段；接口定义已经在本地 fixtures 里，不需要查远程文档。",
+    "should_trigger": false
+  },
+  {
+    "query": "写一段文案解释 owner/repo 这种 GitHub 仓库命名格式，给新同事培训用。",
+    "should_trigger": false
+  },
+  {
+    "query": "把当前仓库的 origin 从 HTTPS 改成公司 SSH alias，然后创建本地分支 codex/fix-login；不要访问远程。",
+    "should_trigger": false
+  }
+]

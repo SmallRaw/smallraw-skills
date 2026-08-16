@@ -39,7 +39,7 @@ gh search repos "<query>" [flags]
 **排除关键词**：用 `--` 分隔符
 
 ```bash
-gh search repos -- "react admin -antd" --sort stars --limit 10
+gh search repos --sort stars --limit 10 -- "react admin -antd"
 ```
 
 **组合筛选**：
@@ -95,7 +95,8 @@ gh search prs "<query>" [flags]
 
 | Flag | 说明 | 示例 |
 |------|------|------|
-| `--state` | open, closed, merged | `--state merged` |
+| `--state` | open, closed | `--state closed` |
+| `--merged` | 只返回已合并 PR | `--merged` |
 | `--repo` | 限定仓库 | `--repo owner/repo` |
 | `--label` | 按标签 | `--label enhancement` |
 | `--author` | 按作者 | `--author username` |
@@ -107,10 +108,10 @@ gh search prs "<query>" [flags]
 
 ```bash
 # 看某功能怎么实现的
-gh search prs "add dark mode" --state merged --sort updated --limit 5
+gh search prs "add dark mode" --merged --sort updated --limit 5
 
 # 看某仓库最近的 bug 修复
-gh search prs "fix" --repo owner/repo --state merged --label bug --limit 10
+gh search prs "fix" --repo owner/repo --merged --label bug --limit 10
 ```
 
 ---
@@ -280,6 +281,6 @@ gh api rate_limit --jq '.resources.search'
 搜索时排除不想要的结果，用 `--` 分隔：
 
 ```bash
-gh search repos -- "react component -antd -material" --sort stars
-gh search issues -- "error -label:wontfix -label:duplicate" --state closed
+gh search repos --sort stars -- "react component -antd -material"
+gh search issues --state closed -- "error -label:wontfix -label:duplicate"
 ```

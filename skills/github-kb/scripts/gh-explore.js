@@ -7,7 +7,17 @@
  */
 
 const path = require("path");
-const { gh, ensureDir, writeArticle, today, safeName, preflight, DEFAULT_OUTPUT_DIR } = require("./utils");
+const {
+  gh,
+  ensureDir,
+  writeArticle,
+  today,
+  nowIso,
+  yamlString,
+  safeName,
+  preflight,
+  DEFAULT_OUTPUT_DIR,
+} = require("./utils");
 
 // --- 参数解析 ---
 const args = process.argv.slice(2);
@@ -33,14 +43,28 @@ if (!keyword) {
 preflight();
 ensureDir(outputDir);
 
-const langFlag = language ? `--language ${language}` : "";
+const langFlag = language ? ["--language", language] : [];
 
 console.log(`==> Exploring: "${keyword}" ${language ? `(language: ${language})` : ""} ...`);
 
 // --- 多维度搜索 ---
 
 console.log("  [1/4] Searching repos (by stars)...");
-const reposData = gh(`search repos "${keyword}" --sort stars --limit 10 ${langFlag} --json fullName,stargazersCount,description,updatedAt`, { json: true });
+const reposData = gh(
+  [
+    "search",
+    "repos",
+    keyword,
+    "--sort",
+    "stars",
+    "--limit",
+    "10",
+    ...langFlag,
+    "--json",
+    "fullName,stargazersCount,description,updatedAt",
+  ],
+  { json: true }
+);
 const repos = reposData?.length
   ? reposData
       .map(
@@ -50,8 +74,11 @@ const repos = reposData?.length
       .join("\n")
   : "| (no results) | | | |";
 
-console.log("  [2/4] Searching closed issues (solutions)...");
-const issuesData = gh(`search issues "${keyword}" --state closed --limit 10 --json title,repository,number,url`, { json: true });
+console.log("  [2/4] Searching closed issues (candidate evidence)...");
+const issuesData = gh(
+  ["search", "issues", keyword, "--state", "closed", "--limit", "10", "--json", "title,repository,number,url,closedAt"],
+  { json: true }
+);
 const issues = issuesData?.length
   ? issuesData
       .map((i) => `- [${i.repository.nameWithOwner}#${i.number}](${i.url}): ${i.title.slice(0, 100)}`)
@@ -59,15 +86,21 @@ const issues = issuesData?.length
   : "(no results)";
 
 console.log("  [3/4] Searching code snippets...");
-const codeData = gh(`search code "${keyword}" --limit 10 ${langFlag} --json repository,path,url`, { json: true });
+const codeData = gh(
+  ["search", "code", keyword, "--limit", "10", ...langFlag, "--json", "repository,path,url,sha"],
+  { json: true }
+);
 const code = codeData?.length
   ? codeData
-      .map((c) => `- [${c.repository.nameWithOwner}/${c.path}](${c.url})`)
+      .map((c) => `- [${c.repository.nameWithOwner}/${c.path}](${c.url}) — \`${(c.sha || "unknown").slice(0, 12)}\``)
       .join("\n")
   : "(no results)";
 
 console.log("  [4/4] Searching merged PRs...");
-const prsData = gh(`search prs "${keyword}" --state merged --limit 10 --json title,repository,number,url`, { json: true });
+const prsData = gh(
+  ["search", "prs", keyword, "--merged", "--limit", "10", "--json", "title,repository,number,url,closedAt"],
+  { json: true }
+);
 const prs = prsData?.length
   ? prsData
       .map((p) => `- [${p.repository.nameWithOwner}#${p.number}](${p.url}): ${p.title.slice(0, 100)}`)
@@ -77,12 +110,14 @@ const prs = prsData?.length
 // --- 生成报告 ---
 
 const outputFile = path.join(outputDir, `explore-${safeName(keyword)}.md`);
+const accessedAt = nowIso();
 
 const report = `---
-keyword: "${keyword}"
-language: ${language || "all"}
+keyword: ${yamlString(keyword)}
+language: ${yamlString(language || "all")}
 generated: ${today()}
 type: exploration
+accessed_at: ${yamlString(accessedAt)}
 ---
 
 # Exploration: ${keyword}
@@ -95,11 +130,11 @@ type: exploration
 |------|-------|-------------|-------------|
 ${repos}
 
-## Solved Issues (Closed)
+## Closed Issues (closure reason not yet verified)
 
 ${issues}
 
-## Code Examples
+## Code Examples (reported SHA is the matched blob, not a resolved repository revision)
 
 ${code}
 
@@ -109,7 +144,7 @@ ${prs}
 
 ---
 
-*Raw data collected by gh-explore.js. Use this as a starting point for deeper analysis.*
+*Candidate index collected by gh-explore.js. Open the selected sources and verify their content, revision, closure reason, and relevance before drawing conclusions.*
 `;
 
 writeArticle(outputFile, report);
