@@ -39,6 +39,7 @@ const READ_ONLY_GIT_COMMANDS = new Set([
   // changes what the repository points at.
   "commit-tree",
   "hash-object",
+  "merge-tree",
   "mktree",
   "write-tree",
   "pack-objects",
@@ -59,8 +60,6 @@ const WORKTREE_RESET_MODES = new Set(["--hard", "--merge", "--keep"]);
 const HISTORY_OR_BRANCH_MUTATIONS = new Set([
   "checkout",
   "switch",
-  "merge",
-  "rebase",
   "cherry-pick",
   "revert",
   "reset",
@@ -71,7 +70,6 @@ const HISTORY_OR_BRANCH_MUTATIONS = new Set([
   "update-ref",
   "symbolic-ref",
 ]);
-const REMOTE_MUTATIONS = new Set(["push", "pull", "clone"]);
 const GH_WRITE_GROUPS = new Map([
   ["pr", new Set(["create", "comment", "merge", "close", "edit", "ready", "reopen", "review"])],
   ["issue", new Set(["create", "comment", "close", "edit", "reopen", "transfer"])],
@@ -141,6 +139,39 @@ function tokenize(segment) {
   if (escaped || quote) return null;
   if (token) tokens.push(token);
   return tokens;
+}
+
+// A heredoc body is data delivered to the receiving command, not shell syntax;
+// tokenizing it turned every stray quote inside a script body into an
+// "unclosed quote" confirm. Splice bodies out before segmenting. A body under
+// an unquoted delimiter may still run `$()` or backticks when the shell
+// expands it, so those stay in place for the ambiguity handling to see; a
+// shell fed by heredoc executes its body, but guidelines-security-shell
+// denies bare shell invocations wholesale, so nothing hides there.
+function stripHeredocBodies(command) {
+  const opener = /<<(-?)(?!<)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|([A-Za-z0-9_][\w.-]*))/gu;
+  let output = "";
+  let cursor = 0;
+  let match;
+  while ((match = opener.exec(command)) !== null) {
+    if (match.index < cursor) continue;
+    const literal = match[2] !== undefined || match[3] !== undefined;
+    const delimiter = match[2] ?? match[3] ?? match[4];
+    const bodyStart = command.indexOf("\n", opener.lastIndex);
+    if (bodyStart === -1) continue;
+    const terminator = new RegExp(
+      `(?:^|\n)${match[1] ? "\t*" : ""}${delimiter.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}[ \t]*(?=\n|$)`,
+      "u",
+    );
+    const tail = command.slice(bodyStart + 1);
+    const found = terminator.exec(tail);
+    if (!found) continue;
+    const body = tail.slice(0, found.index);
+    if (!literal && /`|\$\(/u.test(body)) continue;
+    output += command.slice(cursor, bodyStart + 1);
+    cursor = bodyStart + 1 + found.index + found[0].length;
+  }
+  return output + command.slice(cursor);
 }
 
 function commandSegments(command) {
@@ -243,16 +274,19 @@ function isReadOnlyTag(args) {
   );
 }
 
-// The same letter means different things per subcommand: -m renames a branch
-// but only carries a message on a tag.
+// For branches, -d refuses unmerged work, renames and moves keep their reflog,
+// and a forced pointer move leaves the old tip one reflog lookup away; only
+// the force-capital forms clobber an existing branch and drop its reflog with
+// it. Tags have no reflog, so a deleted or force-moved tag pointer is gone.
 const DESTRUCTIVE_REF_FLAGS = {
-  branch: ["-d", "-D", "--delete", "-m", "-M", "--move", "-c", "-C", "--copy", "-f", "--force"],
+  branch: ["-D", "-M", "-C"],
   tag: ["-d", "--delete", "-f", "--force"],
 };
 
 function hasDestructiveRefFlag(subcommand, args) {
   const flags = DESTRUCTIVE_REF_FLAGS[subcommand] ?? [];
-  return args.some((value) => flags.includes(value));
+  if (args.some((value) => flags.includes(value))) return true;
+  return subcommand === "branch" && args.includes("--delete") && args.includes("--force");
 }
 
 function isReadOnlyRemote(args) {
@@ -264,24 +298,39 @@ function isReadOnlyRemote(args) {
 }
 
 function isReadOnlyConfig(args) {
-  return args.some((value) =>
-    ["--get", "--get-all", "--get-regexp", "--list", "-l", "--show-origin", "--show-scope"].includes(value),
-  );
+  if (
+    args.some((value) =>
+      ["--get", "--get-all", "--get-regexp", "--list", "-l", "--show-origin", "--show-scope"].includes(value),
+    )
+  ) {
+    return true;
+  }
+  if (
+    args.some((value) =>
+      [
+        "--unset",
+        "--unset-all",
+        "--replace-all",
+        "--add",
+        "--remove-section",
+        "--rename-section",
+        "--edit",
+        "-e",
+      ].includes(value),
+    )
+  ) {
+    return false;
+  }
+  // `git config user.name` with no value prints the key; a second positional
+  // (the value) or an editing flag is what writes.
+  const positionals = args.filter((value) => !value.startsWith("-"));
+  if (["get", "list"].includes(positionals[0])) return true;
+  return positionals.length <= 1;
 }
 
 function isBroadStageToken(value) {
   return (
-    [
-      ".",
-      "./",
-      ":",
-      ":/",
-      "-A",
-      "--all",
-      "-u",
-      "--update",
-      "--pathspec-from-file",
-    ].includes(value) ||
+    [".", "./", ":", ":/", "--pathspec-from-file"].includes(value) ||
     value.startsWith("--pathspec-from-file=") ||
     value.startsWith(":(") ||
     value.startsWith(":!") ||
@@ -290,11 +339,21 @@ function isBroadStageToken(value) {
   );
 }
 
+// -A/-u sweep the whole tree only when no pathspec narrows them; with an
+// explicit path, `git add -A src/` stages exactly what `git add src/` would.
+const SWEEP_STAGE_FLAGS = new Set(["-A", "--all", "-u", "--update"]);
+
 // A bare name is read as a branch; `.` and anything with a file extension is
-// read as a path, which is the form that discards work.
+// read as a path, which is the form that discards work. An all-digit suffix
+// is a version number (hotfix/v6.5.2), not an extension.
 function isDiscardingPathspec(value) {
   if (value.startsWith("-")) return false;
-  return value === "." || value === "./" || value.startsWith("./") || /\.[A-Za-z0-9]+$/u.test(value);
+  return (
+    value === "." ||
+    value === "./" ||
+    value.startsWith("./") ||
+    /\.[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*$/u.test(value)
+  );
 }
 
 function evaluateGit(args) {
@@ -328,11 +387,7 @@ function evaluateGit(args) {
   if (subcommand === "notes") {
     const verb = rest.find((value) => !value.startsWith("-")) ?? "";
     if (["remove", "prune"].includes(verb)) {
-      return confirm(
-        "notes-removal",
-        "git notes 删除会移除已有的注记。",
-        "确认这些注记不再需要，或先用 git notes list 查看。",
-      );
+      return confirm("notes-removal", "会删除已有的 git 注记。");
     }
     return allow("notes-write");
   }
@@ -340,11 +395,7 @@ function evaluateGit(args) {
   if (subcommand === "bisect") return allow("bisect-navigation");
   if (subcommand === "bundle") {
     if ((rest[0] ?? "") === "unbundle") {
-      return confirm(
-        "bundle-unpack",
-        "git bundle unbundle 会把外部 bundle 里的 ref 写进本仓库。",
-        "确认 bundle 来源可信，并检查它会创建哪些 ref。",
-      );
+      return confirm("bundle-unpack", "会把外部 bundle 的 ref 写进本仓库。", "确认来源可信。");
     }
     return allow("read-only-git");
   }
@@ -373,11 +424,15 @@ function evaluateGit(args) {
   }
 
   if (subcommand === "add") {
-    if (rest.some(isBroadStageToken)) {
+    const hasPathspec = rest.some((value) => !value.startsWith("-"));
+    if (
+      rest.some(isBroadStageToken) ||
+      (!hasPathspec && rest.some((value) => SWEEP_STAGE_FLAGS.has(value)))
+    ) {
       return confirm(
         "broad-staging",
-        "宽泛暂存会把用户自己的无关改动一并纳入。",
-        "检查暂存区，只暂存属于当前这次完整改动的确切路径。",
+        "会把你未提交的其他改动一并暂存进来。",
+        "只暂存本次改动的路径。",
       );
     }
     return allow("explicit-staging");
@@ -389,30 +444,21 @@ function evaluateGit(args) {
     if (rest.some(isBroadStageToken)) {
       return confirm(
         "broad-staging",
-        `git ${subcommand} 的宽泛 pathspec 会波及用户自己的无关文件。`,
-        "只写明属于当前这次改动的确切路径。",
+        `git ${subcommand} 的宽泛 pathspec 会波及无关文件。`,
+        "写明确切路径。",
       );
     }
     if (rest.some((value) => value === "-f" || value === "--force")) {
       return confirm(
         "forced-index-removal",
-        `git ${subcommand} --force 会丢弃尚未提交的改动。`,
-        "先确认这些路径没有需要保留的未提交改动。",
+        `会丢弃这些路径未提交的改动。`,
       );
     }
     return allow("tracked-path-index-change");
   }
   if (subcommand === "commit") {
-    if (
-      rest.includes("--amend") ||
-      rest.some((value) => value.startsWith("--fixup"))
-    ) {
-      return confirm(
-        "history-rewrite",
-        "amend 或 fixup 提交会改写已有历史。",
-        "先检查已暂存的 diff，并就该具体提交取得明确授权。",
-      );
-    }
+    // Amend and fixup take nothing away: the previous commit stays in the
+    // reflog, and a rewritten history still has to pass the push gate.
     if (
       rest.some((value) =>
         ["--only", "-o", "--include", "-i", "--pathspec-from-file"].includes(value) ||
@@ -421,8 +467,7 @@ function evaluateGit(args) {
     ) {
       return confirm(
         "commit-pathspec",
-        "带 pathspec 提交可能绕过或混入已检查的暂存区内容。",
-        "授权提交前，先检查确切的 pathspec、工作区 diff 和暂存 diff。",
+        "可能提交暂存区之外的内容。",
       );
     }
     if (
@@ -431,8 +476,7 @@ function evaluateGit(args) {
     ) {
       return confirm(
         "broad-staging",
-        "git commit --all 会暂存所有已跟踪改动，其中可能有用户自己的改动。",
-        "检查暂存区，只暂存属于当前这次完整改动的确切路径或代码块。",
+        "会把你所有未暂存的改动一并提交。",
       );
     }
     return allow("normal-commit");
@@ -441,43 +485,55 @@ function evaluateGit(args) {
     if (args.includes("--global") || args.includes("--system")) {
       return deny(
         "global-git-config-write",
-        "全局或系统级 Git 配置会改变其他无关仓库的身份和凭据。",
-        "先查看仓库内现有配置值，且只修改仓库级配置。",
+        "会修改全局 Git 配置，影响其他仓库。",
+        "只改仓库级配置。",
       );
     }
     return confirm(
       "repository-git-config-write",
-      "仓库级 Git 配置会改变身份、传输方式或命令行为。",
-      "修改前确认确切的本地配置项和不含密钥的值。",
+      "会修改本仓库的 git 配置。",
     );
   }
   if (subcommand === "push") {
     const joined = rest.join(" ");
+    // The lookbehind keeps directory-specific SSH aliases that merely end in
+    // "github.com" (byte-github.com:owner/repo) out of the default-transport net.
     if (
-      /(?:https?:\/\/github\.com(?:\/|$)|ssh:\/\/(?:git@)?github\.com(?:\/|$)|(?:git@)?github\.com:)/iu.test(
+      /(?:https?:\/\/github\.com(?:\/|$)|ssh:\/\/(?:git@)?github\.com(?:\/|$)|(?<![\w.-])(?:git@)?github\.com:)/iu.test(
         joined,
       )
     ) {
       return deny(
         "default-github-transport",
-        "默认的 github.com 传输方式无法证明使用的是本目录配置的 SSH 身份。",
-        "使用本仓库配置的推送远端和目录专属 SSH 别名；不得回落到 HTTPS、令牌或其他账号。",
+        "直接推 github.com 无法保证用的是本目录的 SSH 身份。",
+        "先 git remote set-url 配好目录专属 SSH 别名，再推配置好的远端。",
       );
     }
+    const forced = rest.some(
+      (value) => value === "--force" || value === "-f" || value.startsWith("--force-with-lease"),
+    );
     return confirm(
-      rest.some((value) => value === "--force" || value === "-f" || value.startsWith("--force-with-lease"))
-        ? "force-push"
-        : "git-push",
-      "推送会改变远端状态，需要针对该操作的明确授权。",
-      "推送前确认仓库的推送远端、SSH 别名、目标 ref 和提交范围。",
+      forced ? "force-push" : "git-push",
+      forced ? "会强制覆盖远端已有的提交历史。" : "会把本地提交发布到远端仓库。",
     );
   }
   if (subcommand === "fetch") {
-    if (rest.some((value) => !value.startsWith("-") && value.includes(":"))) {
+    // A destination outside branch and tag space (refs/pr/*, refs/remotes/*)
+    // can clobber nothing anyone works on; only writes into refs/heads/ or
+    // refs/tags/ need a look.
+    const touchesLocalRefs = rest.some((value) => {
+      if (value.startsWith("-") || !value.includes(":")) return false;
+      const destination = value.split(":").pop();
+      return (
+        !destination.startsWith("refs/") ||
+        destination.startsWith("refs/heads/") ||
+        destination.startsWith("refs/tags/")
+      );
+    });
+    if (touchesLocalRefs) {
       return confirm(
         "fetch-local-ref-update",
-        "带目标端的 fetch refspec 会更新本地 ref。",
-        "fetch 前确认确切的 refspec 和会被影响的本地 ref。",
+        "会改写本地分支或标签指针。",
       );
     }
     return allow("fetch-remote-tracking");
@@ -489,8 +545,8 @@ function evaluateGit(args) {
     if (rest.includes("--") || rest.some(isDiscardingPathspec)) {
       return confirm(
         "worktree-discard",
-        `git ${subcommand} 带路径会丢弃这些文件尚未提交的修改，且无法撤销。`,
-        "先提交或 stash 这些改动再切换；若确实要丢弃，逐一确认路径。",
+        `会丢弃这些文件未提交的修改，无法恢复。`,
+        "要保留就先 stash。",
       );
     }
     return allow("branch-move");
@@ -504,42 +560,64 @@ function evaluateGit(args) {
     if (["drop", "clear"].includes(rest[0] ?? "")) {
       return confirm(
         "stash-destruction",
-        `git stash ${rest[0]} 会删除暂存条目，之后只能从悬空对象里勉强找回。`,
-        "先确认这些暂存条目已经不需要，或改用 git stash list 检查内容。",
+        `会删除 stash 里保存的改动，基本找不回。`,
       );
     }
     return allow("recoverable-stash");
   }
-  if (REMOTE_MUTATIONS.has(subcommand)) {
-    return confirm(
-      "remote-or-worktree-mutation",
-      `git ${subcommand} 会改变本地 ref、历史或文件系统状态。`,
-      "就确切的远端、ref、目标位置和受影响的工作区取得明确授权。",
-    );
+  // Merge and rebase refuse to clobber uncommitted work, and every commit
+  // they move or rewrite stays reachable from the reflog; publishing the
+  // rewritten result is what the push gate watches.
+  if (subcommand === "merge" || subcommand === "rebase") {
+    return allow("reflog-recoverable-history");
   }
+  // Pull is fetch plus a merge into the current branch — same recoverability;
+  // a refspec with a destination is the exception, handled like fetch.
+  if (subcommand === "pull") {
+    if (rest.some((value) => !value.startsWith("-") && value.includes(":"))) {
+      return confirm(
+        "fetch-local-ref-update",
+        "会改写本地分支或标签指针。",
+      );
+    }
+    return allow("reflog-recoverable-history");
+  }
+  // Creations take nothing away: clone refuses a non-empty target, and a new
+  // remote, worktree, or repository only adds state.
+  if (subcommand === "clone") return allow("worktree-creation");
+  if (subcommand === "remote" && rest[0] === "add") return allow("ref-creation");
+  if (subcommand === "worktree" && rest[0] === "add") return allow("worktree-creation");
+  if (subcommand === "init") return allow("worktree-creation");
   if (HISTORY_OR_BRANCH_MUTATIONS.has(subcommand)) {
     return confirm(
       "history-or-branch-mutation",
-      `git ${subcommand} 可能改变分支、历史、暂存区，或用户自己的工作区改动。`,
-      "先查看状态和 diff，再就受影响的确切 ref 和路径取得明确授权。",
+      `git ${subcommand} 可能丢弃未提交的改动。`,
     );
   }
   if (["branch", "tag", "remote", "worktree", "submodule", "init"].includes(subcommand)) {
     return confirm(
       "repository-structure-mutation",
-      `git ${subcommand} 可能改变仓库的 ref、远端、配置或工作区。`,
-      "继续前确认这次改动的确切内容和影响范围。",
+      `git ${subcommand} 会删改分支、标签、远端或工作树。`,
     );
   }
 
   return confirm(
     "unclassified-git-command",
-    `git ${subcommand} 未被归类为只读操作。`,
-    "查阅该命令的官方说明；若会改变仓库或远端状态，则需取得授权。",
+    `不确定 git ${subcommand} 是否只读。`,
+    "确认它不改仓库状态。",
   );
 }
 
-function evaluateGh(args) {
+function evaluateGh(rawArgs) {
+  // Strip leading global flags so a write spelled `gh -R o/r pr comment`
+  // cannot hide the group behind the flag; unknown flags fail toward deny.
+  const args = [...rawArgs];
+  while (args.length > 0 && args[0].startsWith("-")) {
+    const flag = args[0].toLowerCase();
+    if (["--version", "--help", "-h"].includes(flag)) return allow("read-only-gh");
+    const takesValue = ["-r", "--repo", "--hostname"].includes(flag) && !flag.includes("=");
+    args.splice(0, takesValue ? 2 : 1);
+  }
   const group = (args[0] ?? "").toLowerCase();
   const action = (args[1] ?? "").toLowerCase();
 
@@ -547,67 +625,110 @@ function evaluateGh(args) {
     if (action === "status") return allow("read-only-gh");
     return deny(
       action === "setup-git" ? "gh-auth-setup-git" : "gh-auth-mutation",
-      "修改 GitHub CLI 认证会替换或绕过本目录的 SSH 身份。",
-      "不要修改或复用默认的 gh 认证；使用本仓库配置的 SSH 身份。",
+      "会改动 gh 认证，绕过本目录的 SSH 身份。",
+      "用本仓库配置的 SSH 身份。",
     );
   }
   if (group === "api") {
     const methodIndex = args.findIndex((value) => value === "--method" || value === "-X");
-    const explicitMethod =
-      methodIndex >= 0 ? String(args[methodIndex + 1] ?? "").toUpperCase() : "";
+    const inlineMethod = args.find((value) => /^(?:--method=|-X).+/u.test(value));
+    const explicitMethod = (
+      methodIndex >= 0
+        ? String(args[methodIndex + 1] ?? "")
+        : inlineMethod
+          ? inlineMethod.replace(/^(?:--method=|-X)/u, "")
+          : ""
+    ).toUpperCase();
+    // gh api -X GET folds -f/-F fields into the query string; an explicit GET
+    // reads, whatever else is on the line.
+    if (explicitMethod === "GET") return allow("read-only-gh");
+    // GraphQL rides on POST even for pure reads: a query document with no
+    // mutation is a read. Anything uninspectable (@file, no query field)
+    // falls through toward deny.
+    if (args[1] === "graphql" && explicitMethod === "") {
+      const fieldValues = [];
+      for (let index = 2; index < args.length; index += 1) {
+        if (/^(?:-f|-F|--field|--raw-field)$/u.test(args[index])) {
+          fieldValues.push(args[index + 1] ?? "");
+        } else if (args[index].startsWith("-")) {
+          const inline = args[index].match(/^(?:--field=|--raw-field=|-f|-F)(.+)$/u);
+          if (inline) fieldValues.push(inline[1]);
+        }
+      }
+      const queries = fieldValues
+        .filter((value) => value.startsWith("query="))
+        .map((value) => value.slice("query=".length));
+      if (
+        queries.length > 0 &&
+        queries.every(
+          (value) => /^\s*(?:query\b|\{)/u.test(value) && !/\bmutation\b/iu.test(value),
+        )
+      ) {
+        return allow("read-only-gh");
+      }
+    }
     const writeFlag =
+      explicitMethod !== "" ||
       args.includes("--input") ||
       args.includes("--raw-field") ||
       args.includes("-f") ||
       args.includes("-F") ||
-      args.some((value) =>
-        /^(?:--input=|--raw-field=|--field=|-f.+|-F.+|-X(?!GET$).+)/iu.test(value),
-      ) ||
-      (explicitMethod !== "" && explicitMethod !== "GET") ||
-      args.some((value) => /^--method=(?!GET$)/iu.test(value));
+      args.some((value) => /^(?:--input=|--raw-field=|--field=|-f.+|-F.+)/u.test(value));
     if (writeFlag) {
       return deny(
         "default-gh-write",
-        "禁止通过默认 gh 认证进行 GitHub API 写操作。",
-        "使用本目录授权的身份，并就该具体写操作取得明确批准。",
+        "会用默认 gh 账号写 GitHub。",
+        "不要用默认 gh 写入。",
       );
     }
     return allow("read-only-gh");
   }
+  // Every gh search subcommand queries; none writes.
+  if (group === "search") return allow("read-only-gh");
   if (GH_WRITE_GROUPS.get(group)?.has(action)) {
     return deny(
       "default-gh-write",
-      `gh ${group} ${action} 会通过默认 GitHub CLI 认证写入。`,
-      "不要用默认 gh 做推送、PR、评论等写操作；使用本目录授权的身份。",
+      `gh ${group} ${action} 会用默认 gh 账号写 GitHub。`,
+      "不要用默认 gh 写入。",
     );
   }
+  // checkout and clone only write local branches or directories, which git
+  // itself keeps recoverable; everything else here reads.
   const readOnlyActions = new Set([
     "checks",
+    "checkout",
+    "clone",
     "diff",
     "download",
+    "get",
     "list",
     "status",
+    "verify",
     "view",
     "watch",
   ]);
   if (readOnlyActions.has(action) || (!action && ["status", "version", "help"].includes(group))) {
     return allow("read-only-gh");
   }
-  return confirm(
+  if (["browse", "completion", "help", "version"].includes(group)) {
+    return allow("read-only-gh");
+  }
+  // Anything unrecognized may write GitHub, and under the identity rule a gh
+  // write is forbidden outright — asking would imply approval could allow it.
+  return deny(
     "unclassified-gh-command",
-    `gh ${group} ${action}`.trim() + " 无法确认是只读操作。",
-    "检查该命令；若它通过默认 gh 认证写入，则不要执行。",
+    "不确定 " + `gh ${group} ${action}`.trim() + " 是否只读；用默认 gh 写 GitHub 一律禁止。",
+    "只用已知只读的 gh 子命令；需要写入就报告并停下。",
   );
 }
 
 function evaluateSegment(segment) {
   const rawTokens = tokenize(segment);
   if (!rawTokens) {
-    return confirm(
-      "ambiguous-shell-syntax",
-      "命令存在未闭合的引号，无法安全分类。",
-      "请提供规范化的可执行文件和参数，或先简化命令再审查。",
-    );
+    // Unparseable syntax is one problem, not three: guidelines-security-shell
+    // owns the ambiguity confirm, and the gates install together, so this gate
+    // stays quiet instead of stacking the same paragraph into the prompt.
+    return allow("ambiguity-deferred-to-shell-gate");
   }
   const tokens = stripInvocationPrefixes(rawTokens);
   if (tokens.length === 0) return allow();
@@ -627,7 +748,7 @@ export function evaluateCommand(command) {
     );
   }
 
-  const segments = commandSegments(command);
+  const segments = commandSegments(stripHeredocBodies(command));
   let strongest = allow();
   for (const segment of segments) {
     const value = evaluateSegment(segment);
@@ -644,7 +765,7 @@ function withVisibilityHint(value, segmentCount) {
   if (segmentCount < 2 || value.decision === "allow") return value;
   return {
     ...value,
-    nextAction: `${value.nextAction ?? ""} 请把该操作单独作为一条命令重新发出，不要串在命令链里，好让审批提示准确显示被批准的内容。`.trim(),
+    nextAction: `${value.nextAction ?? ""} 请把这一步单独作为一条命令重发，不要串在链里。`.trim(),
   };
 }
 

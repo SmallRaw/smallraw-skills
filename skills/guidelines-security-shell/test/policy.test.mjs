@@ -109,6 +109,44 @@ test("normalizes hook payloads and fails closed on malformed input", () => {
   assert.equal(evaluateCommand("rm -rf 'unclosed", cwd).ruleId, "ambiguous-shell-syntax");
 });
 
+test("allows sweeping own workspace or temp processes by path pattern", () => {
+  assert.equal(
+    evaluateCommand('pkill -f "harness/server.mjs" 2>/dev/null; echo done', cwd).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluateCommand("pkill -f /private/tmp/claude-501/session/scratchpad/server.mjs", cwd)
+      .ruleId,
+    "workspace-process-sweep",
+  );
+  // Bare names and paths outside the workspace reach anyone's processes.
+  assert.equal(evaluateCommand("pkill -f node", cwd).ruleId, "process-sweep");
+  assert.equal(evaluateCommand("pkill -f /usr/bin/node", cwd).ruleId, "process-sweep");
+  assert.equal(evaluateCommand("killall Dock", cwd).decision, "confirm");
+});
+
+test("skips heredoc bodies but keeps live or unterminated ones visible", () => {
+  assert.equal(
+    evaluateCommand("python3 - <<'PY'\ns = \"it's fine\"\nprint(s)\nPY", cwd).decision,
+    "allow",
+  );
+  // An unquoted delimiter may expand $() at run time; the body stays in view.
+  assert.equal(
+    evaluateCommand("cat <<EOF\n$(x) 'odd\nEOF", cwd).ruleId,
+    "ambiguous-shell-syntax",
+  );
+  // No terminator line: nothing is stripped.
+  assert.equal(
+    evaluateCommand("cat <<'EOF'\nstill 'open", cwd).ruleId,
+    "ambiguous-shell-syntax",
+  );
+  // Danger chained after the body is still seen.
+  assert.equal(
+    evaluateCommand("cat <<'EOF' > f\ndata's\nEOF\nsudo ls", cwd).ruleId,
+    "privilege-escalation",
+  );
+});
+
 test("CLI maps decisions to stable exit codes", () => {
   const cases = [
     ["ls -la", 0],

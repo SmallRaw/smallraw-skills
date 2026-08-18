@@ -51,7 +51,7 @@ test("translates confirm to ask with the policy reason and next action", () => {
   const push = runGuard(policies.git, bashPayload("git push origin HEAD"));
   assert.equal(push.permissionDecision, "ask");
   assert.match(push.permissionDecisionReason, /^\[git-push\]/u);
-  assert.match(push.permissionDecisionReason, /推送前确认仓库的推送远端/u);
+  assert.match(push.permissionDecisionReason, /会把本地提交发布到远端仓库/u);
 
   const install = runGuard(policies.npm, bashPayload("npm ci --ignore-scripts"));
   assert.equal(install.permissionDecision, "ask");

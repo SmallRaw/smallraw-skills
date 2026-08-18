@@ -121,6 +121,39 @@ function tokenize(segment) {
   return tokens;
 }
 
+// A heredoc body is data delivered to the receiving command, not shell syntax;
+// tokenizing it turned every stray quote inside a script body into an
+// "unclosed quote" confirm. Splice bodies out before segmenting. A body under
+// an unquoted delimiter may still run `$()` or backticks when the shell
+// expands it, so those stay in place for the ambiguity confirm to see; a
+// shell fed by heredoc executes its body, but bare shell invocations are
+// denied wholesale, so nothing hides there.
+function stripHeredocBodies(command) {
+  const opener = /<<(-?)(?!<)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|([A-Za-z0-9_][\w.-]*))/gu;
+  let output = "";
+  let cursor = 0;
+  let match;
+  while ((match = opener.exec(command)) !== null) {
+    if (match.index < cursor) continue;
+    const literal = match[2] !== undefined || match[3] !== undefined;
+    const delimiter = match[2] ?? match[3] ?? match[4];
+    const bodyStart = command.indexOf("\n", opener.lastIndex);
+    if (bodyStart === -1) continue;
+    const terminator = new RegExp(
+      `(?:^|\n)${match[1] ? "\t*" : ""}${delimiter.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}[ \t]*(?=\n|$)`,
+      "u",
+    );
+    const tail = command.slice(bodyStart + 1);
+    const found = terminator.exec(tail);
+    if (!found) continue;
+    const body = tail.slice(0, found.index);
+    if (!literal && /`|\$\(/u.test(body)) continue;
+    output += command.slice(cursor, bodyStart + 1);
+    cursor = bodyStart + 1 + found.index + found[0].length;
+  }
+  return output + command.slice(cursor);
+}
+
 function commandSegments(command) {
   const segments = [];
   let segment = "";
@@ -278,7 +311,7 @@ function evaluateDeletion(executable, args, cwd) {
     return deny(
       "critical-root-deletion",
       `${executable} 的目标是系统根目录或主目录本身。`,
-      "绝不删除系统根目录或整个主目录；请写明确切的、属于自己的路径。",
+      "只删属于自己的确切路径。",
     );
   }
   if (scope === "inside") return allow("workspace-deletion");
@@ -287,7 +320,7 @@ function evaluateDeletion(executable, args, cwd) {
     scope === "unknown"
       ? `${executable} 没有明确的路径目标，删除范围未知。`
       : `${executable} 会删除当前工作区之外的路径。`,
-    "写明确切路径，确认这些内容确实归你删除，并优先使用工作区内的相对路径。",
+    "写明确切路径，确认归你删。",
   );
 }
 
@@ -298,14 +331,14 @@ function evaluateOwnership(executable, args, cwd) {
     return deny(
       "critical-root-permission-change",
       `${executable} 会改写系统根目录或主目录本身的权限。`,
-      "绝不修改系统根目录的权限；只改动确切的、属于自己的路径。",
+      "只改属于自己的路径。",
     );
   }
   if (scope === "inside") return allow("workspace-permission-change");
   return confirm(
     "outside-workspace-permission-change",
     `${executable} 会改变当前工作区之外的权限或归属。`,
-    "修改前确认确切的路径和目标权限。",
+    "确认路径和目标权限。",
   );
 }
 
@@ -314,8 +347,8 @@ function evaluateSegment(segment, cwd) {
   if (!rawTokens) {
     return confirm(
       "ambiguous-shell-syntax",
-      "命令存在未闭合的引号，无法安全分类。",
-      "请提供规范化的可执行文件和参数，或先简化命令再审查。",
+      "命令里有未闭合的引号，看不出它要做什么。",
+      "简化或拆开后重发。",
     );
   }
   const tokens = stripInvocationPrefixes(rawTokens);
@@ -327,15 +360,15 @@ function evaluateSegment(segment, cwd) {
   if (PRIVILEGE_ESCALATION.has(executable)) {
     return deny(
       "privilege-escalation",
-      `${executable} 会把权限提升到 Agent 被授予的范围之外。`,
-      "说明为何需要提升权限，并交由用户自己执行。",
+      `${executable} 会提权执行，超出授权范围。`,
+      "需要提权请说明，由用户执行。",
     );
   }
   if (executable === "shred") {
     return deny(
       "data-destruction",
       "shred 会不可恢复地销毁文件内容。",
-      "若确实需要删除，请对确切的、属于自己的路径使用普通删除。",
+      "要删就用普通 rm 删确切路径。",
     );
   }
   if (executable === "mkfs" || executable.startsWith("mkfs.")) {
@@ -356,7 +389,7 @@ function evaluateSegment(segment, cwd) {
     return confirm(
       "raw-copy",
       "dd 是裸复制，可能静默覆盖文件。",
-      "运行前确认确切的 if=/of= 目标。",
+      "确认 if=/of= 目标。",
     );
   }
   if (executable === "diskutil") {
@@ -374,23 +407,37 @@ function evaluateSegment(segment, cwd) {
     return confirm(
       "disk-state-change",
       `diskutil ${verb} 会改变磁盘或卷的状态。`,
-      "继续前确认确切的设备和操作。",
+      "确认设备和操作。",
     );
   }
   if (FOREIGN_INSTALLERS.some((entry) => entry.match(executable, args))) {
     return confirm(
       "foreign-package-install",
       `${executable} 会从外部仓库下载并执行第三方代码。`,
-      "确认包名、来源与版本；这类生态没有 npm 那样的深度审查流程，所以由你把关。",
+      "确认包名和来源。",
     );
   }
   if (DELETERS.has(executable)) return evaluateDeletion(executable, args, cwd);
   if (OWNERSHIP_COMMANDS.has(executable)) return evaluateOwnership(executable, args, cwd);
   if (PROCESS_SWEEPERS.has(executable)) {
+    // A path-shaped pattern pointing into the workspace or a temp dir is the
+    // agent cleaning up a server it started from there; sweeping by bare name
+    // stays gated because it reaches every matching process on the machine.
+    const patterns = args.filter(
+      (value) => !value.startsWith("-") && !/[<>]/u.test(value),
+    );
+    const ownPaths =
+      patterns.length > 0 &&
+      patterns.every((value) => {
+        if (!value.includes("/")) return false;
+        const resolved = path.resolve(cwd || process.cwd(), expandHome(value));
+        return isWithin(resolved, workspaceRootFor(cwd)) || isTempPath(resolved);
+      });
+    if (ownPaths) return allow("workspace-process-sweep");
     return confirm(
       "process-sweep",
-      `${executable} 按模式匹配终止进程，可能误杀无关进程。`,
-      "确认确切的匹配模式，或改用 kill 指定具体 PID。",
+      `${executable} 可能误杀无关进程。`,
+      "尽量改用 kill 加具体 PID。",
     );
   }
   if (executable === "docker" || executable === "podman") {
@@ -404,8 +451,8 @@ function evaluateSegment(segment, cwd) {
     ) {
       return confirm(
         "container-destruction",
-        `${executable} ${verbs.slice(0, 2).join(" ")} 会销毁可能含有数据的容器、镜像或数据卷。`,
-        "删除前确认确切的容器、镜像或数据卷。",
+        `${executable} ${verbs.slice(0, 2).join(" ")} 会删除容器、镜像或数据卷，数据找不回。`,
+        "确认要删的对象。",
       );
     }
     return allow();
@@ -414,22 +461,22 @@ function evaluateSegment(segment, cwd) {
     return confirm(
       "package-publish",
       "twine upload 会把包发布到外部 registry。",
-      "就确切的包名、版本和 registry 取得明确批准。",
+      "确认包名、版本和 registry。",
     );
   }
   if (executable === "eval") {
     return deny(
       "shell-indirection",
-      "eval 会执行动态拼接的内容，策略无法对其分类。",
-      "直接执行底层命令，好让它能被分类。",
+      "eval 里的内容没法审查。",
+      "直接执行内层命令。",
     );
   }
   if (SHELLS.has(executable)) {
     if (args.length === 0 || args.includes("-c") || args.includes("-i")) {
       return deny(
         "shell-indirection",
-        `${executable} ${args.includes("-c") ? "-c 包裹的命令策略无法分类" : "会启动无法分类的交互式 shell"}。`,
-        "直接执行内层命令，好让它能被分类。",
+        `${executable} ${args.includes("-c") ? "-c 里的命令没法审查" : "交互式 shell 没法审查"}。`,
+        "直接执行内层命令。",
       );
     }
     return allow("script-execution");
@@ -448,7 +495,7 @@ export function evaluateCommand(command, cwd) {
   }
 
   let strongest = allow();
-  for (const segment of commandSegments(command)) {
+  for (const segment of commandSegments(stripHeredocBodies(command))) {
     const value = evaluateSegment(segment, cwd);
     if (value.decision === "deny") return value;
     if (value.decision === "confirm") strongest = value;
