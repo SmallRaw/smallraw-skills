@@ -41,9 +41,9 @@ test("allows common read-only inspection forms without confirmation", () => {
   ]) {
     assert.equal(evaluateCommand(command).decision, "allow", command);
   }
-  assert.equal(evaluateCommand("git branch -d feature").decision, "confirm");
+  assert.equal(evaluateCommand("git branch -d feature").decision, "allow");
   assert.equal(evaluateCommand("git stash drop").decision, "confirm");
-  assert.equal(evaluateCommand("git worktree add ../wt").decision, "confirm");
+  assert.equal(evaluateCommand("git worktree add ../wt").decision, "allow");
   assert.equal(
     evaluateCommand("git symbolic-ref HEAD refs/heads/other").decision,
     "confirm",
@@ -105,7 +105,9 @@ test("requires confirmation for broad staging and commit rewrites", () => {
     evaluateCommand('git commit --pathspec-from-file=paths.txt -m "sweep"').ruleId,
     "commit-pathspec",
   );
-  assert.equal(evaluateCommand("git commit --amend --no-edit").ruleId, "history-rewrite");
+  assert.equal(evaluateCommand("git commit --amend --no-edit").decision, "allow");
+  assert.equal(evaluateCommand("git add -A src/").ruleId, "explicit-staging");
+  assert.equal(evaluateCommand("git add -u packages/core").decision, "allow");
 });
 
 test("allows recoverable branch, stash, and replay work", () => {
@@ -171,7 +173,8 @@ test("allows dry runs, help, ref creation, and in-progress control", () => {
 
 test("still gates the forms that discard work for good", () => {
   assert.equal(evaluateCommand("git branch -D feature").decision, "confirm");
-  assert.equal(evaluateCommand("git branch -m old new").decision, "confirm");
+  assert.equal(evaluateCommand("git branch -M old new").decision, "confirm");
+  assert.equal(evaluateCommand("git branch --delete --force feature").decision, "confirm");
   assert.equal(evaluateCommand("git tag -d v1.0.0").decision, "confirm");
   assert.equal(evaluateCommand("git tag -f v1.0.0").decision, "confirm");
   assert.equal(evaluateCommand("git notes remove").ruleId, "notes-removal");
@@ -193,11 +196,20 @@ test("still gates the forms that discard work for good (worktree)", () => {
   assert.equal(evaluateCommand("git restore src/app.ts").decision, "confirm");
 });
 
-test("allows plain fetches but confirms local-ref-updating refspecs and pulls", () => {
+test("allows plain fetches but confirms refspecs that write branch or tag space", () => {
   assert.equal(evaluateCommand("git fetch").ruleId, "fetch-remote-tracking");
   assert.equal(evaluateCommand("git fetch origin --prune").decision, "allow");
   assert.equal(evaluateCommand("git fetch origin main:main").ruleId, "fetch-local-ref-update");
-  assert.equal(evaluateCommand("git pull --rebase").decision, "confirm");
+  assert.equal(
+    evaluateCommand('git fetch origin "+refs/pull/123/head:refs/pr/123"').decision,
+    "allow",
+  );
+  assert.equal(
+    evaluateCommand("git fetch origin +refs/heads/x:refs/heads/x").decision,
+    "confirm",
+  );
+  assert.equal(evaluateCommand("git pull --rebase").decision, "allow");
+  assert.equal(evaluateCommand("git pull origin main:other").ruleId, "fetch-local-ref-update");
 });
 
 test("requires confirmation for pushes and blocks default github.com transport", () => {
@@ -249,7 +261,7 @@ test("tells the agent to unchain a gated write hidden in a command chain", () =>
   // A standalone gated write is already visible; no extra nagging.
   const alone = evaluateCommand("git push origin HEAD");
   assert.equal(alone.decision, "confirm");
-  assert.doesNotMatch(alone.nextAction, /单独作为一条命令/u);
+  assert.equal(alone.nextAction, undefined);
 
   // Denials in a chain get the same hint.
   const denied = evaluateCommand("make build && gh pr create --title x");
@@ -261,8 +273,125 @@ test("tells the agent to unchain a gated write hidden in a command chain", () =>
 });
 
 test("fails conservatively on malformed input", () => {
-  assert.equal(evaluateCommand('git commit -m "unfinished').decision, "confirm");
+  // Unparseable syntax is guidelines-security-shell's confirm; this gate
+  // stays quiet instead of stacking a duplicate paragraph into the prompt.
+  assert.equal(
+    evaluateCommand('git commit -m "unfinished').ruleId,
+    "ambiguity-deferred-to-shell-gate",
+  );
   assert.equal(evaluatePolicy(null).decision, "deny");
+});
+
+test("skips heredoc bodies so script content cannot poison classification", () => {
+  assert.equal(
+    evaluateCommand("python3 - <<'PY'\ns = \"it's fine\"\nprint(s)\nPY").decision,
+    "allow",
+  );
+  // Work chained after the heredoc is still seen.
+  assert.equal(
+    evaluateCommand(
+      "cat <<'EOF' > notes.txt\nan unmatched ' quote\nEOF\ngit push origin HEAD",
+    ).ruleId,
+    "git-push",
+  );
+});
+
+test("treats value-less git config lookups as reads", () => {
+  assert.equal(evaluateCommand("git config user.name").ruleId, "read-only-git");
+  assert.equal(
+    evaluateCommand("git config user.name; git config user.email; git config commit.gpgsign")
+      .decision,
+    "allow",
+  );
+  assert.equal(evaluateCommand("git config get user.name").decision, "allow");
+  assert.equal(evaluateCommand('git config user.name "New Name"').decision, "confirm");
+  assert.equal(evaluateCommand("git config --unset user.name").decision, "confirm");
+});
+
+test("reads through gh search and explicit-GET gh api", () => {
+  assert.equal(evaluateCommand('gh search code "foo" --repo a/b --limit 5').ruleId, "read-only-gh");
+  assert.equal(evaluateCommand("gh search repos --owner me kb").decision, "allow");
+  assert.equal(evaluateCommand('gh api -X GET search/code -f q="foo"').decision, "allow");
+  assert.equal(evaluateCommand("gh api -XGET repos/o/r").decision, "allow");
+  assert.equal(evaluateCommand("gh api --method=GET repos/o/r -f state=open").decision, "allow");
+  assert.equal(evaluateCommand("gh api repos/o/r/issues -f title=x").decision, "deny");
+});
+
+test("allows reflog-recoverable history work and pure creations", () => {
+  for (const command of [
+    "git rebase upstream/main",
+    "git rebase -i --autosquash HEAD~3",
+    "git merge feature/login",
+    "git pull",
+    "git pull --rebase origin main",
+    "git commit --fixup abc123",
+    "git merge-tree --write-tree origin/main HEAD",
+    "git branch -m old new",
+    "git branch -f feature HEAD~1",
+    "git clone https://github.com/o/r.git target",
+    "git remote add upstream https://github.com/o/r.git",
+    "git worktree add ../wt feature",
+    "git init",
+    "git checkout hotfix/v6.5.2 && git pull origin hotfix/v6.5.2",
+    "git checkout v1.2.3",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "allow", command);
+  }
+  // The forms that can actually drop work stay gated.
+  assert.equal(evaluateCommand("git reset --hard HEAD~1").decision, "confirm");
+  assert.equal(evaluateCommand("git remote remove origin").decision, "confirm");
+  assert.equal(evaluateCommand("git worktree remove ../wt").decision, "confirm");
+});
+
+test("reads graphql queries but denies mutations and uninspectable documents", () => {
+  assert.equal(
+    evaluateCommand(
+      "gh api graphql -f query='query { repository(owner: \"o\", name: \"r\") { id } }'",
+    ).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluateCommand("gh api graphql -f query='{ viewer { login } }' -F first=5").decision,
+    "allow",
+  );
+  assert.equal(
+    evaluateCommand("gh api graphql -f query='mutation { addComment(input: {}) { c } }'")
+      .decision,
+    "deny",
+  );
+  assert.equal(evaluateCommand("gh api graphql -F query=@doc.graphql").decision, "deny");
+});
+
+test("denies every gh spelling that could write, allows only known reads", () => {
+  // Under the identity rule a gh write is forbidden outright, so anything
+  // unrecognized fails closed instead of asking.
+  for (const command of [
+    "gh pr review 12 --approve",
+    "gh -R example-org/example-repo pr comment 1 --body done",
+    "gh ssh-key add key.pub",
+    "gh config set git_protocol https",
+    "gh project item-add 1 --owner me",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "deny", command);
+  }
+  for (const command of [
+    "gh --version",
+    "gh repo clone o/r",
+    "gh pr checkout 123",
+    "gh config get git_protocol",
+    "gh browse 12795",
+    "gh -R example-org/example-repo pr view 1",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "allow", command);
+  }
+});
+
+test("keeps directory-specific SSH aliases out of the default-transport net", () => {
+  assert.equal(
+    evaluateCommand("git push -u git@work-github.com:example-org/example-repo.git main").ruleId,
+    "git-push",
+  );
+  assert.equal(evaluateCommand("git push git@github.com:owner/repo.git HEAD").decision, "deny");
 });
 
 test("CLI maps allow, confirm, and deny to stable exit codes", () => {

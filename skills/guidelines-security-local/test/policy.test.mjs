@@ -277,6 +277,51 @@ test("CLI runs and emits a verdict when invoked through a symlink", (context) =>
   assert.equal(JSON.parse(run.stdout).ruleId, "process-environment-access");
 });
 
+test("reads workspace source files under secret-named directories as code", (context) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "local-policy-src-"));
+  context.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(workspace, "packages", "core", "src", "secret"), { recursive: true });
+  fs.writeFileSync(
+    path.join(workspace, "packages", "core", "src", "secret", "index.ts"),
+    "export {};\n",
+  );
+
+  assert.equal(evaluatePath("packages/core/src/secret/index.ts", workspace).decision, "allow");
+  // The directory itself, and data files inside it, keep their look.
+  assert.equal(
+    evaluatePath("packages/core/src/secret", workspace).ruleId,
+    "workspace-name-heuristic",
+  );
+  assert.equal(
+    evaluatePath("packages/core/src/secret/values.json", workspace).decision,
+    "confirm",
+  );
+  // Outside the workspace the name keeps its full weight.
+  assert.equal(
+    evaluatePath(
+      path.join(workspace, "packages", "core", "src", "secret", "index.ts"),
+      os.homedir(),
+    ).decision,
+    "deny",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "Bash",
+      tool_input: { command: 'sed -n "1,20p" packages/core/src/secret/index.ts' },
+      cwd: workspace,
+    }).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "Bash",
+      tool_input: { command: "cat packages/core/src/secret/values.json" },
+      cwd: workspace,
+    }).decision,
+    "confirm",
+  );
+});
+
 test("CLI emits stable JSON and exits 2 on denial", () => {
   const run = spawnSync(process.execPath, [policyScript], {
     input: JSON.stringify({ kind: "path", target: ".env.local" }),

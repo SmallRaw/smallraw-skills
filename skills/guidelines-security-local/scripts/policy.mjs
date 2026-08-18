@@ -55,6 +55,38 @@ const NAME_HEURISTIC_DIRECTORY_NAMES = new Set([
   "keychains",
 ]);
 const NAME_HEURISTIC_EXTENSIONS = new Set([".tfstate", ".tfvars"]);
+// A workspace source file under a directory merely NAMED secret is ordinary
+// code — wallet repos keep crypto sources in src/secret/ — and value-bearing
+// files never wear a source extension. Data formats (.json, .yaml, .txt) are
+// deliberately absent: secrets/config.json keeps its look.
+const SOURCE_CODE_EXTENSIONS = new Set([
+  ".c",
+  ".cc",
+  ".cjs",
+  ".cpp",
+  ".cs",
+  ".css",
+  ".go",
+  ".h",
+  ".hpp",
+  ".html",
+  ".java",
+  ".js",
+  ".jsx",
+  ".kt",
+  ".m",
+  ".md",
+  ".mjs",
+  ".mm",
+  ".py",
+  ".rb",
+  ".rs",
+  ".scss",
+  ".swift",
+  ".ts",
+  ".tsx",
+  ".vue",
+]);
 const PROTECTED_EXTENSIONS = new Set([
   ".pem",
   ".key",
@@ -119,7 +151,7 @@ function blocked(ruleId, reason) {
   return deny(
     ruleId,
     reason,
-    "改用脱敏示例、打码输出、不含密钥的结构说明、合成占位值，或由用户自己执行、只返回非敏感结果的诊断命令。",
+    "改用脱敏示例，或由用户自己执行。",
   );
 }
 
@@ -258,16 +290,18 @@ function classifyAbsolutePath(resolved, inWorkspace) {
   }
 
   if (
-    segments.some((segment) => NAME_HEURISTIC_DIRECTORY_NAMES.has(segment)) ||
     NAME_HEURISTIC_EXTENSIONS.has(extension) ||
     basename === "terraform.tfstate" ||
-    basename.startsWith("terraform.tfstate.")
+    basename.startsWith("terraform.tfstate.") ||
+    (segments.some((segment) => NAME_HEURISTIC_DIRECTORY_NAMES.has(segment)) &&
+      // Outside the workspace the directory name keeps its full weight.
+      !(inWorkspace && SOURCE_CODE_EXTENSIONS.has(extension)))
   ) {
     if (inWorkspace) {
       return confirmDecision(
         "workspace-name-heuristic",
-        "该工作区路径仅因名称疑似机密而命中，可能含有真实密钥。",
-        "仅在用户明确确认该具体路径不含真实密钥后才可继续。",
+        "路径名看起来像机密文件，可能含真实密钥。",
+        "确认这个路径里没有真实密钥。",
       );
     }
     return blocked(
@@ -453,6 +487,26 @@ function pathCandidateFromToken(token) {
   return looksLikePath ? candidate : null;
 }
 
+// The raw-command sweep backs up token scanning for spellings tokens miss, but
+// it must agree with classifyAbsolutePath: a workspace source file under a
+// directory merely named secret reads as code, not as a candidate secret.
+function commandMentionsHeuristicName(command, cwd) {
+  const pattern = /(?:^|[\/\\])(?:secrets?|credentials?|private-keys?)(?:[\/\\\s'"]|$)/iu;
+  if (!pattern.test(command)) return false;
+  const workspaceRoot = workspaceRootFor(cwd);
+  for (const word of command.split(/[\s'"]+/u)) {
+    if (!pattern.test(word)) continue;
+    if (
+      SOURCE_CODE_EXTENSIONS.has(path.extname(word).toLowerCase()) &&
+      isWithinWorkspace(resolveWithoutReading(expandHomePath(word), cwd), workspaceRoot)
+    ) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 function evaluateCommand(command, cwd) {
   if (typeof command !== "string") {
     return blocked("invalid-command-input", "Shell 命令缺失。");
@@ -518,13 +572,13 @@ function evaluateCommand(command, cwd) {
 
   if (
     strongest.decision === "allow" &&
-    (/(?:^|[\/\\])(?:secrets?|credentials?|private-keys?)(?:[\/\\\s'"]|$)/iu.test(command) ||
+    (commandMentionsHeuristicName(command, cwd) ||
       /\.(?:tfvars|tfstate)(?:\s|$|['"])/iu.test(command))
   ) {
     strongest = confirmDecision(
       "workspace-name-heuristic",
-      "该 shell 命令引用了仅因名称疑似机密而命中的路径。",
-      "仅在用户明确确认该具体路径不含真实密钥后才可继续。",
+      "命令引用了名字像机密文件的路径。",
+      "确认这个路径里没有真实密钥。",
     );
   }
 
