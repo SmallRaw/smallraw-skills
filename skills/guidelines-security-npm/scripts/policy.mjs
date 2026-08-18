@@ -179,6 +179,39 @@ function tokenize(segment) {
   return tokens;
 }
 
+// A heredoc body is data delivered to the receiving command, not shell syntax;
+// tokenizing it turned every stray quote inside a script body into an
+// "unclosed quote" confirm. Splice bodies out before segmenting. A body under
+// an unquoted delimiter may still run `$()` or backticks when the shell
+// expands it, so those stay in place for the ambiguity handling to see; a
+// shell fed by heredoc executes its body, but guidelines-security-shell
+// denies bare shell invocations wholesale, so nothing hides there.
+function stripHeredocBodies(command) {
+  const opener = /<<(-?)(?!<)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|([A-Za-z0-9_][\w.-]*))/gu;
+  let output = "";
+  let cursor = 0;
+  let match;
+  while ((match = opener.exec(command)) !== null) {
+    if (match.index < cursor) continue;
+    const literal = match[2] !== undefined || match[3] !== undefined;
+    const delimiter = match[2] ?? match[3] ?? match[4];
+    const bodyStart = command.indexOf("\n", opener.lastIndex);
+    if (bodyStart === -1) continue;
+    const terminator = new RegExp(
+      `(?:^|\n)${match[1] ? "\t*" : ""}${delimiter.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}[ \t]*(?=\n|$)`,
+      "u",
+    );
+    const tail = command.slice(bodyStart + 1);
+    const found = terminator.exec(tail);
+    if (!found) continue;
+    const body = tail.slice(0, found.index);
+    if (!literal && /`|\$\(/u.test(body)) continue;
+    output += command.slice(cursor, bodyStart + 1);
+    cursor = bodyStart + 1 + found.index + found[0].length;
+  }
+  return output + command.slice(cursor);
+}
+
 function commandSegments(command) {
   const segments = [];
   let segment = "";
@@ -317,10 +350,11 @@ function evaluateManager(manager, args) {
       ["publish", "unpublish"].includes(nestedCommand) ||
       (nestedCommand === "tag" && ["add", "remove"].includes(nestedAction))
     ) {
+      if (args.includes("--dry-run")) return allow("registry-write-dry-run");
       return confirm(
         "npm-registry-write",
-        `yarn npm ${nestedCommand} 会改变外部可见的 registry 状态。`,
-        "供应链门禁通过后，仍需就确切的包名、版本、registry 和操作取得明确批准。",
+        `yarn npm ${nestedCommand} 会发布或修改 registry 上的包，外部可见。`,
+        "确认包名、版本和 registry。",
       );
     }
   }
@@ -328,21 +362,27 @@ function evaluateManager(manager, args) {
     return deny(
       "one-off-package-runner",
       `${manager} ${subcommand} 会下载并执行未经审查的包代码。`,
-      "运行前用 guidelines-security-npm 审查该确切的包版本。",
+      "先审查该包版本再运行。",
     );
+  }
+  // --dry-run reports the would-be upload and touches no registry state; it is
+  // the preview to encourage before the real publish. Any lifecycle script it
+  // runs is the workspace's own build, the same trust as `npm run build`.
+  if (PUBLISH_COMMANDS.has(subcommand) && args.includes("--dry-run")) {
+    return allow("registry-write-dry-run");
   }
   if (PUBLISH_COMMANDS.has(subcommand)) {
     return confirm(
       "npm-registry-write",
-      `${manager} ${subcommand} 会改变外部可见的 registry 状态。`,
-      "供应链门禁通过后，仍需就确切的包名、版本、registry 和操作取得明确批准。",
+      `${manager} ${subcommand} 会发布或修改 registry 上的包，外部可见。`,
+      "确认包名、版本和 registry。",
     );
   }
   if (manager === "npm" && subcommand === "audit" && args.includes("fix")) {
     return deny(
       "automatic-audit-fix",
-      "npm audit fix 会改变解析后的依赖图，并可能执行包代码。",
-      "通过常规供应链门禁审查这些确切的依赖变更。",
+      "npm audit fix 会自动改依赖图，并可能执行包代码。",
+      "改为手动审查依赖变更。",
     );
   }
   if (
@@ -352,8 +392,8 @@ function evaluateManager(manager, args) {
   ) {
     return deny(
       "dependency-manifest-change",
-      "npm pkg 会改变包 manifest 状态，并可能影响依赖解析。",
-      "通过供应链门禁审查确切的 manifest 及其引发的 lockfile 变更。",
+      "会改写 package.json，影响依赖解析。",
+      "走依赖审查流程。",
     );
   }
   if (
@@ -363,7 +403,7 @@ function evaluateManager(manager, args) {
     return deny(
       "dependency-manifest-change",
       `npm ${subcommand} 会改变可执行内容或已解析的包状态。`,
-      "通过供应链门禁审查确切的 manifest 和 lockfile 变更。",
+      "走依赖审查流程。",
     );
   }
   if (MUTATING_COMMANDS[manager]?.has(subcommand)) {
@@ -375,35 +415,44 @@ function evaluateManager(manager, args) {
     if (lockfileOnly && scriptsDisabled) {
       return confirm(
         "isolated-lockfile-resolution",
-        "该命令虽然不执行生命周期脚本，但仍会解析不受信任的依赖元数据。",
-        "只在隔离审查工作区中运行，随后执行 lockfile 预检和其余必需的审查层级。",
+        "不执行脚本，但会按未审查的元数据改 lockfile。",
+        "仅限隔离工作区，改完跑 lockfile 预检。",
       );
     }
     if (scriptsDisabled) {
       return confirm(
         "scripts-disabled-install",
-        `${manager} ${subcommand || "install"} 会在不执行生命周期脚本的前提下落地依赖图。`,
-        "确认 lockfile 和依赖包已被信任；在门禁通过前，禁止执行已安装依赖树的规则依然有效。",
+        `${manager} ${subcommand || "install"} 会安装依赖（已禁用安装脚本）。`,
+        "审查通过前不要执行这些包。",
       );
     }
     return deny(
       "dependency-state-change",
       `${manager} ${subcommand || "install"} 会改变或落地依赖图。`,
-      "在执行已安装的包代码前，对确切的变更范围套用 guidelines-security-npm 审查。",
+      "加 --ignore-scripts 重发才可审批。",
     );
+  }
+  // Dry-run packing the local workspace only lists would-be contents; naming a
+  // package still goes through the acquisition gate below.
+  if (
+    subcommand === "pack" &&
+    args.includes("--dry-run") &&
+    args.filter((value) => !value.startsWith("-")).length <= 1
+  ) {
+    return allow("registry-write-dry-run");
   }
   if (FETCH_COMMANDS.has(subcommand)) {
     if (hasAll(args, ["--ignore-scripts"])) {
       return confirm(
         "artifact-acquisition",
-        "只允许在隔离工作区中，以静态审查素材的形式获取包。",
-        "在禁用脚本的前提下获取该确切产物，校验完整性并检查内容，之后才谈执行。",
+        "会下载包文件（不执行脚本）。",
+        "仅作审查素材，审完再谈执行。",
       );
     }
     return deny(
       "artifact-acquisition-with-scripts",
       `${manager} ${subcommand} 可能执行包的生命周期脚本。`,
-      "仅可在禁用脚本的隔离审查工作区中重试。",
+      "加 --ignore-scripts 在隔离工作区重试。",
     );
   }
   if (
@@ -414,14 +463,14 @@ function evaluateManager(manager, args) {
     return confirm(
       "package-manager-config-write",
       `${manager} config 变更会影响 registry、认证或执行行为。`,
-      "修改配置前审查确切的配置项、作用域和不含密钥的值。",
+      "确认配置项和值。",
     );
   }
   if (manager === "npm" && subcommand === "version") {
     return confirm(
       "package-version-write",
-      "npm version 会修改包元数据，并可能创建 Git 提交和标签。",
-      "运行前就确切的版本号及其 Git 副作用取得明确批准。",
+      "会改版本号，可能顺带创建提交和 tag。",
+      "确认版本号。",
     );
   }
   if (
@@ -431,8 +480,8 @@ function evaluateManager(manager, args) {
   ) {
     return confirm(
       "unclassified-npm-command",
-      "该 npm pkg 操作无法确认是只读的。",
-      "继续前查阅其对 manifest 的官方说明。",
+      "不确定该 npm pkg 操作是否只读。",
+      "确认后再执行。",
     );
   }
   if (
@@ -446,8 +495,8 @@ function evaluateManager(manager, args) {
   if (manager === "npm" && !NPM_ROUTINE_COMMANDS.has(subcommand)) {
     return confirm(
       "unclassified-npm-command",
-      `npm ${subcommand}`.trim() + " 未被归类为可信的常规命令。",
-      "继续前查阅该命令在安装、执行、manifest、registry 和生命周期脚本方面的官方说明。",
+      "不确定 " + `npm ${subcommand}`.trim() + " 是否安全。",
+      "确认后再执行。",
     );
   }
 
@@ -457,11 +506,10 @@ function evaluateManager(manager, args) {
 function evaluateSegment(segment, cwd) {
   const rawTokens = tokenize(segment);
   if (!rawTokens) {
-    return confirm(
-      "ambiguous-shell-syntax",
-      "命令存在未闭合的引号，无法安全分类。",
-      "请提供规范化的可执行文件和参数，或先简化命令再审查。",
-    );
+    // Unparseable syntax is one problem, not three: guidelines-security-shell
+    // owns the ambiguity confirm, and the gates install together, so this gate
+    // stays quiet instead of stacking the same paragraph into the prompt.
+    return allow("ambiguity-deferred-to-shell-gate");
   }
   const tokens = stripInvocationPrefixes(rawTokens);
   if (tokens.length === 0) return allow();
@@ -483,15 +531,15 @@ function evaluateSegment(segment, cwd) {
       if (offline) {
         return confirm(
           "cache-only-package-runner",
-          "npx --offline 会在无网络访问的情况下执行本地 npm 缓存中的包。",
-          "执行前确认该缓存中的包版本此前已通过审查。",
+          "会执行 npm 缓存里的包（不联网）。",
+          "确认该缓存版本审查过。",
         );
       }
     }
     return deny(
       "one-off-package-runner",
       `${executable} 会下载并执行未经审查的包代码。`,
-      "改用 node_modules/.bin 里已审查的本地二进制或包脚本；否则先锁定版本并用 guidelines-security-npm 审查该确切版本。",
+      "改用 node_modules/.bin 里已装的二进制，或先审查该版本。",
     );
   }
   if (executable === "corepack") {
@@ -499,8 +547,8 @@ function evaluateSegment(segment, cwd) {
     if (["use", "install", "prepare", "pack", "up", "hydrate"].includes(sub)) {
       return deny(
         "package-manager-acquisition",
-        `corepack ${sub} 会下载或落地包管理器代码。`,
-        "启用前通过供应链门禁审查该包管理器的确切版本。",
+        `corepack ${sub} 会下载并启用新的包管理器二进制。`,
+        "先审查该包管理器版本。",
       );
     }
     if (["", "--version", "-v", "help", "--help"].includes(sub)) {
@@ -509,7 +557,7 @@ function evaluateSegment(segment, cwd) {
     return confirm(
       "package-manager-activation",
       `corepack ${sub} 会改变实际执行的包管理器二进制。`,
-      "继续前确认该 corepack 变更的确切内容及其对二进制解析的影响。",
+      "确认它改的是哪个二进制。",
     );
   }
   if (!PACKAGE_MANAGERS.has(executable)) return allow();
@@ -530,7 +578,7 @@ export function evaluateCommand(command, cwd) {
   // same way however it is spelled.
   let current = cwd;
   let strongest = allow();
-  for (const segment of commandSegments(command)) {
+  for (const segment of commandSegments(stripHeredocBodies(command))) {
     const moved = cdTarget(segment, current);
     if (moved) {
       current = moved;

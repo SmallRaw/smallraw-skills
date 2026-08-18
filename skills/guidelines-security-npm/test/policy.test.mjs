@@ -156,8 +156,31 @@ test("routes normalized hook payloads", () => {
 });
 
 test("fails conservatively on malformed commands", () => {
-  assert.equal(evaluateCommand('npm install "unfinished').decision, "confirm");
+  // Unparseable syntax is guidelines-security-shell's confirm; this gate
+  // stays quiet instead of stacking a duplicate paragraph into the prompt.
+  assert.equal(
+    evaluateCommand('npm install "unfinished').ruleId,
+    "ambiguity-deferred-to-shell-gate",
+  );
   assert.equal(evaluatePolicy(null).decision, "deny");
+});
+
+test("allows dry-run publish previews but keeps real registry writes gated", () => {
+  assert.equal(evaluateCommand("npm publish --dry-run").ruleId, "registry-write-dry-run");
+  assert.equal(evaluateCommand("cd pkg && npm publish --dry-run 2>&1 | tail -5").decision, "allow");
+  assert.equal(evaluateCommand("yarn npm publish --dry-run").decision, "allow");
+  assert.equal(evaluateCommand("npm pack --dry-run").ruleId, "registry-write-dry-run");
+  assert.equal(evaluateCommand("npm pack lodash --dry-run").decision, "deny");
+  assert.equal(evaluateCommand("npm publish").decision, "confirm");
+});
+
+test("skips heredoc bodies so script content cannot poison classification", () => {
+  assert.equal(
+    evaluateCommand("python3 - <<'PY'\ns = \"it's fine\"\nprint(s)\nPY").decision,
+    "allow",
+  );
+  // Work chained after the heredoc is still seen.
+  assert.equal(evaluateCommand("cat <<'EOF' > f\nquote's\nEOF\nnpx cowsay").decision, "deny");
 });
 
 test("CLI maps allow, confirm, and deny to stable exit codes", () => {
