@@ -9,6 +9,42 @@ const MAX_INPUT_BYTES = 1024 * 1024;
 const PRIVILEGE_ESCALATION = new Set(["sudo", "su", "doas"]);
 const SHELLS = new Set(["sh", "bash", "zsh", "ksh", "dash", "fish"]);
 const PROCESS_SWEEPERS = new Set(["killall", "pkill"]);
+// Names worth interrupting a sweep over: the runtime this agent is itself
+// running under, the editors and shells holding unsaved buffers, the browser
+// the user actually browses in, and the databases behind a running service.
+// A headless browser or a dev server the agent started is not on this list —
+// killing one costs a restart, which is not what a confirm is for.
+const COSTLY_TO_KILL = new Set([
+  "node", "deno", "bun", "npm", "yarn", "pnpm",
+  "python", "python2", "python3", "ruby", "perl", "php",
+  "java", "jvm", "gradle", "kotlin",
+  "claude", "codex", "cursor", "code", "electron", "vim", "nvim", "emacs", "nano",
+  "zsh", "bash", "fish", "sh", "tmux", "screen", "ssh", "sshd",
+  "chrome", "chromium", "safari", "firefox", "edge", "arc",
+  "postgres", "postgresql", "mysql", "mysqld", "mariadb", "redis",
+  "redis-server", "mongod", "mongodb", "clickhouse", "elasticsearch",
+  "docker", "dockerd", "containerd", "colima", "orbstack",
+  "finder", "dock", "windowserver", "loginwindow", "launchd", "systemd",
+  // Not a process name but a flag every browser process carries, so matching it
+  // bare is `pkill -f chrome` by another spelling. With a value after it the
+  // pattern points somewhere, and the path test below judges it on that.
+  "user-data-dir",
+]);
+// Naming an automation harness says the match is a driven process, not the
+// session a person is working in — a headless browser has no window to lose.
+// This wins over the name check above, since the harness usually spells out
+// the very runtime that list is guarding.
+const AUTOMATION_MARKERS = [
+  "headless",
+  "puppeteer",
+  "playwright",
+  "selenium",
+  "webdriver",
+  "chromedriver",
+  "geckodriver",
+  "remote-debugging-port",
+  "chrome for testing",
+];
 const DELETERS = new Set(["rm", "unlink"]);
 const OWNERSHIP_COMMANDS = new Set(["chmod", "chown", "chgrp"]);
 // Deleting or re-permissioning these roots takes out the system or the user's
@@ -54,6 +90,17 @@ const FOREIGN_INSTALLERS = [
       args.some((value) => ["install", "-S", "add"].includes(value)),
   },
 ];
+// Subcommand words that sit between the installer and the package it fetches,
+// so the message can name what is actually being downloaded.
+const INSTALLER_VERBS = new Set([
+  "install",
+  "reinstall",
+  "upgrade",
+  "tap",
+  "add",
+  "pip",
+  "-s",
+]);
 const DISK_ERASE_VERBS = new Set([
   "erasedisk",
   "erasevolume",
@@ -82,13 +129,52 @@ function deny(ruleId, reason, nextAction) {
   return result("deny", ruleId, reason, nextAction);
 }
 
+// A substitution runs its own little shell whose quoting is independent of the
+// text around it. Read character by character, the apostrophe in
+// `"$(grep -c '^"x' f)"` closed the enclosing double quote and left the rest
+// dangling, so an ordinary read-only pipeline came back as unclosed. Return the
+// index just past the substitution so callers can carry it as one opaque piece.
+function skipSubstitution(source, start) {
+  if (source[start] === "`") {
+    for (let index = start + 1; index < source.length; index += 1) {
+      if (source[index] === "\\") index += 1;
+      else if (source[index] === "`") return index + 1;
+    }
+    return -1;
+  }
+  let depth = 0;
+  let quote = "";
+  for (let index = start + 2; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (character === "\\" && quote !== "'") index += 1;
+      else if (character === quote) quote = "";
+      continue;
+    }
+    if (character === "\\") index += 1;
+    else if (character === "'" || character === '"') quote = character;
+    else if (character === "(") depth += 1;
+    else if (character === ")") {
+      if (depth === 0) return index + 1;
+      depth -= 1;
+    }
+  }
+  return -1;
+}
+
+function opensSubstitution(source, index, quote) {
+  if (quote === "'") return false;
+  return source[index] === "`" || (source[index] === "$" && source[index + 1] === "(");
+}
+
 function tokenize(segment) {
   const tokens = [];
   let token = "";
   let quote = "";
   let escaped = false;
 
-  for (const character of segment) {
+  for (let index = 0; index < segment.length; index += 1) {
+    const character = segment[index];
     if (escaped) {
       token += character;
       escaped = false;
@@ -96,6 +182,13 @@ function tokenize(segment) {
     }
     if (character === "\\" && quote !== "'") {
       escaped = true;
+      continue;
+    }
+    if (opensSubstitution(segment, index, quote)) {
+      const end = skipSubstitution(segment, index);
+      if (end === -1) return null;
+      token += segment.slice(index, end);
+      index = end - 1;
       continue;
     }
     if (quote) {
@@ -154,23 +247,73 @@ function stripHeredocBodies(command) {
   return output + command.slice(cursor);
 }
 
+// What a substitution contains runs before the command around it does, so it is
+// a command in its own right. Carrying it as one opaque token fixed the
+// quoting, but on its own it would also stop anything inside from being read —
+// the old segmenter used to catch `$(…; sudo …)` by accidentally splitting on
+// the separator. Hand the bodies back for their own evaluation instead, which
+// reaches every one of them rather than only the ones that happened to split.
+function substitutionBodies(command) {
+  const bodies = [];
+  let quote = "";
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+    if (character === "\\" && quote !== "'") {
+      index += 1;
+      continue;
+    }
+    if (opensSubstitution(command, index, quote)) {
+      const end = skipSubstitution(command, index);
+      if (end !== -1) {
+        bodies.push(
+          character === "`"
+            ? command.slice(index + 1, end - 1)
+            : command.slice(index + 2, end - 1),
+        );
+        index = end - 1;
+        continue;
+      }
+    }
+    if (quote) {
+      if (character === quote) quote = "";
+      continue;
+    }
+    if (character === "'" || character === '"') quote = character;
+  }
+  return bodies;
+}
+
 function commandSegments(command) {
   const segments = [];
   let segment = "";
   let quote = "";
-  let escaped = false;
 
   for (let index = 0; index < command.length; index += 1) {
     const character = command[index];
-    if (escaped) {
+    if (character === "\\" && quote !== "'") {
+      // A backslash before a newline is a line continuation: the shell removes
+      // both and joins the lines. Keeping it stranded the backslash at the end
+      // of a segment whenever the next line opened with `|` or `&&`, and a
+      // trailing escape reads as unfinished input — which is how an ordinary
+      // multi-line pipeline came back as ambiguous syntax.
+      if (command[index + 1] === "\n") {
+        index += 1;
+        continue;
+      }
       segment += character;
-      escaped = false;
+      if (index + 1 < command.length) {
+        segment += command[index + 1];
+        index += 1;
+      }
       continue;
     }
-    if (character === "\\" && quote !== "'") {
-      segment += character;
-      escaped = true;
-      continue;
+    if (opensSubstitution(command, index, quote)) {
+      const end = skipSubstitution(command, index);
+      if (end !== -1) {
+        segment += command.slice(index, end);
+        index = end - 1;
+        continue;
+      }
     }
     if (quote) {
       segment += character;
@@ -180,6 +323,15 @@ function commandSegments(command) {
     if (character === "'" || character === '"') {
       segment += character;
       quote = character;
+      continue;
+    }
+    // `#` opening a word starts a comment. The prose inside one routinely
+    // carries an apostrophe — "Dockerfile's build context", "in case it's
+    // readable" — which used to open a quote that never closed.
+    if (character === "#" && (index === 0 || /\s/u.test(command[index - 1]))) {
+      const newline = command.indexOf("\n", index);
+      if (newline === -1) break;
+      index = newline - 1;
       continue;
     }
     const pair = command.slice(index, index + 2);
@@ -235,6 +387,30 @@ function stripInvocationPrefixes(tokens) {
   return tokens.slice(index);
 }
 
+// Commands routinely park a path in a variable and use it a few segments
+// later — `S=/private/tmp/.../scratchpad; cd $S/work && rm -f ../out.zip`.
+// The assignment is right there in literal form, so read it rather than giving
+// up on every path that mentions it.
+function collectAssignments(tokens, vars) {
+  for (const token of tokens) {
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/su.exec(token);
+    if (!match) break;
+    if (/\$\(|`/u.test(match[2])) vars.delete(match[1]);
+    else vars.set(match[1], expandVariables(match[2], vars));
+  }
+}
+
+function expandVariables(target, vars) {
+  return target.replace(
+    /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/gu,
+    (whole, braced, bare) => {
+      const name = braced ?? bare;
+      if (name === "HOME") return os.homedir();
+      return vars?.has(name) ? vars.get(name) : whole;
+    },
+  );
+}
+
 function expandHome(target) {
   if (target === "~") return os.homedir();
   if (target.startsWith("~/")) return path.join(os.homedir(), target.slice(2));
@@ -270,6 +446,29 @@ function isTempPath(resolved) {
   });
 }
 
+// Anything under one of these belongs to the operating system rather than to a
+// workspace, so the leniency given to a file the agent owns does not apply.
+const SYSTEM_ROOTS = [
+  "/bin",
+  "/sbin",
+  "/usr",
+  "/etc",
+  "/var",
+  "/dev",
+  "/opt",
+  "/system",
+  "/library",
+  "/applications",
+  "/private/etc",
+  "/private/var",
+];
+
+function isSystemPath(resolved) {
+  if (typeof resolved !== "string") return false;
+  const lowered = resolved.toLowerCase().replace(/\/+$/u, "");
+  return SYSTEM_ROOTS.some((root) => lowered === root || lowered.startsWith(`${root}/`));
+}
+
 function isCriticalRoot(resolved) {
   const normalized = resolved.replace(/\/+$/u, "") || "/";
   if (CRITICAL_ROOTS.has(normalized.toLowerCase())) return true;
@@ -277,18 +476,54 @@ function isCriticalRoot(resolved) {
   return normalized === home;
 }
 
-// Returns "critical" | "outside" | "inside" | "unknown" for a set of path targets.
-function classifyTargets(targets, cwd) {
-  if (targets.length === 0) return "unknown";
-  const workspace = workspaceRootFor(cwd);
-  let outside = false;
+// Returns { scope: "critical" | "outside" | "inside" | "unknown", path, why }.
+// Paths resolve against wherever the shell currently stands, but inside/outside
+// is judged against the workspace the tool call started in.
+function classifyTargets(targets, context) {
+  if (targets.length === 0) return { scope: "unknown", why: "no-path" };
+  let outside = null;
+  let unknown = null;
   for (const raw of targets) {
-    if (raw === "/*" || raw === "/**") return "critical";
-    const resolved = path.resolve(cwd || process.cwd(), expandHome(raw));
-    if (isCriticalRoot(resolved)) return "critical";
-    if (!isWithin(resolved, workspace) && !isTempPath(resolved)) outside = true;
+    if (raw === "/*" || raw === "/**") return { scope: "critical", path: raw };
+    // A target still carrying a substitution names whatever the shell resolves
+    // it to, which is not something this gate gets to see.
+    const resolvedVars = expandVariables(raw, context.vars);
+    if (/\$|`/u.test(resolvedVars)) {
+      unknown ??= { why: "substitution", path: raw };
+      continue;
+    }
+    const expanded = expandHome(resolvedVars);
+    if (context.cwd === null && !path.isAbsolute(expanded)) {
+      unknown ??= { why: "cwd", path: raw };
+      continue;
+    }
+    const resolved = path.resolve(context.cwd ?? process.cwd(), expanded);
+    if (isCriticalRoot(resolved)) return { scope: "critical", path: resolved };
+    if (!isWithin(resolved, context.workspace) && !isTempPath(resolved)) {
+      outside ??= { scope: "outside", path: resolved };
+    }
   }
-  return outside ? "outside" : "inside";
+  if (outside) return outside;
+  if (unknown) return { scope: "unknown", ...unknown };
+  return { scope: "inside" };
+}
+
+// `cd` moves the shell, and every later relative path in the same command is
+// relative to where it landed. Judging them against the tool's own cwd got it
+// wrong in both directions: `cd /tmp/x && rm -f ../y` looked like it reached
+// outside the workspace, and `cd /etc && rm -rf .` looked like it stayed in.
+function nextCwd(segment, current, vars) {
+  const tokens = tokenize(segment);
+  if (!tokens) return current;
+  collectAssignments(tokens, vars);
+  const stripped = stripInvocationPrefixes(tokens);
+  if (stripped[0] !== "cd" && stripped[0] !== "pushd") return current;
+  const raw = stripped.slice(1).find((value) => !value.startsWith("-"));
+  if (raw === undefined) return os.homedir();
+  const target = expandVariables(raw, vars);
+  if (target === "-" || /\$|`|\*|\?/u.test(target)) return null;
+  if (current === null) return null;
+  return path.resolve(current, expandHome(target));
 }
 
 function pathTargets(args) {
@@ -305,44 +540,72 @@ function pathTargets(args) {
   return targets;
 }
 
-function evaluateDeletion(executable, args, cwd) {
-  const scope = classifyTargets(pathTargets(args), cwd);
-  if (scope === "critical") {
+function evaluateDeletion(executable, args, context) {
+  const found = classifyTargets(pathTargets(args), context);
+  if (found.scope === "critical") {
     return deny(
       "critical-root-deletion",
-      `${executable} 的目标是系统根目录或主目录本身。`,
+      `${executable} 的目标是 ${found.path} 本身，那是系统根目录或你的主目录。`,
       "只删属于自己的确切路径。",
     );
   }
-  if (scope === "inside") return allow("workspace-deletion");
-  return confirm(
-    scope === "unknown" ? "unknown-scope-deletion" : "outside-workspace-deletion",
-    scope === "unknown"
-      ? `${executable} 没有明确的路径目标，删除范围未知。`
-      : `${executable} 会删除当前工作区之外的路径。`,
-    "写明确切路径，确认归你删。",
-  );
+  if (found.scope === "inside") return allow("workspace-deletion");
+  if (found.scope === "outside") {
+    return confirm("outside-workspace-deletion", `会删掉工作区之外的 ${found.path}。`);
+  }
+  if (found.why === "substitution") {
+    return confirm("unknown-scope-deletion", `${executable} 要删的 ${found.path} 展开后才知道是什么。`);
+  }
+  if (found.why === "cwd") {
+    return confirm("unknown-scope-deletion", `${found.path} 是相对路径，而前面 cd 去了哪读不出来。`);
+  }
+  return confirm("unknown-scope-deletion", `${executable} 没写明删哪里，范围要到运行时才定。`);
 }
 
-function evaluateOwnership(executable, args, cwd) {
-  const targets = pathTargets(args).slice(1); // first positional is the mode/owner
-  const scope = classifyTargets(targets, cwd);
-  if (scope === "critical") {
+function evaluateOwnership(executable, args, context) {
+  const positional = pathTargets(args);
+  const mode = positional[0] ?? "";
+  const found = classifyTargets(positional.slice(1), context);
+  if (found.scope === "critical") {
     return deny(
       "critical-root-permission-change",
-      `${executable} 会改写系统根目录或主目录本身的权限。`,
+      `${executable} 会改写 ${found.path} 本身的权限，那是系统根目录或你的主目录。`,
       "只改属于自己的路径。",
     );
   }
-  if (scope === "inside") return allow("workspace-permission-change");
-  return confirm(
-    "outside-workspace-permission-change",
-    `${executable} 会改变当前工作区之外的权限或归属。`,
-    "确认路径和目标权限。",
-  );
+  // Location is the wrong axis on its own: `chmod +x build.sh` in a sibling
+  // repo costs nothing and undoes itself, while a recursive sweep or a
+  // world-writable bit is what actually leaves the tree wrong. Gate by what the
+  // change does, and only then by where it reaches.
+  const recursive = args.some((value) => value === "-R" || value === "--recursive");
+  const octal = /^[0-7]{3,4}$/u.test(mode) ? Number(mode.at(-1)) : null;
+  const worldWritable =
+    octal === null ? /[ao]\+w|[ao]=[rwx]*w/u.test(mode) : [2, 3, 6, 7].includes(octal);
+  // Flipping one file executable is free wherever the file lives — except on the
+  // system itself, where a single mode change is enough to lock the machine out
+  // of its own passwd file or strip a binary of its setuid bit.
+  if (
+    !recursive &&
+    !worldWritable &&
+    executable === "chmod" &&
+    found.scope !== "unknown" &&
+    !isSystemPath(found.path)
+  ) {
+    return allow("single-path-permission-change");
+  }
+  if (found.scope === "inside") return allow("workspace-permission-change");
+  if (found.scope === "outside") {
+    return confirm(
+      "outside-workspace-permission-change",
+      recursive
+        ? `${executable} -R 会改掉工作区之外 ${found.path} 整棵树的权限。`
+        : `会改掉工作区之外的 ${found.path} 的权限或归属。`,
+    );
+  }
+  return confirm("outside-workspace-permission-change", `${executable} 要改谁的权限读不出来。`);
 }
 
-function evaluateSegment(segment, cwd) {
+function evaluateSegment(segment, context) {
   const rawTokens = tokenize(segment);
   if (!rawTokens) {
     return confirm(
@@ -379,18 +642,24 @@ function evaluateSegment(segment, cwd) {
     );
   }
   if (executable === "dd") {
-    if (args.some((value) => /^of=\/dev\//iu.test(value))) {
+    const output = args.find((value) => /^of=/iu.test(value));
+    // Without an output file dd only reads; with one inside the workspace it is
+    // an ordinary file write, the same as any redirect.
+    if (output === undefined) return allow("read-only-raw-copy");
+    const target = output.slice(3);
+    if (/^\/dev\//iu.test(target)) {
       return deny(
         "disk-destruction",
-        "dd 写入块设备会销毁设备上的内容。",
+        `dd 写入块设备 ${target} 会销毁设备上的内容。`,
         "绝不写入块设备；说明需求后停下。",
       );
     }
-    return confirm(
-      "raw-copy",
-      "dd 是裸复制，可能静默覆盖文件。",
-      "确认 if=/of= 目标。",
-    );
+    const found = classifyTargets([target], context);
+    if (found.scope === "critical") {
+      return deny("disk-destruction", `dd 会直接覆盖 ${found.path} 本身。`, "只写属于自己的确切路径。");
+    }
+    if (found.scope === "inside") return allow("workspace-raw-copy");
+    return confirm("raw-copy", `dd 会整块覆盖 ${found.path ?? target}，原内容不留备份。`);
   }
   if (executable === "diskutil") {
     const verb = (args.find((value) => !value.startsWith("-")) ?? "").toLowerCase();
@@ -411,48 +680,110 @@ function evaluateSegment(segment, cwd) {
     );
   }
   if (FOREIGN_INSTALLERS.some((entry) => entry.match(executable, args))) {
+    const named = args.filter(
+      (value) => !value.startsWith("-") && !INSTALLER_VERBS.has(value.toLowerCase()),
+    );
     return confirm(
       "foreign-package-install",
-      `${executable} 会从外部仓库下载并执行第三方代码。`,
-      "确认包名和来源。",
+      `${executable} 会下载并执行 ${named.slice(0, 3).join("、") || "第三方"} 的代码，这里没有 npm 那套审查。`,
     );
   }
-  if (DELETERS.has(executable)) return evaluateDeletion(executable, args, cwd);
-  if (OWNERSHIP_COMMANDS.has(executable)) return evaluateOwnership(executable, args, cwd);
+  if (DELETERS.has(executable)) return evaluateDeletion(executable, args, context);
+  if (OWNERSHIP_COMMANDS.has(executable)) return evaluateOwnership(executable, args, context);
+  // find walks a tree and can delete every match, which is a deletion whose
+  // scope is the roots it was pointed at.
+  if (executable === "find") {
+    const deletes =
+      args.includes("-delete") ||
+      args.some(
+        (value, index) =>
+          ["-exec", "-execdir", "-ok", "-okdir"].includes(value) &&
+          DELETERS.has((args[index + 1] ?? "").split("/").at(-1)),
+      );
+    if (!deletes) return allow();
+    const firstPredicate = args.findIndex((value) => value.startsWith("-"));
+    const roots = firstPredicate === -1 ? args : args.slice(0, firstPredicate);
+    return evaluateDeletion("find", roots.length > 0 ? roots : ["."], context);
+  }
   if (PROCESS_SWEEPERS.has(executable)) {
-    // A path-shaped pattern pointing into the workspace or a temp dir is the
-    // agent cleaning up a server it started from there; sweeping by bare name
-    // stays gated because it reaches every matching process on the machine.
     const patterns = args.filter(
       (value) => !value.startsWith("-") && !/[<>]/u.test(value),
     );
-    const ownPaths =
-      patterns.length > 0 &&
-      patterns.every((value) => {
-        if (!value.includes("/")) return false;
-        const resolved = path.resolve(cwd || process.cwd(), expandHome(value));
-        return isWithin(resolved, workspaceRootFor(cwd)) || isTempPath(resolved);
-      });
-    if (ownPaths) return allow("workspace-process-sweep");
+    // Killing a process the agent started costs a restart, not work — the gate
+    // is for the patterns that reach something whose death loses what is not
+    // on disk yet. A path-shaped pattern is judged by where it points, since
+    // /usr/bin/node is every process using the system interpreter. Everything
+    // else is judged by whether it names a runtime, editor, browser, or
+    // database rather than an application the agent launched.
+    const risky = patterns.find((value) => {
+      const lowered = value.toLowerCase();
+      if (AUTOMATION_MARKERS.some((marker) => lowered.includes(marker))) return false;
+      // A pattern carrying a path is judged by where that path points, before
+      // any name in it is weighed: `user-data-dir=/var/folders/…` names one
+      // profile, while a bare `user-data-dir` names every browser on the box.
+      if (value.includes("/")) {
+        // In `user-data-dir=/var/folders/…` the path is the value, not the
+        // whole token; resolving the token as one relative path put it wherever
+        // a preceding `cd` happened to leave the shell.
+        const written = value.includes("=") ? value.slice(value.indexOf("=") + 1) : value;
+        const expanded = expandHome(expandVariables(written, context.vars));
+        if (/\$|`/u.test(expanded)) return true;
+        const resolved = path.resolve(context.cwd ?? process.cwd(), expanded);
+        return !isWithin(resolved, context.workspace) && !isTempPath(resolved);
+      }
+      // Naming a runtime, editor, browser, or database reaches the user's own
+      // work however specific the rest of the pattern looks.
+      if (
+        value
+          .split(/[^A-Za-z0-9_.+-]+/u)
+          .some((word) => COSTLY_TO_KILL.has(word.toLowerCase()))
+      ) {
+        return true;
+      }
+      // A bare word is a substring match against every command line on the
+      // machine; a script name, port, or flag fragment names one process.
+      return !/[._=-]/u.test(value) && !/\d{3}/u.test(value);
+    });
+    if (patterns.length > 0 && risky === undefined) return allow("specific-process-match");
     return confirm(
       "process-sweep",
-      `${executable} 可能误杀无关进程。`,
-      "尽量改用 kill 加具体 PID。",
+      risky
+        ? `会杀掉机器上每一个匹配 ${risky} 的进程，包括你自己在跑的。`
+        : `${executable} 没写匹配模式，会扫到什么不确定。`,
     );
   }
   if (executable === "docker" || executable === "podman") {
     const verbs = args.filter((value) => !value.startsWith("-")).map((value) => value.toLowerCase());
+    const wipesVolumes = args.some((value) => value === "-v" || value === "--volumes");
+    // A volume is the only one of the three that holds data nothing else has a
+    // copy of. `docker rm` drops a writable layer that a rerun recreates, and an
+    // image rebuilds from its Dockerfile — gating those turned every smoke-test
+    // cleanup into a prompt for something that costs a rebuild.
     if (
-      ["rm", "rmi"].includes(verbs[0]) ||
-      (verbs[0] === "system" && verbs[1] === "prune") ||
-      (verbs[0] === "volume" && verbs[1] === "rm") ||
-      (verbs[0] === "container" && verbs[1] === "rm") ||
-      (verbs[0] === "image" && ["rm", "prune"].includes(verbs[1]))
+      (verbs[0] === "volume" && ["rm", "remove", "prune"].includes(verbs[1])) ||
+      (wipesVolumes && ["rm", "remove", "prune", "system", "container"].includes(verbs[0]))
     ) {
+      return confirm("volume-destruction", `${executable} 会删掉数据卷里的内容，那份数据没有别的副本。`);
+    }
+    // `docker rm $(docker ps -aq)` names nothing: it reaches every container on
+    // the machine, including whatever the user has running. A named target is
+    // the agent's own test container; a substitution is a sweep.
+    if (
+      ["rm", "rmi", "remove"].includes(verbs[0]) ||
+      (["container", "image"].includes(verbs[0]) && ["rm", "remove"].includes(verbs[1]))
+    ) {
+      const targets = args.filter((value) => !value.startsWith("-"));
+      if (targets.some((value) => /\$\(|`|\$\{?[A-Za-z_]/u.test(value))) {
+        return confirm(
+          "container-sweep",
+          `${executable} ${verbs[0]} 的目标是展开出来的一串 id，会波及机器上所有匹配的容器或镜像。`,
+        );
+      }
+    }
+    if (verbs[0] === "system" && ["prune", "reset"].includes(verbs[1])) {
       return confirm(
-        "container-destruction",
-        `${executable} ${verbs.slice(0, 2).join(" ")} 会删除容器、镜像或数据卷，数据找不回。`,
-        "确认要删的对象。",
+        "container-sweep",
+        `${executable} system ${verbs[1]} 会清掉机器上所有停止的容器和悬空镜像，不只是这个项目的。`,
       );
     }
     return allow();
@@ -485,7 +816,9 @@ function evaluateSegment(segment, cwd) {
   return allow();
 }
 
-export function evaluateCommand(command, cwd) {
+const MAX_SUBSTITUTION_DEPTH = 3;
+
+export function evaluateCommand(command, cwd, depth = 0) {
   if (typeof command !== "string" || command.trim() === "") {
     return deny(
       "invalid-command-input",
@@ -494,12 +827,24 @@ export function evaluateCommand(command, cwd) {
     );
   }
 
+  const workspace = workspaceRootFor(cwd);
+  const vars = new Map();
+  const stripped = stripHeredocBodies(command);
+  let current = cwd || process.cwd();
   let strongest = allow();
-  for (const segment of commandSegments(stripHeredocBodies(command))) {
-    const value = evaluateSegment(segment, cwd);
+  for (const segment of commandSegments(stripped)) {
+    const value = evaluateSegment(segment, { cwd: current, workspace, vars });
     if (value.decision === "deny") return value;
     if (value.decision === "confirm") strongest = value;
     else if (strongest.decision === "allow") strongest = value;
+    current = nextCwd(segment, current, vars);
+  }
+  if (depth < MAX_SUBSTITUTION_DEPTH) {
+    for (const body of substitutionBodies(stripped)) {
+      const value = evaluateCommand(body, cwd, depth + 1);
+      if (value.decision === "deny") return value;
+      if (value.decision === "confirm" && strongest.decision === "allow") strongest = value;
+    }
   }
   return strongest;
 }

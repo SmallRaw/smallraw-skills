@@ -67,14 +67,21 @@ test("asks before an installer from another ecosystem fetches code", () => {
   }
 });
 
-test("confirms process sweeps, container destruction, and publishing", () => {
+test("confirms process sweeps, volume loss, and publishing", () => {
   assert.equal(evaluateCommand("pkill -f 'node dev'", cwd).ruleId, "process-sweep");
   assert.equal(evaluateCommand("killall Dock", cwd).decision, "confirm");
   assert.equal(evaluateCommand("kill 12345", cwd).decision, "allow");
-  assert.equal(evaluateCommand("docker rm -f app-container", cwd).ruleId, "container-destruction");
-  assert.equal(evaluateCommand("docker system prune -a", cwd).decision, "confirm");
-  assert.equal(evaluateCommand("docker ps -a", cwd).decision, "allow");
   assert.equal(evaluateCommand("twine upload dist/*", cwd).ruleId, "package-publish");
+
+  // A volume is the only docker object holding data nothing else has a copy of.
+  assert.equal(evaluateCommand("docker volume rm pgdata", cwd).ruleId, "volume-destruction");
+  assert.equal(evaluateCommand("docker rm -v scratch", cwd).ruleId, "volume-destruction");
+  assert.equal(evaluateCommand("docker system prune -a", cwd).ruleId, "container-sweep");
+  // Containers and images are build products: a rerun or a rebuild restores them.
+  assert.equal(evaluateCommand("docker rm -f app-container", cwd).decision, "allow");
+  assert.equal(evaluateCommand("docker rmi smoke-test-image", cwd).decision, "allow");
+  assert.equal(evaluateCommand("docker image prune -f", cwd).decision, "allow");
+  assert.equal(evaluateCommand("docker ps -a", cwd).decision, "allow");
 });
 
 test("blocks shell indirection but allows running script files", () => {
@@ -109,7 +116,7 @@ test("normalizes hook payloads and fails closed on malformed input", () => {
   assert.equal(evaluateCommand("rm -rf 'unclosed", cwd).ruleId, "ambiguous-shell-syntax");
 });
 
-test("allows sweeping own workspace or temp processes by path pattern", () => {
+test("allows sweeping a process the pattern actually identifies", () => {
   assert.equal(
     evaluateCommand('pkill -f "harness/server.mjs" 2>/dev/null; echo done', cwd).decision,
     "allow",
@@ -117,12 +124,102 @@ test("allows sweeping own workspace or temp processes by path pattern", () => {
   assert.equal(
     evaluateCommand("pkill -f /private/tmp/claude-501/session/scratchpad/server.mjs", cwd)
       .ruleId,
-    "workspace-process-sweep",
+    "specific-process-match",
   );
-  // Bare names and paths outside the workspace reach anyone's processes.
+  // A pattern with structure names one process: a script, a port, a flag
+  // fragment, a hyphenated tool.
+  for (const command of [
+    "pkill -f run_server.py",
+    'pkill -f "vite --port 6399"',
+    "pkill -f agent-browser",
+    "pkill -f remote-debugging-port=9333",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).decision, "allow", command);
+  }
+  // Naming an automation harness targets a driven process, not a person's session.
+  for (const command of [
+    "pkill -f Headless",
+    'pkill -f "chrome --headless"',
+    "pkill -9 -f 'Chrome for Testing'",
+    "pkill -f user-data-dir=/var/folders",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).decision, "allow", command);
+  }
+  // A bare word, or a path to a shared interpreter, reaches anyone's processes.
   assert.equal(evaluateCommand("pkill -f node", cwd).ruleId, "process-sweep");
   assert.equal(evaluateCommand("pkill -f /usr/bin/node", cwd).ruleId, "process-sweep");
+  assert.equal(evaluateCommand("pkill -f server", cwd).ruleId, "process-sweep");
+  assert.equal(evaluateCommand('pkill -f "node --inspect"', cwd).ruleId, "process-sweep");
   assert.equal(evaluateCommand("killall Dock", cwd).decision, "confirm");
+});
+
+test("reads ordinary shell syntax instead of calling it ambiguous", () => {
+  // A line continuation is removed by the shell; leaving the backslash stranded
+  // at a segment boundary read as unfinished input.
+  assert.equal(
+    evaluateCommand('git diff -U0 a.ts \\\n | grep -E "^[+-]" \\\n | head', cwd).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluateCommand("for p in \\\n  a.ts \\\n  b.ts \\\n  ; do echo $p; done", cwd).decision,
+    "allow",
+  );
+  // Prose in a comment carries apostrophes.
+  assert.equal(
+    evaluateCommand("# simulate Dockerfile's build context\nls -la", cwd).decision,
+    "allow",
+  );
+  assert.equal(evaluateCommand("ls # keep the user's copy", cwd).decision, "allow");
+  // A substitution quotes independently of the text around it.
+  assert.equal(evaluateCommand(`echo "$(grep -c '^"@x/' f)"`, cwd).decision, "allow");
+  // Genuinely unfinished input still reads as unfinished.
+  assert.equal(evaluateCommand("rm -rf 'unclosed", cwd).ruleId, "ambiguous-shell-syntax");
+});
+
+test("follows cd so relative paths are judged where the shell stands", () => {
+  assert.equal(evaluateCommand("cd /etc && rm -rf .", cwd).ruleId, "critical-root-deletion");
+  assert.equal(
+    evaluateCommand("cd /Users/someone/other-repo && rm -rf packages/thing", cwd).ruleId,
+    "outside-workspace-deletion",
+  );
+  // A path parked in a literal variable is still a readable path.
+  assert.equal(
+    evaluateCommand("S=/private/tmp/scratch; cd $S/work && rm -f ../out.zip", cwd).decision,
+    "allow",
+  );
+  assert.equal(evaluateCommand("cd $UNKNOWN && rm -rf build", cwd).ruleId, "unknown-scope-deletion");
+});
+
+test("sees deletion through find and through an unexpanded target", () => {
+  assert.equal(evaluateCommand("find / -name '*.log' -delete", cwd).ruleId, "critical-root-deletion");
+  assert.equal(
+    evaluateCommand("find ~/Library -name x -exec rm -f {} +", cwd).ruleId,
+    "outside-workspace-deletion",
+  );
+  assert.equal(evaluateCommand("find . -name '*.tmp' -delete", cwd).decision, "allow");
+  assert.equal(evaluateCommand("find . -name '*.ts' -exec cat {} +", cwd).decision, "allow");
+  assert.equal(evaluateCommand("rm -rf $(cat targets.txt)", cwd).ruleId, "unknown-scope-deletion");
+});
+
+test("gates a permission change by what it does, not only where it lands", () => {
+  // Flipping one file executable costs nothing and undoes itself.
+  assert.equal(
+    evaluateCommand("cd /Users/someone/other-repo && chmod +x build.sh", cwd).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluateCommand("chmod -R 755 /Users/someone/other-repo/dist", cwd).ruleId,
+    "outside-workspace-permission-change",
+  );
+  assert.equal(evaluateCommand("chown admin ~/Library/LaunchAgents", cwd).decision, "confirm");
+});
+
+test("treats dd by where it writes", () => {
+  assert.equal(evaluateCommand("dd if=disk.img | hexdump -C | head", cwd).decision, "allow");
+  assert.equal(evaluateCommand("dd if=/dev/zero of=/tmp/big.img bs=1m count=8", cwd).decision, "allow");
+  assert.equal(evaluateCommand("dd if=/dev/zero of=out.img bs=1m count=8", cwd).decision, "allow");
+  assert.equal(evaluateCommand("dd if=x of=/Users/someone/notes.txt", cwd).ruleId, "raw-copy");
+  assert.equal(evaluateCommand("dd if=image.iso of=/dev/disk2", cwd).ruleId, "disk-destruction");
 });
 
 test("skips heredoc bodies but keeps live or unterminated ones visible", () => {

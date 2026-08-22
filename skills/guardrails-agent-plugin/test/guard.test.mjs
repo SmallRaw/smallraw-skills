@@ -53,7 +53,7 @@ test("translates confirm to ask with the policy reason and next action", () => {
   assert.match(push.permissionDecisionReason, /^\[git-push\]/u);
   assert.match(push.permissionDecisionReason, /会把本地提交发布到远端仓库/u);
 
-  const install = runGuard(policies.npm, bashPayload("npm ci --ignore-scripts"));
+  const install = runGuard(policies.npm, bashPayload("yarn install --ignore-scripts"));
   assert.equal(install.permissionDecision, "ask");
   assert.match(install.permissionDecisionReason, /^\[scripts-disabled-install\]/u);
 });

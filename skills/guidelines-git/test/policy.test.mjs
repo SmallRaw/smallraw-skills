@@ -85,6 +85,14 @@ test("treats git rm and git mv on explicit paths like staging", () => {
   assert.equal(evaluateCommand("git rm -f modified.ts").ruleId, "forced-index-removal");
 });
 
+test("classifies git apply instead of asking whether it is read-only", () => {
+  assert.equal(evaluateCommand("git apply /tmp/fix.patch").ruleId, "tracked-path-index-change");
+  assert.equal(evaluateCommand("git apply --index changes.diff").decision, "allow");
+  assert.equal(evaluateCommand("git apply -R changes.diff").decision, "allow");
+  assert.equal(evaluateCommand("git apply --check changes.diff").ruleId, "read-only-git");
+  assert.equal(evaluateCommand("git apply --stat changes.diff").ruleId, "read-only-git");
+});
+
 test("requires confirmation for broad staging and commit rewrites", () => {
   assert.equal(evaluateCommand("git add -A").ruleId, "broad-staging");
   assert.equal(evaluateCommand("git add -- :/").ruleId, "broad-staging");
@@ -181,7 +189,32 @@ test("still gates the forms that discard work for good", () => {
   assert.equal(evaluateCommand("git bundle unbundle in.bundle").ruleId, "bundle-unpack");
   assert.equal(evaluateCommand("git submodule update --init").decision, "confirm");
   assert.equal(evaluateCommand("git reset --merge").decision, "confirm");
-  assert.equal(evaluateCommand("git apply patch.diff").decision, "confirm");
+});
+
+test("separates unstaging from overwriting the working tree", () => {
+  // --staged rewrites the index; the file on disk keeps its content.
+  assert.equal(evaluateCommand("git restore --staged .").ruleId, "index-only-restore");
+  assert.equal(evaluateCommand("git restore --staged packages/a").decision, "allow");
+  // Restoring the working tree is the loss with no undo.
+  assert.equal(evaluateCommand("git restore src/app.ts").ruleId, "worktree-discard");
+  assert.equal(evaluateCommand("git restore --staged --worktree src/app.ts").decision, "confirm");
+});
+
+test("treats a gh search endpoint as the lookup it is", () => {
+  assert.equal(
+    evaluateCommand(`gh api search/code -f q="thing+repo:owner/name" --jq '.items[].path'`).ruleId,
+    "read-only-gh",
+  );
+  assert.equal(evaluateCommand("gh api search/issues -f q=is:pr").decision, "allow");
+  // A write endpoint with the same shape is still a write.
+  assert.equal(evaluateCommand("gh api repos/o/r/issues -f title=x").decision, "deny");
+});
+
+test("lets a conflict side be chosen without an approval", () => {
+  // All three stages stay in the index until the merge is committed.
+  assert.equal(evaluateCommand("git checkout --ours yarn.lock").ruleId, "conflict-side-selection");
+  assert.equal(evaluateCommand("git checkout --theirs yarn.lock").decision, "allow");
+  assert.equal(evaluateCommand("git checkout --ours -- packages/a").decision, "allow");
 });
 
 test("still gates the forms that discard work for good (worktree)", () => {

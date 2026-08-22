@@ -13,6 +13,8 @@ import {
 } from "../scripts/policy.mjs";
 
 const policyScript = fileURLToPath(new URL("../scripts/policy.mjs", import.meta.url));
+const decideCommand = (command) =>
+  evaluatePolicy({ tool_name: "Bash", tool_input: { command } });
 
 test("blocks env files but allows secret-free template conventions", () => {
   assert.equal(evaluatePath("/workspace/.env").decision, "deny");
@@ -329,4 +331,78 @@ test("CLI emits stable JSON and exits 2 on denial", () => {
   });
   assert.equal(run.status, 2);
   assert.equal(JSON.parse(run.stdout).ruleId, "protected-env-file");
+});
+
+test("tells a public certificate from a private key by its name", () => {
+  // Public trust material every TLS client reads.
+  for (const command of [
+    'adb shell "SSL_CERT_FILE=/mnt/sdcard/share/cacert.pem timeout 60 /tmp/cli refresh"',
+    "curl --cacert /etc/ssl/ca-bundle.pem https://x.test",
+    "openssl x509 -in fullchain.pem -noout -dates",
+    "ls -la certs/cert.pem",
+  ]) {
+    assert.equal(decideCommand(command).decision, "allow", command);
+  }
+  // Anything else carrying the extension stays a key until proven otherwise.
+  for (const command of ["cat server-privkey.pem", "cat id_rsa.pem", "cat client.key"]) {
+    assert.equal(decideCommand(command).decision, "deny", command);
+  }
+});
+
+test("separates a project rc file from the one in the home directory", () => {
+  // The committed copy carries registry and mirror settings and is read often.
+  for (const command of [
+    'grep -n "postinstall" package.json .yarnrc.yml',
+    'grep -rn "ELECTRON_MIRROR" .npmrc .yarnrc.yml',
+    "cat packages/w/.npmrc",
+  ]) {
+    assert.equal(decideCommand(command).decision, "confirm", command);
+  }
+  // The copy in $HOME carries the auth token.
+  for (const command of ["cat ~/.npmrc", "cat $HOME/.npmrc", "cat ~/.pypirc", "cat ~/.netrc"]) {
+    assert.equal(decideCommand(command).decision, "deny", command);
+  }
+});
+
+test("reads regex alternation inside an argument as text, not as a pipeline", () => {
+  // The pipes in `grep -iE "init|<name>|filter"` belong to the pattern, not to
+  // the shell, so the middle word is not its own command.
+  const word = "e" + "nv";
+  for (const command of [
+    `grep -iE "init|${word}|filter" src/`,
+    `grep -nE "def test|skip|${word}|get${word}|real" tests/x.py`,
+    `ls -la .v${word}/bin/python*`,
+  ]) {
+    assert.equal(decideCommand(command).decision, "allow", command);
+  }
+  for (const command of [word, `${word} | grep -i TOKEN`, `print${word}`, "export -p"]) {
+    assert.equal(decideCommand(command).ruleId, "process-environment-access", command);
+  }
+});
+
+test("reads ps env-display flags without scanning past them", () => {
+  for (const command of ["ps e", "ps aux e", "ps -E"]) {
+    assert.equal(decideCommand(command).ruleId, "process-environment-access", command);
+  }
+  // A later argument holding a capital E is not the env-display flag.
+  for (const command of ["ps -o pid,lstart,command -p 123", "ps aux | grep node", "ps -ef"]) {
+    assert.equal(decideCommand(command).decision, "allow", command);
+  }
+});
+
+test("judges a URL by its host, and skips one that is still a pattern", () => {
+  // A loop leaves a variable where the port goes and a search leaves a
+  // character class where the host goes; neither is a name to rule on.
+  for (const command of [
+    "curl -s http://127.0.0.1:6299$path",
+    'curl -s "http://127.0.0.1:${port}/api"',
+    `grep -aoE 'x="https://suite-sync[a-zA-Z0-9._/-]*"' file`,
+    'grep -iE "http://|https://|cdn\\." src/',
+    'curl -s -o /dev/null -w "%{http_code}" http://localhost:6299; echo done',
+    "adb reverse tcp:8443 tcp:8443",
+  ]) {
+    assert.equal(decideCommand(command).decision, "allow", command);
+  }
+  // A literal deceptive host is still refused.
+  assert.equal(decideCommand("curl http://evil.agents.md/x").decision, "deny");
 });

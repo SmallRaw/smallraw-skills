@@ -419,11 +419,29 @@ function evaluateManager(manager, args) {
         "仅限隔离工作区，改完跑 lockfile 预检。",
       );
     }
+    // An immutable install cannot choose anything: `npm ci` and yarn's
+    // --immutable/--frozen-lockfile fail rather than resolve a new version, so
+    // what lands is exactly what the committed lockfile already named — and the
+    // lockfile is the artifact that got reviewed. With scripts off too, nothing
+    // runs either. Gating this taught nobody anything; leaving it open gives
+    // the safe spelling a reason to exist.
+    const immutable =
+      (subcommand === "ci" ||
+        args.includes("--immutable") ||
+        args.includes("--frozen-lockfile")) &&
+      !args.includes("--no-immutable") &&
+      // --force tells the manager to proceed through what it would otherwise
+      // refuse, which is exactly the refusal this rule is leaning on.
+      !args.includes("--force") &&
+      !args.includes("-f");
+    if (scriptsDisabled && immutable && !lockfileOnly) {
+      return allow("lockfile-immutable-install");
+    }
     if (scriptsDisabled) {
       return confirm(
         "scripts-disabled-install",
-        `${manager} ${subcommand || "install"} 会安装依赖（已禁用安装脚本）。`,
-        "审查通过前不要执行这些包。",
+        `${manager} ${subcommand || "install"} 会按 package.json 重新解析依赖，可能落地 lockfile 里还没有的版本。`,
+        "只想还原已提交的 lockfile 就加 --immutable（或用 npm ci）。",
       );
     }
     return deny(
@@ -442,12 +460,11 @@ function evaluateManager(manager, args) {
     return allow("registry-write-dry-run");
   }
   if (FETCH_COMMANDS.has(subcommand)) {
+    // Downloading a tarball with scripts off installs nothing and runs nothing;
+    // it is how you read a package before trusting it. Charging an approval for
+    // that taxes the review the rest of this gate is asking for.
     if (hasAll(args, ["--ignore-scripts"])) {
-      return confirm(
-        "artifact-acquisition",
-        "会下载包文件（不执行脚本）。",
-        "仅作审查素材，审完再谈执行。",
-      );
+      return allow("artifact-acquisition-for-review");
     }
     return deny(
       "artifact-acquisition-with-scripts",
@@ -526,6 +543,9 @@ function evaluateSegment(segment, cwd) {
         if (tokens[index] === "--offline") offline = true;
         index += 1;
       }
+      // Nothing but flags: `npx --version` and `npx --help` report on the
+      // runner itself and name no package to fetch.
+      if (index >= tokens.length) return allow("runner-self-report");
       // npm >=7 ignores --no-install/--no and still contacts the registry;
       // only --offline (cache mode only-if-cached) guarantees no download.
       if (offline) {

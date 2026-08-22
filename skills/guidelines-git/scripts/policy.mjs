@@ -456,6 +456,25 @@ function evaluateGit(args) {
     }
     return allow("tracked-path-index-change");
   }
+  // Applying a patch rewrites tracked files the way an editor would. git
+  // refuses a patch that does not apply cleanly and rejects paths that reach
+  // outside the repository, so the result stays recoverable from the index or
+  // the last commit — the same standard `git rm` and `git mv` are held to.
+  if (subcommand === "apply") {
+    // --unsafe-paths is the flag that lets a patch write outside the repository,
+    // which is the whole reason applying one is otherwise unremarkable.
+    if (rest.includes("--unsafe-paths")) {
+      return confirm(
+        "patch-outside-repository",
+        "--unsafe-paths 允许这个 patch 写到仓库之外。",
+        "去掉 --unsafe-paths，或写明它要落在哪。",
+      );
+    }
+    if (rest.some((value) => ["--check", "--stat", "--summary", "--numstat"].includes(value))) {
+      return allow("read-only-git");
+    }
+    return allow("tracked-path-index-change");
+  }
   if (subcommand === "commit") {
     // Amend and fixup take nothing away: the previous commit stays in the
     // reflog, and a rewritten history still has to pass the push gate.
@@ -542,6 +561,12 @@ function evaluateGit(args) {
   // work. A pathspec checkout is the exception: it discards those changes with no
   // undo anywhere, so it stays gated even though its branch sibling does not.
   if (subcommand === "checkout" || subcommand === "switch") {
+    // Picking a side of a conflict takes nothing away: git holds all three
+    // stages in the index until the merge is committed, so `git checkout -m`
+    // brings the conflict back. It also only works while a conflict is open.
+    if (rest.includes("--ours") || rest.includes("--theirs")) {
+      return allow("conflict-side-selection");
+    }
     if (rest.includes("--") || rest.some(isDiscardingPathspec)) {
       return confirm(
         "worktree-discard",
@@ -550,6 +575,22 @@ function evaluateGit(args) {
       );
     }
     return allow("branch-move");
+  }
+  // `git restore --staged` rewrites the index and leaves the file on disk
+  // untouched, so the content is still there to stage again. Restoring the
+  // working tree is the loss that has no undo, and that is what stays gated.
+  if (subcommand === "restore") {
+    if (
+      rest.some((value) => value === "--staged" || value === "-S") &&
+      !rest.some((value) => value === "--worktree" || value === "-W")
+    ) {
+      return allow("index-only-restore");
+    }
+    return confirm(
+      "worktree-discard",
+      "会丢弃这些文件未提交的修改，无法恢复。",
+      "要保留就先 stash。",
+    );
   }
   // Applies a commit onto the current branch; git refuses on a dirty worktree,
   // the result is a new commit, and --abort or the reflog undoes it.
@@ -666,6 +707,16 @@ function evaluateGh(rawArgs) {
       ) {
         return allow("read-only-gh");
       }
+    }
+    // The search endpoints have no write side, whatever verb gh picks for the
+    // -f fields it was handed. Denying them charged an approval for a lookup.
+    // The path has to actually stay in search/: `search/../repos/o/r/issues`
+    // wears the prefix and lands on a write endpoint.
+    if (
+      explicitMethod === "" &&
+      /^search(?:\/[A-Za-z0-9_-]+)*\/?$/iu.test(String(args[1] ?? "").split("?")[0])
+    ) {
+      return allow("read-only-gh");
     }
     const writeFlag =
       explicitMethod !== "" ||

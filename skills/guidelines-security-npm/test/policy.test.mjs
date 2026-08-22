@@ -96,11 +96,52 @@ test("confirms cache-only npx runs but blocks flags that still download", () => 
 });
 
 test("confirms scripts-disabled installs while blocking script-enabled ones", () => {
-  const result = evaluateCommand("npm ci --ignore-scripts");
+  // A plain install still resolves package.json, so it can land a version the
+  // committed lockfile never named.
+  const result = evaluateCommand("yarn install --ignore-scripts");
   assert.equal(result.decision, "confirm");
   assert.equal(result.ruleId, "scripts-disabled-install");
   assert.equal(evaluateCommand("pnpm install --ignore-scripts").decision, "confirm");
   assert.equal(evaluateCommand("npm ci").decision, "deny");
+  assert.equal(evaluateCommand("npm install --immutable").decision, "deny");
+});
+
+test("allows an install that provably cannot change the dependency graph", () => {
+  for (const command of [
+    "npm ci --ignore-scripts",
+    "yarn install --immutable --ignore-scripts",
+    "yarn install --frozen-lockfile --ignore-scripts",
+    "pnpm install --frozen-lockfile --ignore-scripts",
+  ]) {
+    assert.equal(evaluateCommand(command).ruleId, "lockfile-immutable-install", command);
+  }
+  // Immutability that is switched back off is not immutability.
+  assert.equal(
+    evaluateCommand("yarn install --immutable --no-immutable --ignore-scripts").ruleId,
+    "scripts-disabled-install",
+  );
+  // Resolving into the lockfile is the thing being guarded, immutable or not.
+  assert.equal(
+    evaluateCommand("npm install --package-lock-only --ignore-scripts").ruleId,
+    "isolated-lockfile-resolution",
+  );
+});
+
+test("lets a runner report on itself without naming a package", () => {
+  for (const command of ["npx --version", "npx -v", "npx --help"]) {
+    assert.equal(evaluateCommand(command).ruleId, "runner-self-report", command);
+  }
+  // Naming a package to fetch is still refused.
+  assert.equal(evaluateCommand("npx cowsay@1.5.0 hi").decision, "deny");
+});
+
+test("lets a package be downloaded for review without an approval", () => {
+  assert.equal(
+    evaluateCommand("npm pack --ignore-scripts @scope/pkg@1.0.0").ruleId,
+    "artifact-acquisition-for-review",
+  );
+  // Fetching with scripts live is still refused.
+  assert.equal(evaluateCommand("npm pack @scope/pkg@1.0.0").decision, "deny");
 });
 
 test("gates corepack acquisition and versioned manager invocations", () => {

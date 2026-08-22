@@ -87,6 +87,22 @@ const SOURCE_CODE_EXTENSIONS = new Set([
   ".tsx",
   ".vue",
 ]);
+// A .pem is named for what it holds. These names are the public trust material
+// every TLS client reads; a private key is not spelled any of them.
+const PUBLIC_CERTIFICATE_NAMES = new Set([
+  "ca.pem",
+  "cacert.pem",
+  "ca-bundle.pem",
+  "cabundle.pem",
+  "cert.pem",
+  "chain.pem",
+  "fullchain.pem",
+]);
+// npm and yarn rc files exist in two places. The copy in $HOME carries the auth
+// token; the copy committed in a repository carries registry and mirror
+// settings and gets read constantly. Treat them like any other secret-named
+// workspace file — confirmable inside the workspace, refused anywhere else.
+const WORKSPACE_RC_BASENAMES = new Set([".npmrc", ".pnpmrc"]);
 const PROTECTED_EXTENSIONS = new Set([
   ".pem",
   ".key",
@@ -249,10 +265,21 @@ function classifyAbsolutePath(resolved, inWorkspace) {
       "禁止访问受保护的凭据、密钥或机密目录。",
     );
   }
+  const workspaceRc =
+    WORKSPACE_RC_BASENAMES.has(basename) || basename.startsWith(".yarnrc");
+  // A certificate name means what it says until the directory says otherwise:
+  // /etc/ssl/private exists to hold keys, whatever the files inside are called.
+  const inKeyDirectory = segments.some(
+    (segment, index) =>
+      ["keys", "key", "secret", "secrets"].includes(segment) ||
+      // macOS resolves /tmp to /private/tmp, so a leading "private" is the
+      // system's own root rather than a directory that holds keys.
+      (segment === "private" && index > 0),
+  );
   if (
-    PROTECTED_EXTENSIONS.has(extension) ||
-    PROTECTED_BASENAMES.has(basename) ||
-    basename.startsWith(".yarnrc") ||
+    (PROTECTED_EXTENSIONS.has(extension) &&
+      !(PUBLIC_CERTIFICATE_NAMES.has(basename) && !inKeyDirectory)) ||
+    (PROTECTED_BASENAMES.has(basename) && !workspaceRc) ||
     /^client_secret.*\.json$/u.test(basename) ||
     /^service[-_]account.*\.json$/u.test(basename) ||
     // Only the system shadow file itself; "shadow" is too common a directory name.
@@ -291,6 +318,7 @@ function classifyAbsolutePath(resolved, inWorkspace) {
 
   if (
     NAME_HEURISTIC_EXTENSIONS.has(extension) ||
+    workspaceRc ||
     basename === "terraform.tfstate" ||
     basename.startsWith("terraform.tfstate.") ||
     (segments.some((segment) => NAME_HEURISTIC_DIRECTORY_NAMES.has(segment)) &&
@@ -335,6 +363,40 @@ export function evaluatePath(target, cwd = process.cwd()) {
 
 function normalizedHostname(url) {
   return url.hostname.toLowerCase().replace(/\.$/, "");
+}
+
+// Replaces the contents of quoted spans with spaces, keeping the quotes and the
+// overall length so surrounding shell syntax still reads correctly. Patterns
+// that treat `;`, `&`, and `|` as separators run against this rather than the
+// raw command, so regex alternation inside an argument is not mistaken for a
+// pipeline.
+function quotedSpansBlanked(command) {
+  let out = "";
+  let quote = "";
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+    if (quote) {
+      if (character === "\\" && quote !== "'" && index + 1 < command.length) {
+        out += "  ";
+        index += 1;
+        continue;
+      }
+      if (character === quote) {
+        quote = "";
+        out += character;
+        continue;
+      }
+      out += " ";
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      out += character;
+      continue;
+    }
+    out += character;
+  }
+  return out;
 }
 
 function isTrustedDomainLookalike(hostname, trusted) {
@@ -481,6 +543,7 @@ function pathCandidateFromToken(token) {
     candidate.includes("\\") ||
     basename === ".env" ||
     basename.startsWith(".env.") ||
+    basename.startsWith(".yarnrc") ||
     PROTECTED_BASENAMES.has(basename) ||
     PROTECTED_EXTENSIONS.has(path.extname(basename)) ||
     NAME_HEURISTIC_EXTENSIONS.has(path.extname(basename));
@@ -512,14 +575,19 @@ function evaluateCommand(command, cwd) {
     return blocked("invalid-command-input", "Shell 命令缺失。");
   }
 
+  // These read `;`, `&`, and `|` as shell syntax, so they have to be matched
+  // against a command whose quoted spans are blanked out. Otherwise the pipes
+  // inside `grep -iE "init|env|filter"` make `env` look like its own command,
+  // and a search through source for the word turns into an environment dump.
+  const skeleton = quotedSpansBlanked(command);
   if (
     // Only invocations that print the environment: bare `env`/`set` (or `env` with
     // only flags) dump variables; `env VAR=x cmd` and `set -e` do not. For ps, env
     // display is BSD-style dashless `e` or capital `-E`, not `-e`/`-ef` (select all).
-    /(?:^|[;&|]\s*)env(?:\s+-[^\s;&|]*)*\s*(?:$|[;&|])/iu.test(command) ||
-    /(?:^|[;&|]\s*)set\s*(?:$|[;&|])/iu.test(command) ||
-    /(?:^|[;&|]\s*)printenv(?:\s|$)/iu.test(command) ||
-    /(?:^|[;&|]\s*)export\s+-p(?:\s|$)/iu.test(command) ||
+    /(?:^|[;&|]\s*)env(?:\s+-[^\s;&|]*)*\s*(?:$|[;&|])/iu.test(skeleton) ||
+    /(?:^|[;&|]\s*)set\s*(?:$|[;&|])/iu.test(skeleton) ||
+    /(?:^|[;&|]\s*)printenv(?:\s|$)/iu.test(skeleton) ||
+    /(?:^|[;&|]\s*)export\s+-p(?:\s|$)/iu.test(skeleton) ||
     /\/proc\/(?:self|\d+)\/environ/iu.test(command) ||
     // Inline-eval bodies may contain quoted `;`, so match inside one quoted or
     // whitespace-free argument rather than stopping at shell separators.
@@ -532,7 +600,13 @@ function evaluateCommand(command, cwd) {
     /(?:^|[;&|]\s*)python[\w.]*\s+[^;&|]*-c\s+(?:'[^']*os\.environ|"[^"]*os\.environ|[^\s;&|]*os\.environ)/iu.test(
       command,
     ) ||
-    /(?:^|[;&|]\s*)ps\s+(?:[^\s;&|]+\s+)*?(?:-[^\s;&|]*E[^\s;&|]*|(?![-\d])[A-Za-z]*e[A-Za-z]*)(?:$|[\s;&|])/u.test(command)
+    // Only the option words that follow ps directly, and only one that is the
+    // env-display flag itself. Scanning further matched any later argument
+    // holding a capital E — `ps -o pid,command -p $(lsof -sTCP:LISTEN …)` was
+    // refused for LISTEN.
+    /(?:^|[;&|]\s*)ps(?:\s+-?[A-Za-z]+)*\s+(?:-[A-Za-z]*E[A-Za-z]*|[A-Za-z]*e[A-Za-z]*)(?:$|[\s;&|])/u.test(
+      skeleton,
+    )
   ) {
     return blocked(
       "process-environment-access",
@@ -557,10 +631,20 @@ function evaluateCommand(command, cwd) {
   if (
     /(?:^|[\/\\:])\.env(?:$|[\/\\\s'"]|\.(?![\w.-]*(?:example|sample|template)(?:[\/\\\s'"]|$)))/iu.test(command) ||
     /(?:^|[\/\\])(?:\.ssh|\.gnupg)(?:[\/\\\s'"]|$)/iu.test(command) ||
-    /\.(?:pem|key|p12|pfx|jks|keystore|kdbx)(?:\s|$|['"])/iu.test(
+    /\.(?:key|p12|pfx|jks|keystore|kdbx)(?:\s|$|['"])/iu.test(command) ||
+    // A .pem holds whatever it was named for. cacert, ca-bundle, and fullchain
+    // are the public trust material every TLS client reads; a private key is
+    // not spelled that way. Refusing the extension outright turned
+    // `SSL_CERT_FILE=…/cacert.pem` on a test device into a denial.
+    /(?:^|[/\\\s'"=])(?!(?:ca|cacert|ca-bundle|cabundle|cert|chain|fullchain)\.pem)[\w.-]*\.pem(?:\s|$|['"])/iu.test(
       command,
     ) ||
-    /(?:\.npmrc|\.yarnrc\S*|\.pnpmrc|\.pypirc|\.netrc|\.git-credentials|\.zsh_history|\.bash_history)/iu.test(
+    /(?:\.pypirc|\.netrc|\.git-credentials|\.zsh_history|\.bash_history)/iu.test(command) ||
+    // An npm or yarn rc file exists in two places. The one in $HOME carries the
+    // auth token; the one committed in a repository carries registry and mirror
+    // settings and is read constantly. Only the first is a credential store —
+    // the workspace copy falls through to the name heuristic below.
+    /(?:~|\$HOME|\$\{HOME\}|\/Users\/[^/\s'"]+|\/home\/[^/\s'"]+)[/\\]\.(?:npmrc|yarnrc\S*|pnpmrc)/iu.test(
       command,
     )
   ) {
@@ -582,10 +666,37 @@ function evaluateCommand(command, cwd) {
     );
   }
 
-  // Stop at a backslash or pipe: in `grep -iE "http://|https://|cdn\."` those
-  // are regex syntax, and swallowing them turned a search into a bad-URL denial.
-  for (const match of command.matchAll(/https?:\/\/[^\s'"`\\|]+/giu)) {
-    const decision = evaluateUrl(match[0]);
+  // Stop at a backslash, pipe, or shell separator: in `grep -iE "http://|cdn\."`
+  // those are regex syntax, and swallowing them turned a search into a bad-URL
+  // denial.
+  for (const match of command.matchAll(/https?:\/\/[^\s'"`\\|;&<>()]+/giu)) {
+    let target = match[0];
+    let parseable = true;
+    try {
+      new URL(target);
+    } catch {
+      parseable = false;
+    }
+    // A URL-shaped token that will not parse is not yet a URL: a loop leaves a
+    // shell variable where the port goes, and a source search leaves a
+    // character class where the host goes. What this gate rules on is the host,
+    // so judge that much when it is literal and skip when even it is still a
+    // pattern — refusing `curl http://127.0.0.1:${port}` taught nobody anything.
+    if (!parseable) {
+      const scheme = target.slice(0, target.indexOf("//"));
+      const authority = target.slice(target.indexOf("//") + 2).split(/[/?#]/u)[0];
+      const host = (
+        authority.includes("@") ? authority.slice(authority.lastIndexOf("@") + 1) : authority
+      ).split(":")[0];
+      if (host === "" || /[$`[\]*+^{}]/u.test(host)) continue;
+      target = `${scheme}//${host}`;
+      try {
+        new URL(target);
+      } catch {
+        continue;
+      }
+    }
+    const decision = evaluateUrl(target);
     if (decision.decision === "deny") return decision;
   }
   if (
