@@ -33,15 +33,28 @@ A collection of AI development skills compatible with [Claude Code](https://code
 SKILL.md 只保留少量无法从代码推导的约定，因此几乎不占用上下文。
 
 **它们以 Hook 为准入前提：安装插件即自动注册 `PreToolUse` Hook，重启会话后生效。**
-Hook 在模型之外强制执行，因此模型被提示注入说服时依然拦得住；模型也不会在对话里
-重复确认 Hook 已经把关的操作。未注册 Hook 时，Skill 会先提出安装而不是继续执行受控操作。
+Hook 在模型之外执行，模型不能自行跳过；模型也不会在对话里重复确认 Hook 已经把关的操作。
+未注册 Hook 时，Skill 会先提出安装而不是继续执行受控操作。
+
+它们要拦的**只有一件事：不可恢复的伤害**——泄露隐私、删掉没有副本的东西、发布到收不回的地方。
+可以恢复的操作一律放行，因为每一次多余的打断都在消耗模型的判断力。
 
 | 门禁 | 覆盖范围 |
 |------|----------|
-| `guidelines-git` | Git 写操作、GitHub 写入、目录级 SSH 身份 |
+| `guidelines-git` | 推送与发布、丢弃未提交改动、GitHub 写入、目录级 SSH 身份 |
 | `guidelines-security-local` | `.env`、密钥、凭据存储、认证仓、环境变量转储、文件名伪装域名 |
-| `guidelines-security-npm` | 依赖图变更、一次性包运行器、未审代码执行、发布 |
-| `guidelines-security-shell` | 提权、越界删除与改权限、磁盘/设备操作、进程清扫、Shell 间接层 |
+| `guidelines-security-npm` | 会在安装时执行代码的依赖操作、一次性包运行器、发布 |
+| `guidelines-security-shell` | 提权、越界删除与**越界写入**、磁盘/设备操作、进程清扫、读不出内容的命令包装 |
+
+**明确不覆盖的范围**（写出来，好过让人以为有）：提示注入——Hook 拦得住模型自己犯的错，
+拦不住被操纵后换一条不受管辖的路；经 `ssh` / `adb shell` 发往另一台机器的命令；
+先写脚本再执行——门禁读命令不读文件；以及 `make`、`./configure`、`docker build`
+这类构建入口，它们按设计就要执行下载来的代码，拦它们等于拦掉编译本身。
+
+策略是针对**一个人的真实工作**调出来的（数千个 monorepo / 移动端 / 嵌入式会话，macOS），
+然后发布给所有人。两者冲突时以调参为准，并把差异写明而不是抹平：比如删容器在这里是放行的，
+因为那份语料里的容器全是 smoke test —— 如果你本地跑着数据库容器，这条不适合你，
+装之前请读一遍 `scripts/policy.mjs`。
 
 日常命令保持静默（`git status`、`npm test`、工作区内 `rm -rf node_modules`、`bash build.sh`、
 `diskutil list` 等均直接放行）；危险操作按 `deny` / `confirm` 分级，并附带规则 ID 与补救建议。
