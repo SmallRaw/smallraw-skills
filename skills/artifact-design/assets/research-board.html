@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Research Board</title>
-  <link rel="stylesheet" href="theme.css?v=9">
-  <script src="theme.js?v=1"></script>
+  <link rel="stylesheet" href="theme.css?v=10">
+  <script src="theme.js?v=2"></script>
   <style>
     body { background: #f7f8f7; }
     .research-masthead { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 46px; padding-bottom: 14px; border-bottom: 1px solid var(--vc-line-strong); color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .04em; text-transform: uppercase; }
@@ -40,6 +40,7 @@
     .source { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 16px; align-items: center; min-height: 76px; padding: 14px 0; border-bottom: 1px solid var(--vc-line); }
     .source strong { font-size: 15px; }
     .source .vc-meta { margin: 5px 0 0; color: var(--vc-muted); }
+    .source .vc-link { min-height: var(--vc-control-min-height); align-items: center; }
     @media (max-width: 820px) { .research-hero, .finding, .source { grid-template-columns: 1fr; } .research-hero { gap: 36px; } .research-summary { padding: 0 0 0 20px; } .finding { gap: 16px; } .finding-top { justify-content: flex-start; gap: 18px; } .source { align-items: start; padding: 18px 0; } }
     @media (max-width: 620px) { .research-facts, .limitations { grid-template-columns: 1fr; } .research-masthead span { display: none; } }
   </style>
@@ -71,7 +72,7 @@
 
     <section>
       <header class="section-head" data-reveal><div><p class="vc-kicker">Evidence matrix</p><h2 class="vc-title">Claims you can audit</h2></div><span class="vc-chip">4 sources</span></header>
-      <div class="vc-table-wrap">
+      <div class="vc-table-wrap" data-horizontal-scroll tabindex="0" role="region" aria-label="Evidence matrix, horizontally scrollable">
         <table class="vc-table">
           <thead><tr><th>Claim</th><th>Evidence</th><th>Source</th><th>Confidence</th></tr></thead>
           <tbody>
@@ -91,8 +92,8 @@
       <header class="section-head" data-reveal><div><p class="vc-kicker">Sources</p><h2 class="vc-title">Trace the trail</h2></div></header>
       <div class="sources">
         <!-- BEGIN: replace with real sources and access dates -->
-        <article class="source"><span class="vc-source-mark">S1</span><div><strong>Source title</strong><p class="vc-meta">Publisher · YYYY-MM-DD · accessed YYYY-MM-DD</p></div><a class="vc-link" href="#">Original<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a></article>
-        <article class="source"><span class="vc-source-mark">S2</span><div><strong>Source title</strong><p class="vc-meta">Publisher · YYYY-MM-DD · accessed YYYY-MM-DD</p></div><a class="vc-link" href="#">Original<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a></article>
+        <article class="source"><span class="vc-source-mark">S1</span><div><strong>Source title</strong><p class="vc-meta">Publisher · YYYY-MM-DD · accessed YYYY-MM-DD</p></div><span class="vc-link" aria-disabled="true">Add source URL<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></span></article>
+        <article class="source"><span class="vc-source-mark">S2</span><div><strong>Source title</strong><p class="vc-meta">Publisher · YYYY-MM-DD · accessed YYYY-MM-DD</p></div><span class="vc-link" aria-disabled="true">Add source URL<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></span></article>
         <!-- END -->
       </div>
     </section>

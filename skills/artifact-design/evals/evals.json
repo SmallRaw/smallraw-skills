@@ -60,6 +60,12 @@
       "prompt": "用 Artifact Design 调研并写一篇给第一次接触 AI API 的人看的文章，解释 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 的区别与意义。只用当前官方资料，不要发明结论。",
       "expected_output": "A beginner-friendly technical article routed to document-page.html from this short brief alone. It begins with a Markdown-like outline, upgrades only comparison, request shape, state continuity, and evidence relationships, keeps official citations beside claims, uses no information text below 13px, and limits long-form motion to one header entrance plus useful reading progress and scrollspy.",
       "files": []
+    },
+    {
+      "id": 11,
+      "prompt": "把这套 Starter 在 390px 窄屏下走查并修到可直接交付：按钮不能被裁掉，横向代码、截图和表格要能用键盘操作，动效文字不能只是把桌面画面缩小。顺便检查假链接、触控尺寸和状态提示是否诚实。",
+      "expected_output": "All starters remain readable and functional at 390px: controls stay inside the viewport with 44px touch targets, intentional horizontal scrollers are focusable and labeled, motion uses a readable narrow composition, placeholder destinations are visibly disabled rather than href=\"#\", and prototype messages match the actual persistence scope. Fine-pointer hover remains limited to real controls and static surfaces remain still.",
+      "files": []
     }
   ]
 }

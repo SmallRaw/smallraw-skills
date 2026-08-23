@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Interactive Prototype</title>
-  <link rel="stylesheet" href="theme.css?v=9">
-  <script src="theme.js?v=1"></script>
+  <link rel="stylesheet" href="theme.css?v=10">
+  <script src="theme.js?v=2"></script>
   <style>
     body { display: grid; min-height: 100vh; place-items: center; padding: 40px; background: #f2f4f3; }
     .prototype-wrap { display: grid; grid-template-columns: minmax(320px, 400px) minmax(320px, 460px); gap: 96px; align-items: center; }
@@ -23,6 +23,7 @@
     .prototype-card p { color: var(--vc-muted); font-size: 15px; line-height: 1.6; }
     .prototype-card .vc-button { margin-top: 4px; }
     .field { display: grid; gap: 8px; margin: 24px 0 18px; }
+    #item-form { margin: 0; }
     .field label { color: var(--vc-muted); font-family: var(--vc-sans); font-size: var(--vc-font-micro); font-weight: 680; }
     .field input { min-height: 46px; border: 1px solid var(--vc-line-strong); border-radius: 6px; background: white; padding: 10px 12px; color: var(--vc-ink); transition: border-color var(--vc-duration-micro) ease, box-shadow var(--vc-duration-micro) ease; }
     .field input:focus-visible { border-color: var(--vc-primary); outline: 0; box-shadow: 0 0 0 3px rgba(44,127,94,.14); }
@@ -67,10 +68,10 @@
       <!-- BEGIN: replace or duplicate screens; data-screen must match navigation -->
       <section class="screen active" data-screen="home">
         <p class="vc-kicker">Today</p><h1>Primary state</h1><p>Put the working product surface first. Avoid a separate title screen.</p>
-        <article class="prototype-card"><span class="vc-source-mark">Current item</span><strong id="current-item">State changes belong here</strong><p>Use real local state instead of alert dialogs.</p><button class="vc-button" type="button" data-action="complete"><svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg><span>Mark complete</span></button></article>
+        <article class="prototype-card"><span class="vc-source-mark">Current item</span><strong id="current-item">State changes belong here</strong><p>Use real in-session state instead of alert dialogs.</p><button class="vc-button" type="button" data-action="complete"><svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg><span>Mark complete</span></button></article>
         <div class="state"><span>Status</span><strong class="status-value" id="status">In progress</strong></div>
       </section>
-      <section class="screen" data-screen="create"><p class="vc-kicker">New item</p><h1>Accept input</h1><div class="field"><label for="item-name">Name</label><input id="item-name" placeholder="Type a name"></div><button class="vc-button" type="button" data-action="save"><svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 5v6h8V5M8 19v-5h8v5"/></svg>Save item</button><p id="save-message" aria-live="polite"></p></section>
+      <section class="screen" data-screen="create"><p class="vc-kicker">New item</p><h1>Accept input</h1><form id="item-form" novalidate><div class="field"><label for="item-name">Name</label><input id="item-name" placeholder="Type a name"></div><button class="vc-button" type="submit" data-action="save"><svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 5v6h8V5M8 19v-5h8v5"/></svg>Save item</button><p id="save-message" aria-live="polite"></p></form></section>
       <section class="screen" data-screen="insights"><p class="vc-kicker">Insights</p><h1>Reflect state</h1><article class="prototype-card"><span class="vc-source-mark">Completed</span><strong id="completed-count">0</strong><p>The number updates from the primary interaction.</p></article></section>
       <!-- END -->
 
@@ -81,7 +82,7 @@
       </nav>
     </section>
 
-    <aside class="prototype-notes vc-delay-1" data-reveal><div class="prototype-note-head"><strong>Prototype spec / 07</strong><span>3 screens · local state</span></div><p class="vc-kicker">Interaction notes</p><h2 class="vc-title">A complete primary path.</h2><p class="vc-body">Replace these notes with the intent, tested path, assumptions, and states that remain mocked.</p><ol class="prototype-path"><li><span>01</span>Enter and save a named item</li><li><span>02</span>Complete the current item</li><li><span>03</span>Verify the reflected insight</li></ol><div class="prototype-check"><p class="vc-label">Verify</p><p class="vc-body">Navigate all tabs, type and save an item, complete it, then confirm the insight state updates.</p></div></aside>
+    <aside class="prototype-notes vc-delay-1" data-reveal><div class="prototype-note-head"><strong>Prototype spec / 07</strong><span>3 screens · session state</span></div><p class="vc-kicker">Interaction notes</p><h2 class="vc-title">A complete primary path.</h2><p class="vc-body">Replace these notes with the intent, tested path, assumptions, and states that remain mocked.</p><ol class="prototype-path"><li><span>01</span>Enter and save a named item</li><li><span>02</span>Complete the current item</li><li><span>03</span>Verify the reflected insight</li></ol><div class="prototype-check"><p class="vc-label">Verify</p><p class="vc-body">Navigate all tabs, type and save an item, complete it, then confirm the insight state updates.</p></div></aside>
   </main>
 
   <script>
@@ -90,7 +91,7 @@
       const tabs = [...document.querySelectorAll('[data-target]')];
       const completeButton = document.querySelector('[data-action="complete"]');
       const completeLabel = completeButton.querySelector('span');
-      const saveButton = document.querySelector('[data-action="save"]');
+      const itemForm = document.getElementById('item-form');
       const saveMessage = document.getElementById('save-message');
       const itemName = document.getElementById('item-name');
       const currentItem = document.getElementById('current-item');
@@ -119,10 +120,11 @@
         completeLabel.textContent = 'Completed';
         completeButton.disabled = true;
       });
-      saveButton.addEventListener('click', () => {
+      itemForm.addEventListener('submit', (event) => {
+        event.preventDefault();
         const value = itemName.value.trim();
         const saved = Boolean(value);
-        saveMessage.textContent = saved ? `Saved “${value}” locally.` : 'Enter a name first.';
+        saveMessage.textContent = saved ? `Saved “${value}” in this prototype.` : 'Enter a name first.';
         saveMessage.classList.toggle('is-error', !saved);
         saveMessage.classList.add('is-visible');
         if (!saved) return;
@@ -131,6 +133,11 @@
         status.classList.remove('complete');
         completeLabel.textContent = 'Mark complete';
         completeButton.disabled = false;
+      });
+      itemName.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        itemForm.requestSubmit();
       });
       show('home');
     })();

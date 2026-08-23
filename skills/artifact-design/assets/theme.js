@@ -17,6 +17,18 @@
       revealNodes.forEach((node) => node.classList.add('is-visible'));
     }
 
+    document.querySelectorAll('[data-horizontal-scroll]').forEach((region) => {
+      region.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        if (region.scrollWidth <= region.clientWidth) return;
+        event.preventDefault();
+        const step = Math.max(80, region.clientWidth * 0.72);
+        if (event.key === 'Home') region.scrollLeft = 0;
+        else if (event.key === 'End') region.scrollLeft = region.scrollWidth;
+        else region.scrollLeft += event.key === 'ArrowRight' ? step : -step;
+      });
+    });
+
     const progress = document.querySelector('[data-scroll-progress]');
     const scrollspy = document.querySelector('[data-scrollspy]');
     const spyItems = scrollspy ? [...scrollspy.querySelectorAll('a[href^="#"]')]

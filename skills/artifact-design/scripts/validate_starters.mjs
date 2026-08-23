@@ -12,6 +12,7 @@ const failures = [];
 const themeVersions = new Set();
 const runtimeVersions = new Set();
 let scriptCount = 0;
+let horizontalScrollCount = 0;
 
 const findClosingBrace = (source, openingIndex) => {
   let depth = 0;
@@ -92,6 +93,13 @@ const validateCss = (source, label) => {
 
 for (const file of htmlFiles) {
   const html = fs.readFileSync(path.join(assetDir, file), 'utf8');
+  if (/\bhref\s*=\s*["']#["']/i.test(html)) failures.push(`${file}: inert href="#" placeholder found`);
+  for (const match of html.matchAll(/<([a-z][\w-]*)\b([^>]*\bdata-horizontal-scroll\b[^>]*)>/gi)) {
+    horizontalScrollCount += 1;
+    const attributes = match[2];
+    if (!/\btabindex\s*=\s*["']0["']/i.test(attributes)) failures.push(`${file}: data-horizontal-scroll must be keyboard focusable`);
+    if (!/\baria-label\s*=\s*["'][^"']+["']/i.test(attributes)) failures.push(`${file}: data-horizontal-scroll needs an accessible label`);
+  }
   const version = html.match(/theme\.css\?v=(\d+)/)?.[1];
   if (!version) failures.push(`${file}: missing versioned theme.css reference`);
   else themeVersions.add(version);
@@ -116,6 +124,7 @@ for (const file of htmlFiles) {
 
 if (themeVersions.size !== 1) failures.push(`HTML starters use inconsistent theme versions: ${[...themeVersions].join(', ')}`);
 if (runtimeVersions.size !== 1) failures.push(`HTML starters use inconsistent runtime versions: ${[...runtimeVersions].join(', ')}`);
+if (horizontalScrollCount < 3) failures.push(`bundled starters must retain three labeled keyboard-focusable horizontal scroll regions; found ${horizontalScrollCount}`);
 
 const redesignedStarters = {
   'compare-board.html': ['compare-masthead', 'notes-head'],
@@ -151,6 +160,8 @@ for (const token of ['press', 'micro', 'exit', 'state', 'enter', 'scene']) {
 for (const [token, value] of Object.entries({ micro: '13px', caption: '14px', control: '15px', body: '17px' })) {
   if (!theme.includes(`--vc-font-${token}: ${value};`)) failures.push(`theme.css: --vc-font-${token} must remain ${value}`);
 }
+if (!theme.includes('--vc-control-min-height: 44px;')) failures.push('theme.css: shared control minimum must remain 44px');
+if (!theme.includes('[data-horizontal-scroll]:focus-visible')) failures.push('theme.css: horizontal scroll regions need a visible focus style');
 if (theme.includes('.vc-table tbody tr:hover')) failures.push('theme.css: static table rows must not have hover feedback');
 if (!theme.includes('.vc-motion-ready [data-reveal]')) failures.push('theme.css: reveals must remain visible without the runtime readiness class');
 
@@ -160,7 +171,7 @@ try {
 } catch (error) {
   failures.push(`theme.js: ${error.message}`);
 }
-for (const requirement of ['IntersectionObserver', 'requestAnimationFrame', 'data-scroll-progress', 'data-scrollspy', "setAttribute('aria-current', 'location')", "classList.remove('vc-motion-ready')"]) {
+for (const requirement of ['IntersectionObserver', 'requestAnimationFrame', 'data-scroll-progress', 'data-scrollspy', 'data-horizontal-scroll', 'region.scrollLeft', "setAttribute('aria-current', 'location')", "classList.remove('vc-motion-ready')"]) {
   if (!runtime.includes(requirement)) failures.push(`theme.js: missing ${requirement}`);
 }
 if (/setTimeout|setInterval|localStorage/.test(runtime)) failures.push('theme.js: shared visual runtime must not use timers or storage');
@@ -212,14 +223,14 @@ if (!scenes.length || scenes[0].start !== 0 || scenes.at(-1).end !== duration) {
 for (let index = 1; index < scenes.length; index += 1) {
   if (scenes[index - 1].end !== scenes[index].start) failures.push(`motion-stage.html: gap or overlap before scene ${index + 1}`);
 }
-for (const requirement of ['visibilitychange', 'prefers-reduced-motion', 'aria-valuetext']) {
+for (const requirement of ['visibilitychange', 'prefers-reduced-motion', 'aria-valuetext', 'narrowLayout', 'canvas.style.width', 'canvas.style.height']) {
   if (!motion.includes(requirement)) failures.push(`motion-stage.html: missing ${requirement}`);
 }
 if (/localStorage|sessionStorage/.test(motion)) failures.push('motion-stage.html: timed playback must not write browser storage');
 if (motion.includes("style.setProperty('--line-progress'")) failures.push('motion-stage.html: set transform on the animated line, not an inherited parent variable');
 
 const deck = fs.readFileSync(path.join(assetDir, 'deck-stage.html'), 'utf8');
-for (const requirement of ['prevButton.disabled', 'nextButton.disabled', "setAttribute('aria-hidden'", 'event.target instanceof HTMLButtonElement']) {
+for (const requirement of ['prevButton.disabled', 'nextButton.disabled', "setAttribute('aria-hidden'", 'event.target instanceof HTMLButtonElement', '@media (max-width: 620px)', '.deck-label, .deck-hint { display: none; }']) {
   if (!deck.includes(requirement)) failures.push(`deck-stage.html: missing ${requirement}`);
 }
 if (/\.slide\.active\s*\{[^}]*transition\s*:/s.test(deck)) failures.push('deck-stage.html: keyboard slide navigation must remain instant');
@@ -227,11 +238,19 @@ if (/\.slide\.active\s*\{[^}]*transition\s*:/s.test(deck)) failures.push('deck-s
 const documentStarter = fs.readFileSync(path.join(assetDir, 'document-page.html'), 'utf8');
 const documentReveals = [...documentStarter.matchAll(/\bdata-reveal(?:=|\b)/g)].length;
 if (documentReveals > 1) failures.push('document-page.html: long-form reading allows only the header entrance');
+for (const requirement of ['class="code-block" data-horizontal-scroll tabindex="0"', 'class="screenshot-strip" data-horizontal-scroll tabindex="0"']) {
+  if (!documentStarter.includes(requirement)) failures.push(`document-page.html: missing reachable horizontal region ${requirement}`);
+}
+
+const research = fs.readFileSync(path.join(assetDir, 'research-board.html'), 'utf8');
+if (!research.includes('class="vc-table-wrap" data-horizontal-scroll tabindex="0"')) failures.push('research-board.html: evidence matrix must remain keyboard scrollable');
+if (!research.includes('Add source URL') || !research.includes('aria-disabled="true"')) failures.push('research-board.html: missing truthful disabled source placeholder');
 
 const prototype = fs.readFileSync(path.join(assetDir, 'prototype-shell.html'), 'utf8');
-for (const requirement of ['@starting-style', "setAttribute('aria-current'", 'completeButton.disabled = true', "classList.add('is-visible'"]) {
+for (const requirement of ['@starting-style', "setAttribute('aria-current'", 'completeButton.disabled = true', "classList.add('is-visible'", 'id="item-form"', 'type="submit"', "addEventListener('submit'", 'event.preventDefault()', 'itemForm.requestSubmit()', 'in this prototype']) {
   if (!prototype.includes(requirement)) failures.push(`prototype-shell.html: missing ${requirement}`);
 }
+if (/saved[^\n]{0,80}locally/i.test(prototype) && !/localStorage/.test(prototype)) failures.push('prototype-shell.html: persistence message is not backed by storage');
 
 for (const file of ['deck-stage.html', 'prototype-shell.html', 'motion-stage.html']) {
   const html = fs.readFileSync(path.join(assetDir, file), 'utf8');

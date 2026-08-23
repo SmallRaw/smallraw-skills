@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Technical Document</title>
-  <link rel="stylesheet" href="theme.css?v=9">
-  <script src="theme.js?v=1"></script>
+  <link rel="stylesheet" href="theme.css?v=10">
+  <script src="theme.js?v=2"></script>
   <style>
     html { scroll-behavior: smooth; }
     body { background: #f6f7f7; }
@@ -15,7 +15,7 @@
     .doc-toc-head strong { font-size: 14px; font-weight: 680; }
     .doc-toc-head span { color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .03em; text-transform: uppercase; }
     .doc-toc ul { display: grid; gap: 0; margin: 14px 0 0; padding: 0; list-style: none; }
-    .doc-toc a { display: flex; min-height: 40px; align-items: center; gap: 11px; padding: 7px 2px 7px 12px; border-left: 2px solid transparent; color: var(--vc-muted); font-size: 14px; text-decoration: none; }
+    .doc-toc a { display: flex; min-height: var(--vc-control-min-height); align-items: center; gap: 11px; padding: 7px 2px 7px 12px; border-left: 2px solid transparent; color: var(--vc-muted); font-size: 14px; text-decoration: none; }
     .doc-toc a[aria-current="location"] { border-left-color: var(--vc-primary); color: var(--vc-ink); font-weight: 680; }
     .toc-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--vc-primary); opacity: .7; transition: opacity var(--vc-duration-micro) ease, transform var(--vc-duration-micro) var(--vc-ease-out); }
     .toc-dot.issue { background: var(--vc-secondary); }
@@ -56,7 +56,7 @@
     .screenshot-strip .vc-placeholder { min-height: 300px; }
     @media (hover: hover) and (pointer: fine) { .doc-toc a:hover { color: var(--vc-ink); } .doc-toc a:hover .toc-dot { opacity: 1; transform: scale(1.28); } }
     @media (prefers-reduced-motion: reduce) { .toc-dot { transform: none !important; transition: opacity var(--vc-duration-micro) ease; } }
-    @media (max-width: 900px) { .doc-layout { grid-template-columns: 1fr; gap: 28px; } .doc-toc { position: static; padding-top: 0; } .doc-toc ul { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; } .doc-toc a { min-height: 40px; padding: 7px 8px; border-left: 0; border-bottom: 2px solid transparent; font-size: 14px; } .doc-toc a[aria-current="location"] { border-bottom-color: var(--vc-primary); } .doc-utility { margin-bottom: 48px; } }
+    @media (max-width: 900px) { .doc-layout { grid-template-columns: 1fr; gap: 28px; } .doc-toc { position: static; padding-top: 0; } .doc-toc ul { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; } .doc-toc a { padding: 7px 8px; border-left: 0; border-bottom: 2px solid transparent; font-size: 14px; } .doc-toc a[aria-current="location"] { border-bottom-color: var(--vc-primary); } .doc-utility { margin-bottom: 48px; } }
     @media (max-width: 620px) { .doc-layout { width: calc(100% - 32px); } .doc-toc ul, .compare-cards { grid-template-columns: 1fr; } .doc-utility { align-items: flex-start; flex-direction: column; gap: 8px; } .doc-section p { font-size: 17px; line-height: 1.75; } }
   </style>
 </head>
@@ -91,7 +91,7 @@
         <div class="section-marker"><p class="vc-kicker">证据 · 原始记录</p><span>01 / 04</span></div>
         <h2>把可验证的材料放在判断之前</h2>
         <p>正文保持舒展的行距。命令、字段和值使用行内代码，例如 <code>type=9</code>、<code>FLOW_END</code>，让技术信息容易扫读。</p>
-        <pre class="code-block">type=2  id=8   len=266   signature page
+        <pre class="code-block" data-horizontal-scroll tabindex="0" aria-label="日志样本，可横向滚动">type=2  id=8   len=266   signature page
 type=9  id=9   len=295   DATA_OPEN → page 1
 type=9  id=10  len=295   DATA_NEXT → page 2
 type=8  id=15            FLOW_END</pre>
@@ -118,7 +118,7 @@ type=8  id=15            FLOW_END</pre>
       <section class="doc-section" id="open">
         <div class="section-marker"><p class="vc-kicker">截图序列 · 保持顺序</p><span>04 / 04</span></div>
         <h2>连续截图使用横向带，不缩成看不清的网格</h2>
-        <div class="screenshot-strip" aria-label="连续截图">
+        <div class="screenshot-strip" data-horizontal-scroll tabindex="0" aria-label="连续截图，可横向滚动">
           <figure><div class="vc-placeholder">Screenshot 01</div><figcaption class="vc-caption">起始状态</figcaption></figure>
           <figure><div class="vc-placeholder">Screenshot 02</div><figcaption class="vc-caption">中间状态</figcaption></figure>
           <figure><div class="vc-placeholder">Screenshot 03</div><figcaption class="vc-caption">结束状态</figcaption></figure>

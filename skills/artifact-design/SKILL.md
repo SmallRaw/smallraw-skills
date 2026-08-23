@@ -23,6 +23,7 @@ Turn content into a clear visual artifact by copying the nearest starter, keepin
 10. **A redesign must change the composition.** When the user says the result is ugly, generic, or asks for a new version, do not stop at colors or timing. Change at least two of: page composition, typographic hierarchy, surface/border grammar, information density, or media treatment. Preserve the content contract and interaction truthfulness.
 11. **Keep a Markdown mental model.** Start with a linear hierarchy of headings, prose, lists, code, tables, figures, captions, and citations. Upgrade only the relationships that Markdown cannot express well: aligned comparison, chronology, branching, synchronized state, or timed explanation. The readable baseline must survive without optional JavaScript or motion.
 12. **Keep information readable.** Hierarchy comes from spacing, weight, alignment, and color—not microscopic text. Information-bearing text must use the shared typography tokens; do not set text below 13px. Prefer sans for Chinese prose and labels, reserving mono for identifiers, code, dates, and compact source markers.
+13. **Keep narrow-screen interaction reachable.** Keep every control inside the viewport, use the shared 44px minimum control height, and mark deliberate horizontal scrollers with `data-horizontal-scroll`, `tabindex="0"`, and an accessible label. Never ship `href="#"`, and never claim that state persists unless storage actually exists.
 
 ## Pick the starter
 
@@ -73,6 +74,7 @@ The starters are reliable beginnings, not mandatory genres. Preserve their stage
 13. **A token pass is not a redesign** — when the complaint is visual sameness, moving gray values or easing curves leaves the same weak composition intact.
 14. **HTML is an extension, not the subject** — do not turn a document into a mini application merely because the output is a webpage.
 15. **Low priority is not low legibility** — muted color, lighter weight, and placement may lower emphasis; 9–12px text may not.
+16. **Visible is not automatically reachable** — a clipped control, mouse-only horizontal scroller, fake `#` link, or false “saved locally” message is a functional defect even when the composition looks correct.
 
 ## Reference index
 

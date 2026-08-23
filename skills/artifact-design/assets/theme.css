@@ -21,6 +21,7 @@
   --vc-font-caption: 14px;
   --vc-font-control: 15px;
   --vc-font-body: 17px;
+  --vc-control-min-height: 44px;
   --vc-radius-sm: 8px;
   --vc-radius: 12px;
   --vc-radius-lg: 18px;
@@ -230,7 +231,7 @@ video {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 44px;
+  min-height: var(--vc-control-min-height);
   padding: 10px 16px;
   border: 1px solid var(--vc-ink);
   border-radius: var(--vc-radius-sm);
@@ -258,7 +259,8 @@ video {
 .vc-button:focus-visible,
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
+input:focus-visible,
+[data-horizontal-scroll]:focus-visible {
   outline: 3px solid rgba(44, 127, 94, 0.22);
   outline-offset: 3px;
 }
@@ -270,6 +272,12 @@ input:focus-visible {
   font-size: var(--vc-font-control);
   font-weight: 620;
   text-decoration-color: transparent;
+}
+
+.vc-link[aria-disabled="true"] {
+  color: var(--vc-muted-soft);
+  cursor: default;
+  text-decoration: none;
 }
 
 .vc-link .vc-icon {
@@ -404,11 +412,11 @@ input:focus-visible {
     background: #2c3237;
   }
 
-  .vc-link:hover {
+  .vc-link:not([aria-disabled="true"]):hover {
     text-decoration-color: currentColor;
   }
 
-  .vc-link:hover .vc-icon {
+  .vc-link:not([aria-disabled="true"]):hover .vc-icon {
     transform: translate(1px, -1px);
   }
 }

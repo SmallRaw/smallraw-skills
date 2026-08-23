@@ -15,6 +15,9 @@ Run `node scripts/validate_starters.mjs` after changing bundled assets. It check
 - Confirm icons use a consistent SVG viewBox, size, stroke width, and optical direction; do not mix emoji or text arrows with interface icons.
 - Search for unreplaced sample text, TODO markers, fake metrics, and placeholder URLs.
 - Check keyboard focus for interactive controls.
+- Keep touch targets at least 44px high and verify every control remains inside the narrow viewport.
+- Give intentional horizontal scroll regions `data-horizontal-scroll`, `tabindex="0"`, and a useful accessible label.
+- Reject `href="#"`, inert controls styled as active, and persistence claims that are not backed by storage.
 - Inventory every hover, press, focus, selected, disabled, loading, and changed state that exists in the artifact.
 - Confirm static cards, figures, table rows, evidence, and process steps do not react like controls.
 - Confirm the Markdown-like reading baseline remains visible if the optional shared runtime fails. Deck, prototype, and motion starters must expose a useful no-script state and hide controls that would otherwise be inert.
@@ -44,6 +47,7 @@ Run `node scripts/validate_starters.mjs` after changing bundled assets. It check
 - Prev/next controls, arrow keys, Home, and End work.
 - Counter and active slide stay synchronized.
 - The 1920×1080 canvas centers and scales on a narrow viewport.
+- The complete control bar remains visible and tappable at 390px wide.
 - Print preview places one slide on each page when export is required.
 
 ## Prototype
@@ -51,11 +55,13 @@ Run `node scripts/validate_starters.mjs` after changing bundled assets. It check
 - Complete the primary flow end to end.
 - Inputs, toggles, navigation, and state changes are visible.
 - Focus, empty, error, and disabled states required by the brief are reachable.
+- Form submission works from both the visible button and Enter, and state messages describe the actual persistence scope.
 
 ## Motion
 
 - Play, pause, scrub, replay, and final state work.
 - Controls remain reachable on narrow screens.
+- Narrow screens use a readable responsive composition rather than shrinking information-bearing text with the desktop canvas.
 - Text has sufficient reading time.
 - Every animation has a named purpose appropriate to the action frequency.
 - Timing uses the shared semantic tokens; no `transition: all`, `scale(0)`, ease-in, or unexplained bounce remains.

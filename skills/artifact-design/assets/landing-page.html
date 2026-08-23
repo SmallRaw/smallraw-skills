@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Editorial Landing Page</title>
-  <link rel="stylesheet" href="theme.css?v=9">
-  <script src="theme.js?v=1"></script>
+  <link rel="stylesheet" href="theme.css?v=10">
+  <script src="theme.js?v=2"></script>
   <style>
     body { background: #f7f8f7; }
     .site-nav { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--vc-line-strong); }
@@ -47,7 +47,7 @@
   <main class="vc-shell">
     <!-- BEGIN: replace brand and navigation -->
     <nav class="site-nav" aria-label="Primary">
-      <a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Product name</a>
+      <span class="brand"><span class="brand-mark" aria-hidden="true"></span>Product name</span>
       <div class="nav-links"><a href="#evidence">Evidence</a><a href="#approach">Approach</a><a class="vc-button" href="#action">Primary action<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a></div>
     </nav>
     <!-- END -->
@@ -79,7 +79,7 @@
       <article class="demo-copy vc-delay-1" data-reveal><p class="vc-kicker">Concrete demonstration</p><h2 class="vc-title">One surface can carry the story.</h2><p class="vc-body">Annotate the interface, result, or transformation. Keep evidence beside the claim it supports.</p><div class="demo-constraint"><p class="vc-label">Constraint</p><p class="vc-body">Record missing assets or unverified assumptions honestly.</p></div></article>
     </section>
 
-    <section id="action" class="cta" data-reveal><div><p class="vc-kicker">Next action</p><h2 class="vc-title">Make the next step unmistakable.</h2></div><a class="vc-button" href="#">Call to action<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></a></section>
+    <section id="action" class="cta" data-reveal><div><p class="vc-kicker">Next action</p><h2 class="vc-title">Make the next step unmistakable.</h2></div><!-- Replace with an anchor and real destination. --><span class="vc-button" aria-disabled="true">Add action URL<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></span></section>
   </main>
 </body>
 </html>
