@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Exploration Canvas</title>
+  <link rel="stylesheet" href="theme.css?v=9">
+  <script src="theme.js?v=1"></script>
+  <style>
+    body { background: #f7f8f7; }
+    .canvas-shell { width: min(1440px, calc(100% - 64px)); margin-inline: auto; padding: 32px 0 112px; }
+    .canvas-head { display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(260px, 340px); gap: 32px; align-items: end; padding: 20px 0 48px; border-bottom: 1px solid var(--vc-line-strong); }
+    .canvas-id { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; }
+    .canvas-id strong { font-family: var(--vc-mono); font-size: 38px; font-weight: 500; letter-spacing: -.08em; line-height: 1; }
+    .canvas-id span { color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .04em; text-transform: uppercase; }
+    .canvas-head h1 { max-width: 860px; margin: 10px 0 0; font-family: var(--vc-display); font-size: clamp(42px, 5.2vw, 74px); font-weight: 720; letter-spacing: -.065em; line-height: .98; text-wrap: balance; }
+    .canvas-intro { max-width: 340px; margin: 0; color: var(--vc-muted); font-size: 15px; line-height: 1.72; }
+    .canvas-brief { display: grid; grid-template-columns: 112px repeat(3, minmax(0, 1fr)); gap: 32px; padding: 18px 0; border-bottom: 1px solid var(--vc-line); }
+    .brief-title, .brief-item span { color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .04em; text-transform: uppercase; }
+    .brief-item { display: grid; gap: 5px; }
+    .brief-item strong { font-size: 15px; font-weight: 620; }
+    .canvas-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; row-gap: 64px; margin-top: 48px; }
+    .canvas-cell { min-width: 0; }
+    .cell-label { display: flex; min-height: 68px; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 0 0 14px; }
+    .cell-heading { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; }
+    .cell-label h2 { margin: 0; font-size: 17px; font-weight: 680; letter-spacing: -.02em; }
+    .cell-label p { margin: 4px 0 0; color: var(--vc-muted); font-size: 14px; line-height: 1.5; }
+    .cell-index, .cell-state { color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .04em; text-transform: uppercase; }
+    .cell-state { padding-top: 2px; }
+    .frame { position: relative; aspect-ratio: 16 / 10; overflow: hidden; padding: clamp(24px, 3vw, 42px); border: 1px solid var(--vc-line-strong); border-radius: 6px; }
+    .frame h3 { position: relative; z-index: 1; max-width: 9ch; margin: 24px 0 0; font-family: var(--vc-display); font-size: clamp(38px, 4.2vw, 66px); font-weight: 700; letter-spacing: -.065em; line-height: .92; }
+    .frame-a { background: #fbfcfa; }
+    .frame-a::before { content: "01"; position: absolute; right: 32px; bottom: 20px; color: #e3e9e5; font-family: var(--vc-mono); font-size: clamp(100px, 13vw, 190px); font-weight: 600; letter-spacing: -.1em; line-height: .78; }
+    .frame-a::after { content: ""; position: absolute; top: 0; right: 26%; width: 1px; height: 100%; background: var(--vc-primary); opacity: .75; }
+    .frame-b { background: #1f2422; color: #f4f6f3; }
+    .frame-b .vc-label { color: #aab4ae; }
+    .frame-b::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px); background-size: 42px 42px; mask-image: linear-gradient(to left, black, transparent 72%); }
+    .frame-b::after { content: ""; position: absolute; right: 12%; bottom: 15%; width: 18%; aspect-ratio: 1; border-radius: 50%; background: var(--vc-primary); }
+    .wireframe { display: grid; grid-template-rows: 20px 1fr; gap: 20px; background: #fafbfa; color: var(--vc-ink); }
+    .wire-toolbar { display: flex; gap: 6px; align-items: center; }
+    .wire-toolbar span { width: 6px; height: 6px; border: 1px solid var(--vc-line-strong); border-radius: 50%; }
+    .wire-layout { display: grid; grid-template-columns: 28% 1fr; gap: 12px; }
+    .wire-side, .wire-main { border: 1px solid var(--vc-line-strong); border-radius: 5px; }
+    .wire-side { display: grid; align-content: start; gap: 11px; padding: 14px; }
+    .wire-side span { display: block; height: 7px; border-radius: 99px; background: var(--vc-line); }
+    .wire-side span:nth-child(2) { width: 70%; }
+    .wire-side span:nth-child(3) { width: 84%; }
+    .wire-main { display: grid; grid-template-rows: 44% 1fr; gap: 12px; padding: 14px; }
+    .wire-hero { border: 1px dashed var(--vc-line-strong); border-radius: 4px; background: white; }
+    .wire-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .wire-cards span { border: 1px solid var(--vc-line); border-radius: 4px; background: white; }
+    .poster { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr auto; background: var(--vc-primary-soft); color: var(--vc-ink); }
+    .poster::before { content: ""; position: absolute; top: 0; right: 0; left: 0; height: 6px; background: var(--vc-secondary); }
+    .poster .index { grid-column: 2; color: var(--vc-secondary); font-family: var(--vc-mono); font-size: var(--vc-font-micro); font-weight: 700; }
+    .poster h3 { grid-row: 2; align-self: end; max-width: 7ch; margin: 0 0 22px; font-size: clamp(46px, 5vw, 78px); }
+    .poster .vc-label { grid-row: 3; }
+    @media (max-width: 900px) { .canvas-head { grid-template-columns: 72px 1fr; } .canvas-intro { grid-column: 2; } .canvas-brief { grid-template-columns: 72px 1fr; } .brief-item { grid-column: 2; } }
+    @media (max-width: 720px) { .canvas-shell { width: calc(100% - 32px); padding-top: 12px; } .canvas-head { grid-template-columns: 1fr; gap: 24px; padding-bottom: 32px; } .canvas-id { min-height: 54px; flex-direction: row; align-items: end; } .canvas-intro { grid-column: 1; } .canvas-brief { grid-template-columns: 1fr; gap: 14px; } .brief-item { grid-column: 1; } .canvas-grid { grid-template-columns: 1fr; row-gap: 44px; margin-top: 36px; } .cell-state { display: none; } }
+  </style>
+</head>
+<body>
+  <main class="canvas-shell">
+    <!-- BEGIN: replace exploration brief -->
+    <header class="canvas-head" data-reveal>
+      <div class="canvas-id"><strong>VC</strong><span>Set 01 / 04</span></div>
+      <div><p class="vc-kicker">Visual exploration board</p><h1>Four directions.<br>One clear decision.</h1></div>
+      <p class="canvas-intro">Compare structure before decoration. Every frame uses the same stage, the same amount of content, and one named design premise.</p>
+    </header>
+    <!-- END -->
+
+    <section class="canvas-brief" aria-label="Exploration constraints" data-reveal="fade">
+      <span class="brief-title">Frame rules</span>
+      <div class="brief-item"><span>Constant</span><strong>Same viewport and content</strong></div>
+      <div class="brief-item"><span>Variable</span><strong>Hierarchy, density, contrast</strong></div>
+      <div class="brief-item"><span>Decision</span><strong>Select one system to develop</strong></div>
+    </section>
+
+    <section class="canvas-grid" aria-label="Visual directions">
+      <!-- BEGIN: duplicate or replace cells -->
+      <article class="canvas-cell">
+        <header class="cell-label"><div class="cell-heading"><span class="cell-index">01</span><div><h2>Editorial signal</h2><p>Scale, rhythm, one controlled accent</p></div></div><span class="cell-state">Type-led</span></header>
+        <div class="frame frame-a"><span class="vc-label">Premise / editorial</span><h3>One idea, precisely framed.</h3></div>
+      </article>
+      <article class="canvas-cell">
+        <header class="cell-label"><div class="cell-heading"><span class="cell-index">02</span><div><h2>Dark field</h2><p>Contrast, geometry, quiet depth</p></div></div><span class="cell-state">System-led</span></header>
+        <div class="frame frame-b"><span class="vc-label">Premise / contrast</span><h3>Make structure visible.</h3></div>
+      </article>
+      <article class="canvas-cell">
+        <header class="cell-label"><div class="cell-heading"><span class="cell-index">03</span><div><h2>Wireframe system</h2><p>Hierarchy and flow before polish</p></div></div><span class="cell-state">Flow-led</span></header>
+        <div class="frame wireframe"><div class="wire-toolbar" aria-hidden="true"><span></span><span></span><span></span></div><div class="wire-layout" aria-label="Navigation and primary state wireframe"><div class="wire-side"><span></span><span></span><span></span></div><div class="wire-main"><div class="wire-hero"></div><div class="wire-cards"><span></span><span></span></div></div></div></div>
+      </article>
+      <article class="canvas-cell">
+        <header class="cell-label"><div class="cell-heading"><span class="cell-index">04</span><div><h2>Poster composition</h2><p>Typography, sequence, fixed frame</p></div></div><span class="cell-state">Message-led</span></header>
+        <div class="frame poster"><span class="index">04 / 04</span><h3>A clear conclusion.</h3><span class="vc-label">Date · place · source</span></div>
+      </article>
+      <!-- END -->
+    </section>
+  </main>
+</body>
+</html>

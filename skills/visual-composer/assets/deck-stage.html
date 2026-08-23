@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Composer Deck</title>
+  <link rel="stylesheet" href="theme.css?v=9">
+  <script src="theme.js?v=1"></script>
+  <style>
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #191d1b; }
+    .stage { position: fixed; inset: 0 0 72px; overflow: hidden; }
+    .canvas { position: absolute; top: 50%; left: 50%; width: 1920px; height: 1080px; transform-origin: center; background: #f7f8f7; box-shadow: 0 36px 96px rgba(0,0,0,.28); }
+    .slide { position: absolute; inset: 0; display: none; overflow: hidden; padding: 100px 112px 86px; background: #f7f8f7; color: var(--vc-ink); }
+    .slide.active { display: block; }
+    .slide-meta { position: absolute; top: 42px; right: 112px; left: 112px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--vc-line-strong); color: var(--vc-muted); font-family: var(--vc-mono); font-size: 20px; letter-spacing: .05em; text-transform: uppercase; }
+    .slide-meta strong { color: var(--vc-ink); font-size: 22px; }
+    .slide-number { position: absolute; right: 82px; bottom: 54px; color: var(--vc-muted); font-family: var(--vc-mono); font-size: 22px; letter-spacing: .06em; }
+    .slide-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 96px; height: 100%; align-items: end; }
+    .slide h1, .slide h2 { margin: 0; font-family: var(--vc-display); font-weight: 720; letter-spacing: -.06em; line-height: .95; text-wrap: balance; }
+    .slide h1 { max-width: 12ch; font-size: 122px; }
+    .slide h2 { max-width: 13ch; font-size: 88px; }
+    .slide p { max-width: 1060px; font-size: 31px; letter-spacing: -.02em; line-height: 1.45; }
+    .slide .eyebrow { margin-bottom: 28px; color: var(--vc-primary); font-family: var(--vc-mono); font-size: 20px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    .slide-accent { background: #1f2925; color: #f5f7f5; }
+    .slide-accent .slide-meta { border-bottom-color: rgba(255,255,255,.22); color: #9eb0a7; }
+    .slide-accent .slide-meta strong { color: #f5f7f5; }
+    .slide-accent .eyebrow { color: #7ed0aa; }
+    .slide-accent .slide-number { color: #9eb0a7; }
+    .section-slide { display: flex; height: 100%; align-items: flex-end; padding-bottom: 72px; }
+    .metric { padding-top: 28px; border-top: 2px solid var(--vc-primary); }
+    .metric strong { display: block; font-size: 126px; font-weight: 720; letter-spacing: -.085em; line-height: .82; }
+    .metric p { color: var(--vc-muted); font-size: 26px; }
+    .deck-controls { position: fixed; right: 0; bottom: 0; left: 0; z-index: 10; display: grid; grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr); height: 72px; align-items: center; gap: 22px; padding: 0 24px; border-top: 1px solid rgba(255,255,255,.12); color: white; }
+    .deck-nav { display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .deck-label, .deck-hint { color: rgba(255,255,255,.68); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .04em; text-transform: uppercase; }
+    .deck-hint { text-align: right; }
+    .deck-controls button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 7px; padding: 9px 13px; border: 1px solid rgba(255,255,255,.24); border-radius: 7px; background: transparent; color: white; cursor: pointer; font-size: 14px; transition: transform var(--vc-duration-press) var(--vc-ease-out), background-color var(--vc-duration-micro) ease, border-color var(--vc-duration-micro) ease; }
+    .deck-controls button:not(:disabled):active { transform: scale(var(--vc-press-scale)); }
+    .deck-controls button:disabled { cursor: default; opacity: .36; }
+    .deck-controls .vc-icon { width: 17px; height: 17px; }
+    .counter { min-width: 72px; color: rgba(255,255,255,.82); font-family: var(--vc-mono); font-size: var(--vc-font-micro); text-align: center; }
+    @media (hover: hover) and (pointer: fine) { .deck-controls button:not(:disabled):hover { border-color: rgba(255,255,255,.36); background: rgba(255,255,255,.1); } }
+    @media (prefers-reduced-motion: reduce) { .deck-controls button:not(:disabled):active { transform: none; } }
+    @media print {
+      @page { size: 1920px 1080px; margin: 0; }
+      html, body { width: auto; height: auto; overflow: visible; background: white; }
+      .stage { position: static; overflow: visible; }
+      .canvas { position: static; width: auto; height: auto; transform: none !important; box-shadow: none; }
+      .slide { position: relative; display: block !important; width: 1920px; height: 1080px; break-after: page; page-break-after: always; }
+      .deck-controls { display: none; }
+    }
+  </style>
+  <noscript><style>
+    .stage { inset: 0; }
+    .canvas { top: 0; left: 0; width: 100%; height: 100%; transform: none; box-shadow: none; }
+    .slide { position: relative; width: 100%; height: 100%; padding: 120px 8vw 64px; opacity: 1; }
+    .slide-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+    .slide h1 { font-size: clamp(56px, 10vw, 118px); }
+    .metric { max-width: 360px; }
+    .metric strong { font-size: clamp(72px, 12vw, 120px); }
+    .deck-controls { display: none; }
+  </style></noscript>
+</head>
+<body>
+  <main class="stage">
+    <div class="canvas" id="canvas">
+      <!-- BEGIN: duplicate slides; keep labels 1-indexed -->
+      <section class="slide active" data-screen-label="01 Title">
+        <div class="slide-meta"><strong>Visual composer</strong><span>Deck system / 01</span></div>
+        <div class="slide-grid"><div><p class="eyebrow">Presentation · 2026</p><h1>A deck with one argument.</h1><p>Replace this sample with the real premise, audience, and author.</p></div><aside class="metric"><strong>01</strong><p>One primary point per slide.</p></aside></div>
+        <span class="slide-number">01</span>
+      </section>
+      <section class="slide slide-accent" data-screen-label="02 Turning point">
+        <div class="slide-meta"><strong>Visual composer</strong><span>Section reset / 02</span></div>
+        <div class="section-slide"><div><p class="eyebrow">Section I · the change</p><h2>Use section slides to reset attention.</h2></div></div><span class="slide-number">02</span>
+      </section>
+      <section class="slide" data-screen-label="03 Evidence">
+        <div class="slide-meta"><strong>Visual composer</strong><span>Evidence / 03</span></div>
+        <div class="slide-grid"><div><p class="eyebrow">Evidence · S1</p><h2>Put proof beside the claim.</h2><p>Use a real figure, screenshot, quotation, or sourced metric. Split the slide rather than shrinking text.</p></div><figure class="vc-figure"><div class="vc-placeholder" style="min-height: 620px;">Replace with evidence</div><figcaption class="vc-caption"><span>Figure caption</span><span class="vc-source-mark">S1</span></figcaption></figure></div>
+        <span class="slide-number">03</span>
+      </section>
+      <!-- END -->
+    </div>
+  </main>
+
+  <nav class="deck-controls" aria-label="Slide controls">
+    <span class="deck-label">Visual composer / deck</span>
+    <div class="deck-nav"><button id="prev" type="button" aria-label="Previous slide"><svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span>Previous</span></button><span class="counter" id="counter">1 / 3</span><button id="next" type="button" aria-label="Next slide"><span>Next</span><svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></div>
+    <span class="deck-hint">← → / Space</span>
+  </nav>
+
+  <script>
+    (() => {
+      const stage = document.querySelector('.stage');
+      const canvas = document.getElementById('canvas');
+      const slides = [...document.querySelectorAll('.slide')];
+      const counter = document.getElementById('counter');
+      const prevButton = document.getElementById('prev');
+      const nextButton = document.getElementById('next');
+      const key = `visual-composer:deck:${location.pathname}`;
+      const restoreIndex = () => {
+        try { return Number(localStorage.getItem(key)) || 0; }
+        catch { return 0; }
+      };
+      const persistIndex = () => {
+        try { localStorage.setItem(key, String(index)); }
+        catch { /* Navigation still works when storage is unavailable. */ }
+      };
+      let index = restoreIndex();
+      if (index < 0 || index >= slides.length) index = 0;
+
+      const fit = () => {
+        const scale = Math.min(stage.clientWidth / 1920, stage.clientHeight / 1080);
+        canvas.style.transform = `translate(-50%, -50%) scale(${scale})`;
+      };
+      const show = (next) => {
+        index = Math.max(0, Math.min(slides.length - 1, next));
+        slides.forEach((slide, i) => {
+          const active = i === index;
+          slide.classList.toggle('active', active);
+          slide.setAttribute('aria-hidden', String(!active));
+        });
+        counter.textContent = `${index + 1} / ${slides.length}`;
+        prevButton.disabled = index === 0;
+        nextButton.disabled = index === slides.length - 1;
+        persistIndex();
+        window.parent.postMessage({ slideIndexChanged: index }, '*');
+      };
+      prevButton.addEventListener('click', () => show(index - 1));
+      nextButton.addEventListener('click', () => show(index + 1));
+      document.addEventListener('keydown', (event) => {
+        if (event.key === ' ' && event.target instanceof HTMLButtonElement) return;
+        if (event.key === 'ArrowLeft' || event.key === 'PageUp') show(index - 1);
+        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') show(index + 1);
+        if (event.key === 'Home') show(0);
+        if (event.key === 'End') show(slides.length - 1);
+      });
+      window.addEventListener('resize', fit);
+      fit();
+      show(index);
+    })();
+  </script>
+</body>
+</html>

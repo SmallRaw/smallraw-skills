@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timeline and Flow</title>
+  <link rel="stylesheet" href="theme.css?v=9">
+  <script src="theme.js?v=1"></script>
+  <style>
+    body { background: #f7f8f7; }
+    .record-masthead { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 14px; border-bottom: 1px solid var(--vc-line-strong); color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .04em; text-transform: uppercase; }
+    .record-masthead strong { color: var(--vc-ink); font-size: var(--vc-font-caption); font-weight: 680; }
+    .page-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 80px; align-items: end; padding: 54px 0 58px; border-bottom: 1px solid var(--vc-line); }
+    .page-head .vc-display { max-width: 12ch; font-size: clamp(46px, 6vw, 84px); }
+    .page-head .vc-subtitle { margin: 0; font-size: 17px; }
+    .timeline-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-top: 72px; padding-bottom: 16px; }
+    .timeline { display: grid; margin: 0 0 96px; border-top: 1px solid var(--vc-line-strong); }
+    .event { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 28px; min-height: 142px; padding: 26px 0; border-bottom: 1px solid var(--vc-line); }
+    .event time { padding-top: 2px; color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); font-weight: 650; }
+    .event-body { position: relative; padding-left: 30px; }
+    .event-body::before { content: ""; position: absolute; top: 6px; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--vc-primary); }
+    .event.turning .event-body::before { background: var(--vc-secondary); box-shadow: 0 0 0 5px var(--vc-secondary-soft); }
+    .event.turning .vc-source-mark { color: var(--vc-secondary); }
+    .event h2 { margin: 8px 0 8px; font-size: 26px; font-weight: 700; letter-spacing: -.04em; line-height: 1.15; }
+    .event .vc-body { max-width: 720px; margin: 0; color: var(--vc-muted); }
+    .flow-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding-bottom: 18px; }
+    .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 0; border-top: 1px solid var(--vc-line-strong); border-bottom: 1px solid var(--vc-line-strong); }
+    .step { display: flex; min-height: 224px; flex-direction: column; padding: 24px; border-right: 1px solid var(--vc-line); }
+    .step:last-child { border-right: 0; }
+    .step strong { display: block; margin: 48px 0 12px; font-size: 21px; font-weight: 690; letter-spacing: -.035em; line-height: 1.18; }
+    .step .vc-body { margin: auto 0 0; color: var(--vc-muted); font-size: 15px; }
+    @media (max-width: 900px) { .page-head, .flow { grid-template-columns: 1fr; } .page-head { gap: 32px; } .step { min-height: 154px; border-right: 0; border-bottom: 1px solid var(--vc-line); } .step:last-child { border-bottom: 0; } }
+    @media (max-width: 620px) { .record-masthead span { display: none; } .event { grid-template-columns: 1fr; gap: 10px; } .event-body { padding-left: 24px; } }
+  </style>
+</head>
+<body>
+  <main class="vc-shell">
+    <div class="record-masthead" data-reveal="fade"><strong>Incident record / 03</strong><span>Observed history · future procedure · sources local</span></div>
+    <header class="page-head" data-reveal><div><p class="vc-kicker">Event record + operating flow</p><h1 class="vc-display">What happened. What changes next.</h1></div><p class="vc-subtitle">Keep historical evidence separate from the future procedure so description does not masquerade as prevention.</p></header>
+
+    <!-- BEGIN: historical events -->
+    <section aria-labelledby="history-title">
+      <header class="timeline-head" data-reveal><div><p class="vc-kicker">Part I · observed history</p><h2 id="history-title" class="vc-title">The event line</h2></div><span class="vc-chip">3 events</span></header>
+      <div class="timeline">
+        <article class="event" data-reveal><time>09:42</time><div class="event-body"><span class="vc-source-mark">Observed · S1</span><h2>First detectable signal</h2><p class="vc-body">What changed, who observed it, and why it mattered.</p></div></article>
+        <article class="event turning vc-delay-1" data-reveal><time>10:08</time><div class="event-body"><span class="vc-source-mark">Turning point · S2</span><h2>The decision that changed the path</h2><p class="vc-body">State the decision and its observable consequence. Label uncertain causality as interpretation.</p></div></article>
+        <article class="event vc-delay-2" data-reveal><time>11:26</time><div class="event-body"><span class="vc-source-mark">Outcome · S3</span><h2>Stable state restored</h2><p class="vc-body">Describe the resulting state, not merely the action taken.</p></div></article>
+      </div>
+    </section>
+    <!-- END -->
+
+    <!-- BEGIN: future process; add decisions/owners as needed -->
+    <section aria-labelledby="flow-title">
+      <header class="flow-head" data-reveal><div><p class="vc-kicker">Part II · future procedure</p><h2 id="flow-title" class="vc-title">The response path</h2></div><span class="vc-chip">4 steps</span></header>
+      <div class="flow">
+        <article class="step" data-reveal><span class="vc-source-mark">01 · detect</span><strong>Confirm the signal</strong><p class="vc-body">Owner · input · exit condition</p></article>
+        <article class="step vc-delay-1" data-reveal><span class="vc-source-mark">02 · decide</span><strong>Classify impact</strong><p class="vc-body">Branch criteria · decision record</p></article>
+        <article class="step vc-delay-2" data-reveal><span class="vc-source-mark">03 · act</span><strong>Contain safely</strong><p class="vc-body">Before state · action · after state</p></article>
+        <article class="step vc-delay-3" data-reveal><span class="vc-source-mark">04 · verify</span><strong>Prove recovery</strong><p class="vc-body">Observable check · follow-up owner</p></article>
+      </div>
+    </section>
+    <!-- END -->
+  </main>
+</body>
+</html>

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Technical Document</title>
+  <link rel="stylesheet" href="theme.css?v=9">
+  <script src="theme.js?v=1"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { background: #f6f7f7; }
+    .doc-layout { display: grid; grid-template-columns: 176px minmax(0, 880px); gap: 72px; width: min(1180px, calc(100% - 64px)); margin: 0 auto; padding: 24px 0 112px; }
+    .doc-toc { position: sticky; top: 24px; align-self: start; padding-top: 12px; }
+    .doc-toc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 0 18px; border-bottom: 1px solid var(--vc-line-strong); }
+    .doc-toc-head strong { font-size: 14px; font-weight: 680; }
+    .doc-toc-head span { color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .03em; text-transform: uppercase; }
+    .doc-toc ul { display: grid; gap: 0; margin: 14px 0 0; padding: 0; list-style: none; }
+    .doc-toc a { display: flex; min-height: 40px; align-items: center; gap: 11px; padding: 7px 2px 7px 12px; border-left: 2px solid transparent; color: var(--vc-muted); font-size: 14px; text-decoration: none; }
+    .doc-toc a[aria-current="location"] { border-left-color: var(--vc-primary); color: var(--vc-ink); font-weight: 680; }
+    .toc-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--vc-primary); opacity: .7; transition: opacity var(--vc-duration-micro) ease, transform var(--vc-duration-micro) var(--vc-ease-out); }
+    .toc-dot.issue { background: var(--vc-secondary); }
+    .toc-dot.open { background: #8b792d; }
+    .doc-toc a[aria-current="location"] .toc-dot { opacity: 1; transform: scale(1.22); }
+    .doc-main { min-width: 0; }
+    .doc-header { padding: 12px 0 48px; border-top: 1px solid var(--vc-line-strong); border-bottom: 1px solid var(--vc-line); }
+    .doc-utility { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 14px 0 72px; color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); font-weight: 600; letter-spacing: .03em; line-height: 1.5; text-transform: uppercase; }
+    .doc-state { display: inline-flex; align-items: center; gap: 7px; color: var(--vc-primary-strong); }
+    .doc-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--vc-primary); }
+    .doc-header h1 { max-width: 760px; margin: 12px 0 0; font-size: clamp(36px, 4.4vw, 50px); font-weight: 750; letter-spacing: -.055em; line-height: 1.06; text-wrap: balance; }
+    .doc-lead { max-width: 760px; margin: 22px 0 0; color: var(--vc-muted); font-size: 18px; line-height: 1.75; }
+    .doc-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 28px; color: var(--vc-muted); font-family: var(--vc-sans); font-size: var(--vc-font-caption); font-weight: 560; line-height: 1.55; }
+    .doc-section { padding: 58px 0 0; scroll-margin-top: 24px; }
+    .doc-section + .doc-section { margin-top: 58px; border-top: 1px solid var(--vc-line); }
+    .section-marker { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+    .section-marker p { margin: 0; }
+    .section-marker span { color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .03em; }
+    .doc-section h2 { max-width: 760px; margin: 0 0 24px; font-size: clamp(28px, 3vw, 34px); font-weight: 740; letter-spacing: -.045em; line-height: 1.18; text-wrap: balance; }
+    .doc-section h3 { margin: 36px 0 14px; font-size: 19px; font-weight: 710; letter-spacing: -.025em; }
+    .doc-section > p { max-width: 800px; margin: 0 0 18px; font-size: 17px; line-height: 1.82; }
+    code { padding: 2px 5px; border-radius: 4px; background: #ecefef; color: #394047; font-family: var(--vc-mono); font-size: .88em; }
+    .code-block { overflow-x: auto; margin: 22px 0; padding: 24px 26px; border: 1px solid var(--vc-line); border-radius: 10px; background: white; color: #30363c; font-family: var(--vc-mono); font-size: 13px; line-height: 1.8; white-space: pre; }
+    .doc-status { display: flex; min-height: 38px; align-items: center; margin: 0 0 22px; padding: 8px 13px; border-radius: 999px; background: var(--vc-secondary-soft); color: var(--vc-secondary); font-family: var(--vc-sans); font-size: var(--vc-font-caption); font-weight: 600; }
+    .doc-caption { margin: 0; color: var(--vc-muted); font-family: var(--vc-sans); font-size: var(--vc-font-caption); }
+    .compare-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 28px 0 12px; }
+    .compare-card { padding: 20px; border: 1px solid var(--vc-line); border-radius: 10px; background: white; }
+    .compare-card.before { border-color: #d97865; }
+    .compare-card.after { border-color: #4b9b79; }
+    .compare-card .vc-label { color: var(--vc-muted); }
+    .compare-card.before .vc-label { color: var(--vc-secondary); }
+    .compare-card.after .vc-label { color: var(--vc-primary); }
+    .compare-card h3 { margin: 10px 0 8px; }
+    .compare-card p { margin: 0; color: var(--vc-muted); font-size: 14px; line-height: 1.6; }
+    .compare-media { min-height: 180px; margin-top: 16px; border: 1px solid var(--vc-line); border-radius: 6px; }
+    .screenshot-strip { display: grid; grid-auto-columns: minmax(220px, 1fr); grid-auto-flow: column; gap: 12px; overflow-x: auto; padding: 6px 0 12px; scroll-snap-type: x mandatory; }
+    .screenshot-strip figure { min-width: 220px; overflow: hidden; border: 1px solid var(--vc-line); border-radius: 8px; background: white; scroll-snap-align: start; }
+    .screenshot-strip .vc-placeholder { min-height: 300px; }
+    @media (hover: hover) and (pointer: fine) { .doc-toc a:hover { color: var(--vc-ink); } .doc-toc a:hover .toc-dot { opacity: 1; transform: scale(1.28); } }
+    @media (prefers-reduced-motion: reduce) { .toc-dot { transform: none !important; transition: opacity var(--vc-duration-micro) ease; } }
+    @media (max-width: 900px) { .doc-layout { grid-template-columns: 1fr; gap: 28px; } .doc-toc { position: static; padding-top: 0; } .doc-toc ul { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; } .doc-toc a { min-height: 40px; padding: 7px 8px; border-left: 0; border-bottom: 2px solid transparent; font-size: 14px; } .doc-toc a[aria-current="location"] { border-bottom-color: var(--vc-primary); } .doc-utility { margin-bottom: 48px; } }
+    @media (max-width: 620px) { .doc-layout { width: calc(100% - 32px); } .doc-toc ul, .compare-cards { grid-template-columns: 1fr; } .doc-utility { align-items: flex-start; flex-direction: column; gap: 8px; } .doc-section p { font-size: 17px; line-height: 1.75; } }
+  </style>
+</head>
+<body>
+  <div class="vc-scroll-progress" data-scroll-progress aria-hidden="true"></div>
+  <div class="doc-layout">
+    <!-- BEGIN: keep this navigation synchronized with section ids -->
+    <nav class="doc-toc" data-scrollspy aria-label="文档目录">
+      <div class="doc-toc-head"><strong>目录</strong><span>05 sections</span></div>
+      <ul>
+        <li><a href="#summary"><span class="toc-dot"></span>摘要</a></li>
+        <li><a href="#evidence"><span class="toc-dot"></span>证据</a></li>
+        <li><a href="#issue"><span class="toc-dot issue"></span>缺陷</a></li>
+        <li><a href="#comparison"><span class="toc-dot"></span>对照</a></li>
+        <li><a href="#open"><span class="toc-dot open"></span>待确认</a></li>
+      </ul>
+    </nav>
+    <!-- END -->
+
+    <main class="doc-main">
+      <!-- BEGIN: replace title, summary, and metadata -->
+      <header class="doc-header" id="summary" data-reveal>
+        <div class="doc-utility"><span>Engineering note / 06</span><span class="doc-state">Reviewed</span></div>
+        <p class="vc-kicker">复盘记录 · 可复核证据</p>
+        <h1>一次可复现、可追溯的技术记录</h1>
+        <p class="doc-lead">先交代结论与边界，再展示日志、事件顺序和对照证据。让读者沿着材料自行复核，而不是依赖作者的语气。</p>
+        <div class="doc-meta"><span>状态 · 已复核</span><span>范围 · 样本数据</span><span>更新 · YYYY-MM-DD</span></div>
+      </header>
+      <!-- END -->
+
+      <section class="doc-section" id="evidence">
+        <div class="section-marker"><p class="vc-kicker">证据 · 原始记录</p><span>01 / 04</span></div>
+        <h2>把可验证的材料放在判断之前</h2>
+        <p>正文保持舒展的行距。命令、字段和值使用行内代码，例如 <code>type=9</code>、<code>FLOW_END</code>，让技术信息容易扫读。</p>
+        <pre class="code-block">type=2  id=8   len=266   signature page
+type=9  id=9   len=295   DATA_OPEN → page 1
+type=9  id=10  len=295   DATA_NEXT → page 2
+type=8  id=15            FLOW_END</pre>
+        <p>在代码块后面解释读者应该看到什么。不要让截图、日志或图表脱离论点独自存在。</p>
+      </section>
+
+      <section class="doc-section" id="issue">
+        <div class="doc-status">已修复 · 保留问题发生时的证据</div>
+        <div class="section-marker"><p class="doc-caption">缺陷 · 实机才暴露</p><span>02 / 04</span></div>
+        <h2>标题直接描述可观察的问题</h2>
+        <p>先说明现象，再说明根因与修复。需要强调时使用粗体；不要依赖大面积颜色、图标或装饰性卡片制造层级。</p>
+        <p>如果结论仍有推断成分，应明确标注假设、样本限制和下一步验证方式。</p>
+      </section>
+
+      <section class="doc-section" id="comparison">
+        <div class="section-marker"><p class="vc-kicker">对照 · 相同状态</p><span>03 / 04</span></div>
+        <h2>前后材料必须在同一尺度上比较</h2>
+        <div class="compare-cards">
+          <article class="compare-card before"><span class="vc-label">修复前</span><h3>非末页，尾部被裁切</h3><p>描述缺失内容以及用户无法完成的动作。</p><div class="compare-media vc-placeholder">Replace with before screenshot</div></article>
+          <article class="compare-card after"><span class="vc-label">修复后</span><h3>同一页，尾部完整</h3><p>说明修复后的可观察结果和验证条件。</p><div class="compare-media vc-placeholder">Replace with after screenshot</div></article>
+        </div>
+      </section>
+
+      <section class="doc-section" id="open">
+        <div class="section-marker"><p class="vc-kicker">截图序列 · 保持顺序</p><span>04 / 04</span></div>
+        <h2>连续截图使用横向带，不缩成看不清的网格</h2>
+        <div class="screenshot-strip" aria-label="连续截图">
+          <figure><div class="vc-placeholder">Screenshot 01</div><figcaption class="vc-caption">起始状态</figcaption></figure>
+          <figure><div class="vc-placeholder">Screenshot 02</div><figcaption class="vc-caption">中间状态</figcaption></figure>
+          <figure><div class="vc-placeholder">Screenshot 03</div><figcaption class="vc-caption">结束状态</figcaption></figure>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

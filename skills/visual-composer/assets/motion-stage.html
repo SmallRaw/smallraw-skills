@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Motion Stage</title>
+  <link rel="stylesheet" href="theme.css?v=9">
+  <script src="theme.js?v=1"></script>
+  <style>
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #191d1b; }
+    .motion-stage { position: fixed; inset: 0 0 74px; overflow: hidden; }
+    .motion-canvas { position: absolute; top: 50%; left: 50%; width: 1920px; height: 1080px; overflow: hidden; transform-origin: center; background: #f7f8f7; box-shadow: 0 36px 96px rgba(0,0,0,.22); }
+    .scene { position: absolute; inset: 0; display: grid; grid-template-columns: 170px minmax(0, 1fr) 320px; gap: 72px; align-items: center; padding: 88px 112px; opacity: 0; pointer-events: none; transform: translateY(var(--vc-enter-distance)); }
+    .scene-rail { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; padding-right: 32px; border-right: 1px solid var(--vc-line-strong); }
+    .scene-rail strong { font-family: var(--vc-mono); font-size: 52px; font-weight: 520; letter-spacing: -.08em; line-height: 1; }
+    .scene-rail span { color: var(--vc-muted); font-family: var(--vc-mono); font-size: 20px; letter-spacing: .05em; text-transform: uppercase; }
+    .scene h1, .scene h2 { max-width: 12ch; margin: 0; font-family: var(--vc-display); font-size: 112px; font-weight: 720; letter-spacing: -.065em; line-height: .94; text-wrap: balance; }
+    .scene h2 { font-size: 86px; }
+    .scene-copy > p:not(.vc-kicker) { max-width: 900px; margin-top: 30px; color: var(--vc-muted); font-size: 29px; line-height: 1.45; }
+    .scene-note { align-self: end; padding-top: 22px; border-top: 1px solid var(--vc-line-strong); }
+    .scene-note p { margin: 14px 0 0; color: var(--vc-muted); font-size: 22px; line-height: 1.5; }
+    .scene-note span { color: var(--vc-primary); font-family: var(--vc-mono); font-size: 20px; letter-spacing: .05em; text-transform: uppercase; }
+    .scene-accent { background: #1f2925; color: #f5f7f5; }
+    .scene-accent .vc-kicker { color: #7ed0aa; }
+    .scene-accent .scene-rail { border-right-color: rgba(255,255,255,.24); }
+    .scene-accent .scene-rail span, .scene-accent .scene-note p { color: #9eb0a7; }
+    .scene-accent .scene-note { border-top-color: rgba(255,255,255,.24); }
+    .scene-accent .scene-note span { color: #7ed0aa; }
+    .motion-line { width: 100%; height: 4px; margin: 24px 0 0; background: #7ed0aa; transform: scaleX(0); transform-origin: left; }
+    .motion-controls { position: fixed; right: 0; bottom: 0; left: 0; z-index: 10; display: grid; grid-template-columns: minmax(150px, 1fr) 104px minmax(180px, 620px) 112px; gap: 18px; height: 74px; align-items: center; padding: 0 24px; border-top: 1px solid rgba(255,255,255,.12); color: white; }
+    .motion-label { color: rgba(255,255,255,.68); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .04em; text-transform: uppercase; }
+    .motion-controls button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 7px; padding: 9px 13px; border: 1px solid rgba(255,255,255,.24); border-radius: 7px; background: transparent; color: white; cursor: pointer; font-size: 14px; transition: transform var(--vc-duration-press) var(--vc-ease-out), background-color var(--vc-duration-micro) ease, border-color var(--vc-duration-micro) ease; }
+    .motion-controls button:active { transform: scale(var(--vc-press-scale)); }
+    .motion-controls .vc-icon { width: 17px; height: 17px; }
+    .motion-controls input { width: 100%; height: 5px; appearance: none; border-radius: 99px; background: rgba(255,255,255,.28); cursor: pointer; }
+    .motion-controls input::-webkit-slider-thumb { width: 19px; height: 19px; appearance: none; border: 2px solid #1d2120; border-radius: 50%; background: #7ed0aa; box-shadow: 0 0 0 1px rgba(255,255,255,.42); transition: transform var(--vc-duration-press) var(--vc-ease-out); }
+    .motion-controls input::-moz-range-thumb { width: 17px; height: 17px; border: 2px solid #1d2120; border-radius: 50%; background: #7ed0aa; box-shadow: 0 0 0 1px rgba(255,255,255,.42); transition: transform var(--vc-duration-press) var(--vc-ease-out); }
+    .motion-time { color: rgba(255,255,255,.82); font-family: var(--vc-mono); font-size: var(--vc-font-micro); text-align: right; }
+    [hidden] { display: none !important; }
+    @media (hover: hover) and (pointer: fine) { .motion-controls button:hover { border-color: rgba(255,255,255,.36); background: rgba(255,255,255,.1); } .motion-controls input:hover::-webkit-slider-thumb { transform: scale(1.14); } .motion-controls input:hover::-moz-range-thumb { transform: scale(1.14); } }
+    .motion-controls input:active::-webkit-slider-thumb { transform: scale(.94); }
+    .motion-controls input:active::-moz-range-thumb { transform: scale(.94); }
+    @media (prefers-reduced-motion: reduce) { .motion-controls button:active, .motion-controls input::-webkit-slider-thumb, .motion-controls input::-moz-range-thumb { transform: none; } }
+    @media (max-width: 760px) { .motion-controls { grid-template-columns: 96px 1fr; gap: 12px; } .motion-label, .motion-time { display: none; } }
+  </style>
+  <noscript><style>
+    .motion-stage { inset: 0; }
+    .motion-canvas { top: 0; left: 0; width: 100%; height: 100%; transform: none; box-shadow: none; }
+    .scene { display: none; grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 8vw; opacity: 1; transform: none; }
+    .scene:last-child { display: grid; visibility: visible; }
+    .scene-rail { display: none; }
+    .scene h2 { font-size: clamp(48px, 9vw, 86px); }
+    .motion-controls { display: none; }
+  </style></noscript>
+</head>
+<body>
+  <main class="motion-stage">
+    <div class="motion-canvas" id="motion-canvas" data-duration="12">
+      <!-- BEGIN: edit scenes and start/end seconds; cover the full duration -->
+      <section class="scene" data-start="0" data-end="4"><div class="scene-rail"><strong>01</strong><span>00–04 / setup</span></div><div class="scene-copy"><p class="vc-kicker">Premise</p><h1>Motion should carry meaning.</h1><p>Introduce the premise and give the viewer enough time to read.</p></div><aside class="scene-note"><span>Purpose</span><p>Establish context without competing decoration.</p></aside></section>
+      <section class="scene scene-accent" data-start="4" data-end="8"><div class="scene-rail"><strong>02</strong><span>04–08 / development</span></div><div class="scene-copy"><p class="vc-kicker">Development</p><h2>Reveal order, state, or causality.</h2></div><aside class="scene-note"><span>Progress</span><p>One visible change carries the explanation.</p><div class="motion-line"></div></aside></section>
+      <section class="scene" data-start="8" data-end="12"><div class="scene-rail"><strong>03</strong><span>08–12 / resolution</span></div><div class="scene-copy"><p class="vc-kicker">Resolution</p><h2>Land on a stable final frame.</h2><p>State the conclusion, source, or next action.</p></div><aside class="scene-note"><span>Final state</span><p>Readable, stable, and ready to inspect.</p></aside></section>
+      <!-- END -->
+    </div>
+  </main>
+
+  <nav class="motion-controls" aria-label="Motion controls">
+    <span class="motion-label">Motion stage / 12s</span>
+    <button id="play" type="button" aria-label="Play motion">
+      <svg class="vc-icon" data-icon="play" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>
+      <svg class="vc-icon" data-icon="pause" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M9 6v12M15 6v12"/></svg>
+      <svg class="vc-icon" data-icon="replay" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M5 8V4m0 0h4M5 4l3 3a7 7 0 1 1-2 7"/></svg>
+      <span id="play-label">Play</span>
+    </button>
+    <input id="scrubber" type="range" min="0" max="12" step="0.01" value="0" aria-label="Timeline">
+    <span class="motion-time" id="motion-time">0.00 / 12.00s</span>
+  </nav>
+
+  <script>
+    (() => {
+      const stage = document.querySelector('.motion-stage');
+      const canvas = document.getElementById('motion-canvas');
+      const scenes = [...document.querySelectorAll('.scene')];
+      const sceneLines = scenes.map((scene) => scene.querySelector('.motion-line'));
+      const playButton = document.getElementById('play');
+      const playLabel = document.getElementById('play-label');
+      const playIcons = [...playButton.querySelectorAll('[data-icon]')];
+      const scrubber = document.getElementById('scrubber');
+      const timeLabel = document.getElementById('motion-time');
+      const duration = Number(canvas.dataset.duration) || 12;
+      const rootStyle = getComputedStyle(document.documentElement);
+      const readSeconds = (name, fallbackMilliseconds) => {
+        const raw = rootStyle.getPropertyValue(name).trim();
+        const numeric = Number.parseFloat(raw);
+        if (!Number.isFinite(numeric)) return fallbackMilliseconds / 1000;
+        return raw.endsWith('ms') ? numeric / 1000 : numeric;
+      };
+      const sceneFade = Math.max(0.01, readSeconds('--vc-duration-scene', 420));
+      const reducedFade = Math.max(0.01, readSeconds('--vc-duration-exit', 180));
+      const enterDistance = Number.parseFloat(rootStyle.getPropertyValue('--vc-enter-distance')) || 8;
+      const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+      let time = 0;
+      let playing = false;
+      let frame = null;
+      let previous = null;
+      let reducedMotion = motionPreference.matches;
+
+      scrubber.max = String(duration);
+      const fit = () => {
+        const scale = Math.min(stage.clientWidth / 1920, stage.clientHeight / 1080);
+        canvas.style.transform = `translate(-50%, -50%) scale(${scale})`;
+      };
+      const render = () => {
+        const fadeWindow = reducedMotion ? reducedFade : sceneFade;
+        const fadeHalf = fadeWindow / 2;
+        const sceneOffset = reducedMotion ? 0 : enterDistance;
+        scenes.forEach((scene, index) => {
+          const start = Number(scene.dataset.start);
+          const end = Number(scene.dataset.end);
+          const fadeIn = start <= 0 ? 1 : Math.min(1, Math.max(0, (time - start + fadeHalf) / fadeWindow));
+          const fadeOut = end >= duration ? 1 : Math.min(1, Math.max(0, (end + fadeHalf - time) / fadeWindow));
+          const opacity = Math.min(fadeIn, fadeOut);
+          scene.style.opacity = String(opacity);
+          scene.style.visibility = opacity > 0 ? 'visible' : 'hidden';
+          scene.style.transform = `translateY(${(1 - opacity) * sceneOffset}px)`;
+          const line = sceneLines[index];
+          if (line) {
+            const progress = Math.min(1, Math.max(0, (time - start) / Math.max(0.01, end - start)));
+            line.style.transform = `scaleX(${progress})`;
+          }
+        });
+        const mode = playing ? 'pause' : (time >= duration ? 'replay' : 'play');
+        const label = mode[0].toUpperCase() + mode.slice(1);
+        playIcons.forEach((icon) => { icon.hidden = icon.dataset.icon !== mode; });
+        playLabel.textContent = label;
+        playButton.setAttribute('aria-label', `${label} motion`);
+        scrubber.value = String(time);
+        scrubber.setAttribute('aria-valuetext', `${time.toFixed(2)} of ${duration.toFixed(2)} seconds`);
+        timeLabel.textContent = `${time.toFixed(2)} / ${duration.toFixed(2)}s`;
+      };
+      const tick = (now) => {
+        if (previous == null) previous = now;
+        time = Math.min(duration, time + (now - previous) / 1000);
+        previous = now;
+        if (time >= duration) {
+          playing = false;
+          frame = null;
+        }
+        render();
+        if (playing) frame = requestAnimationFrame(tick);
+      };
+      playButton.addEventListener('click', () => {
+        if (time >= duration) time = 0;
+        playing = !playing;
+        previous = null;
+        if (playing) frame = requestAnimationFrame(tick);
+        else if (frame) {
+          cancelAnimationFrame(frame);
+          frame = null;
+        }
+        render();
+      });
+      scrubber.addEventListener('input', (event) => {
+        playing = false;
+        if (frame) cancelAnimationFrame(frame);
+        frame = null;
+        time = Number(event.target.value);
+        previous = null;
+        render();
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden || !playing) return;
+        playing = false;
+        if (frame) cancelAnimationFrame(frame);
+        frame = null;
+        previous = null;
+        render();
+      });
+      motionPreference.addEventListener('change', (event) => {
+        reducedMotion = event.matches;
+        render();
+      });
+      window.addEventListener('resize', fit);
+      fit();
+      render();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editorial Landing Page</title>
+  <link rel="stylesheet" href="theme.css?v=9">
+  <script src="theme.js?v=1"></script>
+  <style>
+    body { background: #f7f8f7; }
+    .site-nav { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--vc-line-strong); }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--vc-ink); font-size: 17px; font-weight: 720; letter-spacing: -.03em; text-decoration: none; }
+    .brand-mark { width: 14px; height: 3px; background: var(--vc-primary); }
+    .nav-links { display: flex; gap: 22px; align-items: center; }
+    .nav-links > a:not(.vc-button) { color: var(--vc-muted); font-size: 15px; font-weight: 560; text-decoration: none; }
+    .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 88px; align-items: end; padding: 86px 0 80px; border-bottom: 1px solid var(--vc-line); }
+    .hero .vc-display { max-width: 12ch; font-size: clamp(54px, 7vw, 98px); }
+    .hero-side { display: grid; gap: 14px; }
+    .hero-number { padding: 0 0 26px 26px; border-left: 2px solid var(--vc-primary); }
+    .signal { display: flex; align-items: center; gap: 8px; }
+    .hero-number strong { display: block; margin: 34px 0 14px; font-size: clamp(54px, 6vw, 82px); font-weight: 720; letter-spacing: -.07em; line-height: .84; }
+    .hero-number .vc-body { margin: 0; color: var(--vc-muted); font-size: 16px; }
+    .hero-side .vc-button { justify-self: start; }
+    .evidence-strip { display: grid; grid-template-columns: 1.14fr repeat(3, 1fr); }
+    .evidence-strip > * { min-height: 172px; padding: 26px 22px; border-right: 1px solid var(--vc-line); border-bottom: 1px solid var(--vc-line); }
+    .evidence-strip > *:last-child { border-right: 0; }
+    .evidence-strip strong { display: block; margin-top: 36px; font-size: 20px; font-weight: 680; letter-spacing: -.03em; }
+    .evidence-strip .vc-body { margin-bottom: 0; color: var(--vc-muted); font-size: 15px; }
+    .story { display: grid; grid-template-columns: minmax(220px, .58fr) minmax(0, 1.42fr); gap: 88px; padding: 104px 0; border-bottom: 1px solid var(--vc-line); }
+    .story-copy { max-width: 760px; }
+    .story-copy p:first-of-type { margin-top: 0; font-size: clamp(28px, 3.4vw, 46px); font-weight: 650; letter-spacing: -.045em; line-height: 1.12; }
+    .story-copy .vc-body { color: var(--vc-muted); }
+    .demo { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr); gap: 72px; align-items: start; padding-top: 88px; }
+    .demo-copy { padding-top: 22px; border-top: 1px solid var(--vc-line-strong); }
+    .demo-copy .vc-title { margin-top: 12px; }
+    .demo-copy > .vc-body { color: var(--vc-muted); }
+    .demo-constraint { display: grid; grid-template-columns: 92px 1fr; gap: 18px; margin-top: 32px; padding: 18px 0; border-top: 1px solid #ddc6bf; border-bottom: 1px solid #ddc6bf; }
+    .demo-constraint p { margin-block: 0; }
+    .demo-constraint .vc-label { color: var(--vc-secondary); }
+    .demo-constraint .vc-body { color: var(--vc-muted); font-size: 15px; }
+    .cta { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px; align-items: end; margin-top: 104px; padding: 48px 0 8px; border-top: 1px solid var(--vc-line-strong); }
+    @media (hover: hover) and (pointer: fine) { .nav-links > a:not(.vc-button):hover { color: var(--vc-ink); } }
+    @media (max-width: 860px) { .hero, .story, .demo, .cta { grid-template-columns: 1fr; } .hero { gap: 44px; padding: 72px 0; } .evidence-strip { grid-template-columns: 1fr; } .evidence-strip > * { min-height: 0; border-right: 0; border-bottom: 1px solid var(--vc-line); } .nav-links > a:not(.vc-button) { display: none; } }
+  </style>
+</head>
+<body>
+  <main class="vc-shell">
+    <!-- BEGIN: replace brand and navigation -->
+    <nav class="site-nav" aria-label="Primary">
+      <a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Product name</a>
+      <div class="nav-links"><a href="#evidence">Evidence</a><a href="#approach">Approach</a><a class="vc-button" href="#action">Primary action<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a></div>
+    </nav>
+    <!-- END -->
+
+    <!-- BEGIN: replace product premise and real proof -->
+    <header class="hero">
+      <div data-reveal><p class="vc-kicker">A specific category statement</p><h1 class="vc-display">A precise promise, not a cloud of features.</h1><p class="vc-subtitle">Explain who this is for, what changes, and why the claim is credible.</p></div>
+      <aside class="hero-side vc-delay-1" data-reveal>
+        <div class="hero-number"><span class="signal vc-source-mark"><span class="vc-dot"></span>Verified signal · S1</span><strong>S1</strong><p class="vc-body">Replace with a sourced metric or qualitative proof.</p></div>
+        <a class="vc-button" href="#approach">See how it works<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m0 0 6-6m-6 6-6-6"/></svg></a>
+      </aside>
+    </header>
+    <!-- END -->
+
+    <section id="evidence" class="evidence-strip" aria-label="Evidence">
+      <div data-reveal><p class="vc-label">Why believe it</p><p class="vc-body">Use real evidence, not generic social proof.</p></div>
+      <div class="vc-delay-1" data-reveal><span class="vc-source-mark">01 · S1</span><strong>Observed result</strong><p class="vc-body">Evidence and context.</p></div>
+      <div class="vc-delay-2" data-reveal><span class="vc-source-mark">02 · S2</span><strong>Working surface</strong><p class="vc-body">Screenshot, demo, or workflow.</p></div>
+      <div class="vc-delay-3" data-reveal><span class="vc-source-mark">03 · S3</span><strong>Clear constraint</strong><p class="vc-body">Limitations increase trust.</p></div>
+    </section>
+
+    <section id="approach" class="story">
+      <div data-reveal><p class="vc-kicker">The argument</p><h2 class="vc-title">Show the mechanism.</h2></div>
+      <div class="story-copy vc-delay-1" data-reveal><p>Replace feature grids with a narrative that makes the product's mechanism visible.</p><p class="vc-body">Use the user's actual copy. Explain the problem, intervention, changed state, and proof. Add sections only when they advance this argument.</p></div>
+    </section>
+
+    <section class="demo">
+      <figure class="vc-figure" data-reveal><div class="vc-placeholder" style="min-height: 520px;">Replace with product surface, figure, or live demo</div><figcaption class="vc-caption"><span>Describe what the viewer should notice.</span><span class="vc-source-mark">Figure 01</span></figcaption></figure>
+      <article class="demo-copy vc-delay-1" data-reveal><p class="vc-kicker">Concrete demonstration</p><h2 class="vc-title">One surface can carry the story.</h2><p class="vc-body">Annotate the interface, result, or transformation. Keep evidence beside the claim it supports.</p><div class="demo-constraint"><p class="vc-label">Constraint</p><p class="vc-body">Record missing assets or unverified assumptions honestly.</p></div></article>
+    </section>
+
+    <section id="action" class="cta" data-reveal><div><p class="vc-kicker">Next action</p><h2 class="vc-title">Make the next step unmistakable.</h2></div><a class="vc-button" href="#">Call to action<svg class="vc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></a></section>
+  </main>
+</body>
+</html>

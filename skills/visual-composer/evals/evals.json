@@ -1,0 +1,65 @@
+{
+  "skill_name": "visual-composer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "把我提供的新版和旧版结账页截图做成一张对比画板，标出信息层级、CTA 和错误提示的变化，并保留截图来源。",
+      "expected_output": "A browser-viewable comparison board based on compare-board.html with aligned screenshot regions, explicit version labels, 1-4 meaningful annotations, and nearby source captions.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "把这份关于 AI 编程工具的调研整理成可展示的研究看板：先给结论，再给证据表、争议点和来源。不要发明数据。",
+      "expected_output": "A research board based on research-board.html that leads with synthesis, links findings to sources, includes an evidence matrix and limitations, and contains no invented metrics or citations.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "梳理这次线上事故从告警、判断、处置到恢复的事件流，同时画出以后遇到同类问题的处理流程。",
+      "expected_output": "A timeline and process artifact based on timeline-flow.html that separates historical events from the future procedure and exposes decisions, ownership, state changes, and uncertain causality.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "做一个 6 页产品发布 deck，再做一个 20 秒的同主题网页动效。素材和文案都在附件里，风格要统一。",
+      "expected_output": "A coherent deck and timed artifact using the provided deck and motion starters, a shared visual system, semantic motion tokens, readable scale, working play/pause/scrub/replay controls, stable scene crossfades, reduced-motion behavior, and no fabricated product material.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "把这次设备翻页缺陷的日志、分析、修复前后截图和验证结果整理成一篇技术复盘。正文要容易读，代码和截图都要能追溯，不要做成营销页。",
+      "expected_output": "A restrained long-form technical document based on document-page.html with visible reading progress, synchronized current-section navigation, readable prose width, distinct code blocks, semantic issue status, aligned before/after evidence, traceable captions, and reduced-motion behavior.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "逐页 review 这套视觉模板的 hover、focus、按压、导航切换和状态反馈。不要为了显得高级给静态卡片乱加动画；不需要动的页面也要说明为什么。",
+      "expected_output": "A page-level interaction audit covering every starter, with feedback removed from static evidence and cards, purposeful fine-pointer hover on real controls, synchronized navigation and content states, semantic motion tokens, truthful disabled states, a restrained shared reveal/progress layer, and reduced-motion behavior. Pages intentionally kept static after their entrance are explicitly accounted for.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "这个研究看板太像普通卡片后台了。保留同一批内容和引用，按更简约、更像编辑部研究备忘录的方向重新设计一版；别只改颜色和圆角。",
+      "expected_output": "A materially redesigned research artifact that preserves claims and sources while changing at least two structural dimensions such as composition, type hierarchy, surface grammar, or density. The first viewport is visibly different, static findings do not gain fake hover behavior, and restrained motion remains purposeful and reduced-motion safe.",
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "把这套文档、对比、调研、时间流、落地页、幻灯片、原型、动效和探索画板统一成同一套简约视觉语言，但不要九页都变成一样的卡片布局。",
+      "expected_output": "All nine starters share typography, canvas, rule, metadata, semantic color, icon, and motion conventions while retaining compositions suited to their information relationships. Static surfaces remain non-interactive, controls remain truthful, and the family does not collapse into repeated card grids or identical hero layouts.",
+      "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "把这份 Markdown 技术说明做成可展示页面。大部分正文保持像 MD 一样好读，但其中有一段代码 diff、两组截图对比、一张调用关系梳理和若干带来源的指证；只在必要处使用网页能力。",
+      "expected_output": "A Markdown-like linear technical document whose prose, headings, code, captions, and citations remain readable, with selective web upgrades for the consequential code diff, normalized screenshot comparisons, relationship mapping, and local evidence links. It does not become a mini application, avoids decorative motion, and retains a readable baseline when optional JavaScript or motion is unavailable.",
+      "files": []
+    },
+    {
+      "id": 10,
+      "prompt": "用 Visual Composer 调研并写一篇给第一次接触 AI API 的人看的文章，解释 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 的区别与意义。只用当前官方资料，不要发明结论。",
+      "expected_output": "A beginner-friendly technical article routed to document-page.html from this short brief alone. It begins with a Markdown-like outline, upgrades only comparison, request shape, state continuity, and evidence relationships, keeps official citations beside claims, uses no information text below 13px, and limits long-form motion to one header entrance plus useful reading progress and scrollspy.",
+      "files": []
+    }
+  ]
+}

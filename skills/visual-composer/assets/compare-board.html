@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comparison Board</title>
+  <link rel="stylesheet" href="theme.css?v=9">
+  <script src="theme.js?v=1"></script>
+  <style>
+    body { background: #f7f8f7; }
+    .compare-masthead { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 14px; border-bottom: 1px solid var(--vc-line-strong); color: var(--vc-muted); font-family: var(--vc-mono); font-size: var(--vc-font-micro); letter-spacing: .04em; text-transform: uppercase; }
+    .compare-masthead strong { color: var(--vc-ink); font-size: var(--vc-font-caption); font-weight: 680; }
+    .compare-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 80px; align-items: end; padding: 54px 0 56px; border-bottom: 1px solid var(--vc-line); }
+    .compare-header .vc-display { max-width: 12ch; font-size: clamp(46px, 6vw, 84px); }
+    .compare-axis { padding-left: 26px; border-left: 2px solid var(--vc-primary); }
+    .axis-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .compare-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; margin-top: 48px; }
+    .compare-card { min-width: 0; }
+    .compare-card header { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 16px; padding: 0 0 14px; border-bottom: 1px solid var(--vc-line-strong); }
+    .compare-card h2 { margin: 0; font-size: 17px; font-weight: 670; letter-spacing: -.02em; }
+    .compare-media { aspect-ratio: 16 / 10; min-height: 0; border-right: 1px solid var(--vc-line); border-left: 1px solid var(--vc-line); }
+    .compare-card .vc-caption { border: 1px solid var(--vc-line); }
+    .is-secondary .vc-dot { background: var(--vc-secondary); }
+    .notes-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-top: 80px; padding-bottom: 16px; border-bottom: 1px solid var(--vc-line-strong); }
+    .notes-head h2 { margin: 6px 0 0; font-size: 26px; font-weight: 720; letter-spacing: -.035em; }
+    .compare-notes { display: grid; }
+    .note { display: grid; grid-template-columns: 64px minmax(220px, .75fr) minmax(0, 1.25fr); gap: 24px; align-items: start; min-height: 116px; padding: 24px 0; border-bottom: 1px solid var(--vc-line); }
+    .note-index { color: var(--vc-primary); font-family: var(--vc-mono); font-size: var(--vc-font-micro); font-weight: 700; letter-spacing: .05em; }
+    .note strong { display: block; font-size: 20px; font-weight: 690; letter-spacing: -.03em; line-height: 1.2; }
+    .note .vc-body { margin: 0; color: var(--vc-muted); font-size: 16px; }
+    @media (max-width: 820px) { .compare-header, .compare-grid, .note { grid-template-columns: 1fr; } .compare-header { gap: 32px; } .note { gap: 12px; } }
+    @media (max-width: 620px) { .compare-masthead span { display: none; } }
+  </style>
+</head>
+<body>
+  <main class="vc-shell">
+    <div class="compare-masthead" data-reveal="fade"><strong>Comparison sheet / 01</strong><span>Same viewport · same state · local evidence</span></div>
+    <!-- BEGIN: replace title, scope, and comparison axis -->
+    <header class="compare-header" data-reveal>
+      <div>
+        <p class="vc-kicker">Visual comparison · 01</p>
+        <h1 class="vc-display">Same task. Different decisions.</h1>
+        <p class="vc-subtitle">Align equivalent states, then annotate only the differences that change comprehension or behavior.</p>
+      </div>
+      <aside class="compare-axis">
+        <p class="vc-label">Comparison axis</p>
+        <div class="axis-list" aria-label="Comparison dimensions"><span class="vc-chip">Hierarchy</span><span class="vc-chip">Primary action</span><span class="vc-chip">Recovery</span></div>
+      </aside>
+    </header>
+    <!-- END -->
+
+    <section class="compare-grid" aria-label="Aligned comparison" data-reveal="fade">
+      <!-- BEGIN: replace each placeholder with a real image, preserving figure and caption -->
+      <figure class="compare-card">
+        <header><h2>Before · production</h2><span class="vc-chip"><span class="vc-dot"></span>v1.8</span></header>
+        <div class="compare-media vc-placeholder">Replace with aligned screenshot A</div>
+        <figcaption class="vc-caption"><span>Checkout · default state</span><span class="vc-source-mark">Source 01</span></figcaption>
+      </figure>
+      <figure class="compare-card is-secondary">
+        <header><h2>After · proposed</h2><span class="vc-chip"><span class="vc-dot"></span>v2.0</span></header>
+        <div class="compare-media vc-placeholder">Replace with aligned screenshot B</div>
+        <figcaption class="vc-caption"><span>Checkout · default state</span><span class="vc-source-mark">Source 02</span></figcaption>
+      </figure>
+      <!-- END -->
+    </section>
+
+    <!-- BEGIN: keep 1–4 consequential observations -->
+    <header class="notes-head" data-reveal><div><p class="vc-kicker">Inspection notes</p><h2>Differences that change the task</h2></div><span class="vc-chip">3 observations</span></header>
+    <section class="compare-notes" aria-label="Meaningful differences">
+      <article class="note"><span class="note-index">01 / 03</span><strong>One price, one focus</strong><p class="vc-body">Explain the observed difference and why it matters—not merely its color.</p></article>
+      <article class="note"><span class="note-index">02 / 03</span><strong>The CTA owns the next step</strong><p class="vc-body">Connect the visual change to the intended behavior.</p></article>
+      <article class="note"><span class="note-index">03 / 03</span><strong>Error copy stays local</strong><p class="vc-body">Call out state, accessibility, or workflow implications when supported.</p></article>
+    </section>
+    <!-- END -->
+  </main>
+</body>
+</html>
