@@ -51,11 +51,29 @@ test("translates confirm to ask with the policy reason and next action", () => {
   const push = runGuard(policies.git, bashPayload("git push origin HEAD"));
   assert.equal(push.permissionDecision, "ask");
   assert.match(push.permissionDecisionReason, /^\[git-push\]/u);
-  assert.match(push.permissionDecisionReason, /会把本地提交发布到远端仓库/u);
+  // The reason has to name where it lands; "a push is happening" is not a thing
+  // anyone can answer.
+  assert.match(push.permissionDecisionReason, /origin HEAD/u);
 
   const install = runGuard(policies.npm, bashPayload("yarn install --ignore-scripts"));
   assert.equal(install.permissionDecision, "ask");
   assert.match(install.permissionDecisionReason, /^\[scripts-disabled-install\]/u);
+});
+
+test("a refusal carries both halves, an ask only the first", () => {
+  // Layer one is the policy's: what happened, and the spelling that does the
+  // same job without approval. Layer two is what to do when there is no such
+  // spelling — it belongs on the refusal, and it has to travel with the message
+  // because the guideline file loads in a fraction of sessions.
+  const refused = runGuard(policies.npm, bashPayload("yarn install"));
+  assert.equal(refused.permissionDecision, "deny");
+  assert.match(refused.permissionDecisionReason, /--ignore-scripts/u);
+  assert.match(refused.permissionDecisionReason, /收尾时一并提出来/u);
+
+  // An ask is already in front of the user, so batching advice would be late.
+  const asked = runGuard(policies.git, bashPayload("git push origin main"));
+  assert.equal(asked.permissionDecision, "ask");
+  assert.doesNotMatch(asked.permissionDecisionReason, /收尾时一并提出来/u);
 });
 
 test("translates deny with the policy reason", () => {
@@ -146,14 +164,45 @@ test("a guard that cannot start must not read as approval", () => {
   assert.equal(crashed.stdout.trim(), "");
 });
 
+test("opens a wrapper so a gate is not left reading a quoted string", () => {
+  // One wrapper can carry a push, a publish, a deletion and a secret read at
+  // once. Every policy reads only the text it is handed, so without opening it
+  // the gates that care about each of those see nothing.
+  const inner = "git push origin main && rm -rf ~/notes";
+  for (const command of [
+    `bash -c '${inner}'`,
+    `X=$(${inner})`,
+    "X=`" + inner + "`",
+    `echo x | xargs -I{} sh -c '${inner}'`,
+  ]) {
+    const seen = runGuard(policies.git, bashPayload(command));
+    assert.equal(seen?.permissionDecision, "ask", command);
+    assert.match(seen.permissionDecisionReason, /git-push/u, command);
+  }
+
+  // A payload that only exists after expansion cannot be judged at all.
+  for (const command of ['bash -c "$CMD"', 'CMD=$(cat cmds.txt); bash -c "$CMD"']) {
+    const seen = runGuard(policies.git, bashPayload(command));
+    assert.equal(seen?.permissionDecision, "deny", command);
+    assert.match(seen.permissionDecisionReason, /unreadable-wrapper/u, command);
+  }
+
+  // A literal parked in a variable in the same command is still literal.
+  const resolved = runGuard(policies.git, bashPayload(`CMD='git push --force'; bash -c "$CMD"`));
+  assert.match(resolved.permissionDecisionReason, /force-push/u);
+
+  // `grep -c` is a count flag, not a shell payload.
+  assert.equal(runGuard(policies.git, bashPayload(`grep -c '^git push' notes.txt`)), null);
+});
+
 test("reads commands out of a payload that carries them inside source", () => {
   // Codex's exec tool takes a JS program, so the command is a literal in code
   // rather than a field. Read as "not a shell call", it ran unguarded.
   const exec = (source) => runGuard(policies.git, { tool_name: "exec", input: source });
 
-  const gated = exec('const r = await tools.exec_command({ cmd: "git update-ref refs/heads/x abc" });');
+  const gated = exec('const r = await tools.exec_command({ cmd: "git push origin main" });');
   assert.equal(gated.permissionDecision, "ask");
-  assert.match(gated.permissionDecisionReason, /history-or-branch-mutation/u);
+  assert.match(gated.permissionDecisionReason, /git-push/u);
 
   assert.equal(exec('await tools.exec_command({ cmd: "git status --short" });'), null);
 
