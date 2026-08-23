@@ -1,5 +1,5 @@
 {
-  "skill_name": "visual-composer",
+  "skill_name": "artifact-design",
   "evals": [
     {
       "id": 1,
@@ -57,7 +57,7 @@
     },
     {
       "id": 10,
-      "prompt": "用 Visual Composer 调研并写一篇给第一次接触 AI API 的人看的文章，解释 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 的区别与意义。只用当前官方资料，不要发明结论。",
+      "prompt": "用 Artifact Design 调研并写一篇给第一次接触 AI API 的人看的文章，解释 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 的区别与意义。只用当前官方资料，不要发明结论。",
       "expected_output": "A beginner-friendly technical article routed to document-page.html from this short brief alone. It begins with a Markdown-like outline, upgrades only comparison, request shape, state continuity, and evidence relationships, keeps official citations beside claims, uses no information text below 13px, and limits long-form motion to one header entrance plus useful reading progress and scrollspy.",
       "files": []
     }

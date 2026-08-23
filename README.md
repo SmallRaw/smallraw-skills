@@ -103,7 +103,7 @@ cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | Marketplace |
 | [rule-gardener](skills/rule-gardener/) | 项目规则园丁 - 培育项目规范有机生长 | Marketplace |
 | [skill-writing-guide](skills/skill-writing-guide/) | 配合 skill-creator 使用的 Skill 编写约束与最佳实践 | Manual |
-| [visual-composer](skills/visual-composer/) | 将技术稿、截图、调研、事件与流程编排成长文档、对比画板、时间线、Deck、原型和动效等视觉产物 | Manual |
+| [artifact-design](skills/artifact-design/) | 将技术稿、截图、调研、事件与流程设计成长文档、对比画板、时间线、Deck、原型和动效等视觉产物 | Manual |
 
 ## CLI Packages
 

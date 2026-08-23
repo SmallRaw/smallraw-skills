@@ -1,11 +1,11 @@
 ---
-name: visual-composer
+name: artifact-design
 description: "Use whenever the user wants material, findings, events, processes, images, or screenshots turned into a visual artifact: technical documents, research reports, postmortems, image or screenshot comparisons, evidence boards, timelines, process maps, landing pages, slide decks, interactive prototypes, motion pieces, posters, wireframes, or visual exploration canvases. Trigger even when the user says only ‘梳理一下事件/流程’ if a visual result would clarify it. Do not use for plain text-only writing or routine UI bug fixes."
 user-invocable: false
 disable-model-invocation: false
 ---
 
-# Visual Composer
+# Artifact Design
 
 Turn content into a clear visual artifact by copying the nearest starter, keeping the shared visual language, and spending model attention on the user's material rather than rebuilding scaffolding.
 

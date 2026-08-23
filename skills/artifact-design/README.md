@@ -1,6 +1,6 @@
-# Visual Composer
+# Artifact Design
 
-`visual-composer` turns source material into browser-viewable visual artifacts without asking the model to rebuild common scaffolding. It provides a restrained shared theme and starters for technical documents, comparisons, research boards, timelines and flows, landing pages, decks, prototypes, motion pieces, and open visual canvases.
+`artifact-design` turns source material into browser-viewable visual artifacts without asking the model to rebuild common scaffolding. It provides a restrained shared theme and starters for technical documents, comparisons, research boards, timelines and flows, landing pages, decks, prototypes, motion pieces, and open visual canvases.
 
 The Skill is intentionally small. It is not a renderer or component framework: the agent copies the nearest starter, replaces marked sample content, adapts the composition, and verifies the result in a browser. Every artifact receives an interaction review—even when the correct result is static. Motion uses purpose-based tokens and fixed component recipes so agents choose an intent instead of inventing timing curves.
 
