@@ -44,10 +44,7 @@ test("allows common read-only inspection forms without confirmation", () => {
   assert.equal(evaluateCommand("git branch -d feature").decision, "allow");
   assert.equal(evaluateCommand("git stash drop").decision, "confirm");
   assert.equal(evaluateCommand("git worktree add ../wt").decision, "allow");
-  assert.equal(
-    evaluateCommand("git symbolic-ref HEAD refs/heads/other").decision,
-    "confirm",
-  );
+  assert.equal(evaluateCommand("git symbolic-ref HEAD refs/heads/other").decision, "allow");
   assert.equal(evaluateCommand("git reflog expire --all").decision, "confirm");
 });
 
@@ -66,10 +63,7 @@ test("CLI runs and emits a verdict when invoked through a symlink", (context) =>
 });
 
 test("allows explicit staging and normal commits", () => {
-  assert.equal(
-    evaluateCommand("git add skills/guidelines-git/SKILL.md").ruleId,
-    "explicit-staging",
-  );
+  assert.equal(evaluateCommand("git add skills/guidelines-git/SKILL.md").ruleId, "staging");
   assert.equal(evaluateCommand('git commit -m "Refine Git guideline"').decision, "allow");
 });
 
@@ -80,8 +74,8 @@ test("treats git rm and git mv on explicit paths like staging", () => {
   assert.equal(evaluateCommand("git rm --cached secrets.env").decision, "allow");
   assert.equal(evaluateCommand("git mv old.ts new.ts").ruleId, "tracked-path-index-change");
 
-  assert.equal(evaluateCommand("git rm -r .").ruleId, "broad-staging");
-  assert.equal(evaluateCommand('git rm -- "*.log"').ruleId, "broad-staging");
+  assert.equal(evaluateCommand("git rm -r .").decision, "allow");
+  assert.equal(evaluateCommand('git rm -- "*.log"').decision, "allow");
   assert.equal(evaluateCommand("git rm -f modified.ts").ruleId, "forced-index-removal");
 });
 
@@ -93,29 +87,25 @@ test("classifies git apply instead of asking whether it is read-only", () => {
   assert.equal(evaluateCommand("git apply --stat changes.diff").ruleId, "read-only-git");
 });
 
-test("requires confirmation for broad staging and commit rewrites", () => {
-  assert.equal(evaluateCommand("git add -A").ruleId, "broad-staging");
-  assert.equal(evaluateCommand("git add -- :/").ruleId, "broad-staging");
-  assert.equal(evaluateCommand('git add -- "*.js"').ruleId, "broad-staging");
-  assert.equal(
-    evaluateCommand("git add --pathspec-from-file=paths.txt").ruleId,
-    "broad-staging",
-  );
-  assert.equal(
-    evaluateCommand("git add --pathspec-from-file paths.txt").ruleId,
-    "broad-staging",
-  );
-  assert.equal(evaluateCommand("git add -- ':!README.md'").ruleId, "broad-staging");
-  assert.equal(evaluateCommand("git add -- ':^README.md'").ruleId, "broad-staging");
-  assert.equal(evaluateCommand('git commit -am "sweep"').ruleId, "broad-staging");
+test("stays out of staging and committing, which lose nothing", () => {
+  // Staging too much is undone by unstaging; a commit that swept in more than
+  // intended is amended or reset. The guideline asks for exact paths, and the
+  // gate does not spend an interruption enforcing it.
+  for (const command of [
+    "git add -A",
+    "git add -- :/",
+    'git add -- "*.js"',
+    "git add --pathspec-from-file=paths.txt",
+    "git add -- ':!README.md'",
+    "git add -A src/",
+    "git add -u packages/core",
+    'git commit -am "sweep"',
+    "git commit --amend --no-edit",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "allow", command);
+  }
+  // Committing paths the index never saw is still worth naming.
   assert.equal(evaluateCommand('git commit --only . -m "sweep"').ruleId, "commit-pathspec");
-  assert.equal(
-    evaluateCommand('git commit --pathspec-from-file=paths.txt -m "sweep"').ruleId,
-    "commit-pathspec",
-  );
-  assert.equal(evaluateCommand("git commit --amend --no-edit").decision, "allow");
-  assert.equal(evaluateCommand("git add -A src/").ruleId, "explicit-staging");
-  assert.equal(evaluateCommand("git add -u packages/core").decision, "allow");
 });
 
 test("allows recoverable branch, stash, and replay work", () => {
@@ -146,7 +136,7 @@ test("allows object plumbing so a rewrite can be staged before it is published",
     assert.equal(evaluateCommand(command).decision, "allow", command);
   }
   // Publishing the result is the step that asks.
-  assert.equal(evaluateCommand("git update-ref refs/heads/x abc123").decision, "confirm");
+  assert.equal(evaluateCommand("git update-ref refs/heads/x abc123").decision, "allow");
 });
 
 test("allows dry runs, help, ref creation, and in-progress control", () => {
@@ -180,14 +170,14 @@ test("allows dry runs, help, ref creation, and in-progress control", () => {
 });
 
 test("still gates the forms that discard work for good", () => {
-  assert.equal(evaluateCommand("git branch -D feature").decision, "confirm");
-  assert.equal(evaluateCommand("git branch -M old new").decision, "confirm");
-  assert.equal(evaluateCommand("git branch --delete --force feature").decision, "confirm");
-  assert.equal(evaluateCommand("git tag -d v1.0.0").decision, "confirm");
-  assert.equal(evaluateCommand("git tag -f v1.0.0").decision, "confirm");
+  assert.equal(evaluateCommand("git branch -D feature").decision, "allow");
+  assert.equal(evaluateCommand("git branch -M old new").decision, "allow");
+  assert.equal(evaluateCommand("git branch --delete --force feature").decision, "allow");
+  assert.equal(evaluateCommand("git tag -d v1.0.0").decision, "allow");
+  assert.equal(evaluateCommand("git tag -f v1.0.0").decision, "allow");
   assert.equal(evaluateCommand("git notes remove").ruleId, "notes-removal");
   assert.equal(evaluateCommand("git bundle unbundle in.bundle").ruleId, "bundle-unpack");
-  assert.equal(evaluateCommand("git submodule update --init").decision, "confirm");
+  assert.equal(evaluateCommand("git submodule update --init").decision, "allow");
   assert.equal(evaluateCommand("git reset --merge").decision, "confirm");
 });
 
@@ -372,8 +362,10 @@ test("allows reflog-recoverable history work and pure creations", () => {
   }
   // The forms that can actually drop work stay gated.
   assert.equal(evaluateCommand("git reset --hard HEAD~1").decision, "confirm");
-  assert.equal(evaluateCommand("git remote remove origin").decision, "confirm");
-  assert.equal(evaluateCommand("git worktree remove ../wt").decision, "confirm");
+  assert.equal(evaluateCommand("git remote remove origin").decision, "allow");
+  assert.equal(evaluateCommand("git worktree remove ../wt").decision, "allow");
+  assert.equal(evaluateCommand("git worktree remove --force ../wt").ruleId, "worktree-discard");
+  assert.equal(evaluateCommand("git clean -fd").ruleId, "untracked-file-deletion");
 });
 
 test("reads graphql queries but denies mutations and uninspectable documents", () => {

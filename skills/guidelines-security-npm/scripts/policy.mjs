@@ -438,10 +438,23 @@ function evaluateManager(manager, args) {
       return allow("lockfile-immutable-install");
     }
     if (scriptsDisabled) {
+      // This ask is the only moment a person sees which package is arriving —
+      // afterwards it is just a directory. Saying only that an install is
+      // happening gives them nothing to judge, so name what the command names.
+      const named = args.filter(
+        (value) =>
+          !value.startsWith("-") &&
+          value !== subcommand &&
+          !["install", "add", "ci", "i"].includes(value.toLowerCase()),
+      );
       return confirm(
         "scripts-disabled-install",
-        `${manager} ${subcommand || "install"} 会按 package.json 重新解析依赖，可能落地 lockfile 里还没有的版本。`,
-        "只想还原已提交的 lockfile 就加 --immutable（或用 npm ci）。",
+        named.length > 0
+          ? `会把 ${named.slice(0, 4).join("、")} 装进依赖树（安装脚本已禁用）。`
+          : `${manager} ${subcommand || "install"} 会按 package.json 重新解析依赖，可能落地 lockfile 里还没有的版本。`,
+        named.length > 0
+          ? "确认这些包名没写错，也不是仿冒的。"
+          : "只想还原已提交的 lockfile 就加 --immutable（或用 npm ci）。",
       );
     }
     return deny(

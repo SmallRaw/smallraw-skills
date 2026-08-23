@@ -605,6 +605,62 @@ function evaluateOwnership(executable, args, context) {
   return confirm("outside-workspace-permission-change", `${executable} 要改谁的权限读不出来。`);
 }
 
+// Overwriting a file destroys its contents as completely as deleting it, and
+// more quietly, because the file is still there afterwards. Deletion was gated
+// and overwriting was not, which left the larger half of "wrote to the wrong
+// place" uncovered.
+const COPY_VERBS = new Set(["cp", "mv", "rsync", "install", "ln"]);
+
+function redirectTargets(tokens) {
+  const targets = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const match = /^\d?>>?\|?(.*)$/u.exec(tokens[index]);
+    if (!match) continue;
+    // `2>&1` points at a descriptor, and /dev/null is not a file anyone loses.
+    let target = match[1];
+    if (target.startsWith("&")) continue;
+    if (target === "") {
+      target = tokens[index + 1] ?? "";
+      index += 1;
+    }
+    if (target && !/^\/dev\//u.test(target)) targets.push(target);
+  }
+  return targets;
+}
+
+function writeTargets(executable, args) {
+  if (executable === "tee") return pathTargets(args);
+  if (executable === "sed") {
+    if (!args.some((value) => value === "-i" || /^-i/u.test(value))) return [];
+    // sed -i 'script' file… — the script is positional too, so drop the first.
+    return pathTargets(args).slice(1);
+  }
+  if (executable === "tar") {
+    const index = args.indexOf("-C");
+    return index >= 0 && args[index + 1] ? [args[index + 1]] : [];
+  }
+  if (COPY_VERBS.has(executable)) {
+    const positional = pathTargets(args);
+    return positional.length > 1 ? [positional.at(-1)] : [];
+  }
+  return [];
+}
+
+function evaluateWrite(targets, context) {
+  const found = classifyTargets(targets, context);
+  if (found.scope === "critical") {
+    return deny(
+      "critical-root-write",
+      `会写进 ${found.path} 本身，那是系统根目录或你的主目录。`,
+      "只写属于自己的确切路径。",
+    );
+  }
+  if (found.scope === "outside") {
+    return confirm("outside-workspace-write", `会覆盖工作区之外的 ${found.path}。`);
+  }
+  return null;
+}
+
 function evaluateSegment(segment, context) {
   const rawTokens = tokenize(segment);
   if (!rawTokens) {
@@ -683,9 +739,25 @@ function evaluateSegment(segment, context) {
     const named = args.filter(
       (value) => !value.startsWith("-") && !INSTALLER_VERBS.has(value.toLowerCase()),
     );
+    const naming = named.slice(0, 3).join("、") || "第三方";
+    // pip has the same lever npm has. A wheel is data that gets unpacked; only a
+    // source distribution runs its setup.py while installing, which is the
+    // moment the package gets to look around the machine. Name the spelling
+    // that closes it instead of asking for a judgement a package name cannot
+    // support. cargo, gem, and brew have no equivalent, so they keep the ask.
+    const isPip =
+      ["pip", "pip3"].includes(executable) ||
+      (["python", "python3", "uv"].includes(executable) && args.includes("pip"));
+    if (isPip && !args.some((value) => /^--only-binary(?:=|$)/u.test(value))) {
+      return deny(
+        "install-runs-package-code",
+        `安装 ${naming} 时会执行它自带的 setup.py，那段代码能读到这台机器上的东西。`,
+        "加 --only-binary=:all: 重发；只装 wheel 就不会执行安装脚本。",
+      );
+    }
     return confirm(
       "foreign-package-install",
-      `${executable} 会下载并执行 ${named.slice(0, 3).join("、") || "第三方"} 的代码，这里没有 npm 那套审查。`,
+      `${executable} 会下载 ${naming}，这里没有 npm 那套审查流程。`,
     );
   }
   if (DELETERS.has(executable)) return evaluateDeletion(executable, args, context);
@@ -813,7 +885,11 @@ function evaluateSegment(segment, context) {
     return allow("script-execution");
   }
 
-  return allow();
+  const written = evaluateWrite(
+    [...redirectTargets(tokens), ...writeTargets(executable, args)],
+    context,
+  );
+  return written ?? allow();
 }
 
 const MAX_SUBSTITUTION_DEPTH = 3;

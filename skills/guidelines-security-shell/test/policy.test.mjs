@@ -48,9 +48,6 @@ test("allows workspace-internal cleanup but confirms outside or unknown scopes",
 
 test("asks before an installer from another ecosystem fetches code", () => {
   for (const command of [
-    "pip3 install --user git-filter-repo",
-    "python3 -m pip install UnityPy Pillow",
-    "uv pip install ruff",
     "cargo install cargo-xwin",
     "go install golang.org/x/tools/cmd/goimports@latest",
     "gem install bundler",
@@ -60,6 +57,20 @@ test("asks before an installer from another ecosystem fetches code", () => {
   ]) {
     assert.equal(evaluateCommand(command, cwd).ruleId, "foreign-package-install", command);
   }
+
+  // pip is the one with a lever: a wheel is unpacked, a source distribution
+  // runs its setup.py while installing. Name the spelling that closes it.
+  for (const command of [
+    "pip3 install --user git-filter-repo",
+    "python3 -m pip install UnityPy Pillow",
+    "uv pip install ruff",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).ruleId, "install-runs-package-code", command);
+  }
+  assert.equal(
+    evaluateCommand("pip install --only-binary=:all: requests", cwd).ruleId,
+    "foreign-package-install",
+  );
 
   // Reading or listing is not fetching.
   for (const command of ["pip list", "brew --prefix lld", "cargo build", "go build ./...", "brew list"]) {
@@ -151,6 +162,40 @@ test("allows sweeping a process the pattern actually identifies", () => {
   assert.equal(evaluateCommand("pkill -f server", cwd).ruleId, "process-sweep");
   assert.equal(evaluateCommand('pkill -f "node --inspect"', cwd).ruleId, "process-sweep");
   assert.equal(evaluateCommand("killall Dock", cwd).decision, "confirm");
+});
+
+test("sees a write landing outside the workspace, not only a deletion", () => {
+  // Overwriting destroys the contents as completely as removing the file, and
+  // leaves the file there so nothing looks missing.
+  const other = "/Users/someone/other-repo";
+  for (const command of [
+    `echo broken > ${other}/package.json`,
+    `echo x >> ${other}/.gitignore`,
+    `cp ./bad.ts ${other}/src/index.ts`,
+    `mv ./bad.ts ${other}/src/index.ts`,
+    `sed -i '' 's/a/b/g' ${other}/package.json`,
+    `echo x | tee ${other}/package.json`,
+    `tar xzf pkg.tgz -C ${other}`,
+    `rsync -a ./src/ ${other}/src/`,
+    `cat > ${other}/package.json`,
+    "echo x > ~/.zshrc",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).ruleId, "outside-workspace-write", command);
+  }
+  // Writing where the work is, and reading anywhere, stay out of the way.
+  for (const command of [
+    "echo x > build/out.log",
+    "echo x > /tmp/scratch.txt",
+    "cp a.ts b.ts",
+    "node build.js 2>/dev/null",
+    "node build.js > /dev/null 2>&1",
+    "ls -la 2>&1 | head",
+    `cat ${other}/package.json`,
+    `grep -rn TODO ${other}/src`,
+    "sed -n '1,5p' package.json",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).decision, "allow", command);
+  }
 });
 
 test("reads ordinary shell syntax instead of calling it ambiguous", () => {

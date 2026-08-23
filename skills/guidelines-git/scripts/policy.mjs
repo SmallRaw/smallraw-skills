@@ -346,6 +346,33 @@ const SWEEP_STAGE_FLAGS = new Set(["-A", "--all", "-u", "--update"]);
 // A bare name is read as a branch; `.` and anything with a file extension is
 // read as a path, which is the form that discards work. An all-digit suffix
 // is a version number (hotfix/v6.5.2), not an extension.
+// A prompt that says "these files" while the paths sit in the command it is
+// quoting has told the reader nothing they can act on. Name them, and keep the
+// line short when there are many.
+function naming(values, fallback) {
+  const named = values.filter((value) => !value.startsWith("-") && value !== "--");
+  if (named.length === 0) return fallback;
+  return named.length > 3
+    ? `${named.slice(0, 3).join("、")} 等 ${named.length} 个路径`
+    : named.join("、");
+}
+
+// The text after -m is the commit message, not a path; listing it as one is
+// worse than saying nothing, because the reader is being pointed at a thing
+// that does not exist.
+function withoutMessage(values) {
+  const kept = [];
+  for (let index = 0; index < values.length; index += 1) {
+    if (values[index] === "-m" || values[index] === "--message") {
+      index += 1;
+      continue;
+    }
+    if (/^(?:-m|--message=)/u.test(values[index])) continue;
+    kept.push(values[index]);
+  }
+  return kept;
+}
+
 function isDiscardingPathspec(value) {
   if (value.startsWith("-")) return false;
   return (
@@ -387,7 +414,7 @@ function evaluateGit(args) {
   if (subcommand === "notes") {
     const verb = rest.find((value) => !value.startsWith("-")) ?? "";
     if (["remove", "prune"].includes(verb)) {
-      return confirm("notes-removal", "会删除已有的 git 注记。");
+      return confirm("notes-removal", `会删除 ${naming(rest.slice(1), "当前提交")} 上已有的 git 注记。`);
     }
     return allow("notes-write");
   }
@@ -423,35 +450,18 @@ function evaluateGit(args) {
     return allow("read-only-git");
   }
 
-  if (subcommand === "add") {
-    const hasPathspec = rest.some((value) => !value.startsWith("-"));
-    if (
-      rest.some(isBroadStageToken) ||
-      (!hasPathspec && rest.some((value) => SWEEP_STAGE_FLAGS.has(value)))
-    ) {
-      return confirm(
-        "broad-staging",
-        "会把你未提交的其他改动一并暂存进来。",
-        "只暂存本次改动的路径。",
-      );
-    }
-    return allow("explicit-staging");
-  }
+  // Staging too much is undone by unstaging it, and a commit that swept in more
+  // than intended is amended or reset. Nothing here loses anything, so the
+  // guideline asks for exact paths while the gate stays out of the way.
+  if (subcommand === "add") return allow("staging");
   // Index operations on tracked paths: the content stays recoverable from git,
   // and git itself refuses to drop uncommitted work unless forced. Treat them
   // like staging — broad pathspecs and --force are what need a look.
   if (subcommand === "rm" || subcommand === "mv") {
-    if (rest.some(isBroadStageToken)) {
-      return confirm(
-        "broad-staging",
-        `git ${subcommand} 的宽泛 pathspec 会波及无关文件。`,
-        "写明确切路径。",
-      );
-    }
     if (rest.some((value) => value === "-f" || value === "--force")) {
       return confirm(
         "forced-index-removal",
-        `会丢弃这些路径未提交的改动。`,
+        `会丢弃 ${naming(rest, "这些路径")} 未提交的改动。`,
       );
     }
     return allow("tracked-path-index-change");
@@ -486,16 +496,7 @@ function evaluateGit(args) {
     ) {
       return confirm(
         "commit-pathspec",
-        "可能提交暂存区之外的内容。",
-      );
-    }
-    if (
-      rest.includes("--all") ||
-      rest.some((value) => /^-[^-]*a/iu.test(value))
-    ) {
-      return confirm(
-        "broad-staging",
-        "会把你所有未暂存的改动一并提交。",
+        `会提交 ${naming(withoutMessage(rest), "指定路径")} 的当前内容，绕过暂存区。`,
       );
     }
     return allow("normal-commit");
@@ -510,7 +511,7 @@ function evaluateGit(args) {
     }
     return confirm(
       "repository-git-config-write",
-      "会修改本仓库的 git 配置。",
+      `会把本仓库的 ${naming(args.slice(1, 2), "一项 git 配置")} 改掉。`,
     );
   }
   if (subcommand === "push") {
@@ -528,12 +529,22 @@ function evaluateGit(args) {
         "先 git remote set-url 配好目录专属 SSH 别名，再推配置好的远端。",
       );
     }
-    const forced = rest.some(
-      (value) => value === "--force" || value === "-f" || value.startsWith("--force-with-lease"),
-    );
+    // Naming the destination is the whole value of the prompt: pushing a branch
+    // you own and pushing main look identical when the message only says that a
+    // push is happening. --force-with-lease is worth separating from --force
+    // too, since one refuses when the remote moved and the other does not.
+    const leased = rest.some((value) => value.startsWith("--force-with-lease"));
+    const forced = leased || rest.some((value) => value === "--force" || value === "-f");
+    const operands = rest.filter((value) => !value.startsWith("-"));
+    const target = operands.length > 1 ? `${operands[0]} ${operands.slice(1).join(" ")}` : operands[0];
+    const where = target ? `到 ${target}` : "到当前分支的上游";
     return confirm(
       forced ? "force-push" : "git-push",
-      forced ? "会强制覆盖远端已有的提交历史。" : "会把本地提交发布到远端仓库。",
+      forced
+        ? leased
+          ? `会用本地历史覆盖 ${target ?? "远端"}；远端如果在你 fetch 之后动过，这次推送会被拒绝。`
+          : `会强制覆盖 ${target ?? "远端"} 上已有的提交历史，别人推的东西会被顶掉。`
+        : `会把本地提交发布${where}，之后别人就能拉到。`,
     );
   }
   if (subcommand === "fetch") {
@@ -570,7 +581,7 @@ function evaluateGit(args) {
     if (rest.includes("--") || rest.some(isDiscardingPathspec)) {
       return confirm(
         "worktree-discard",
-        `会丢弃这些文件未提交的修改，无法恢复。`,
+        `会把 ${naming(rest, "这些文件")} 恢复成已提交的样子，未提交的修改没有任何地方能找回。`,
         "要保留就先 stash。",
       );
     }
@@ -588,7 +599,7 @@ function evaluateGit(args) {
     }
     return confirm(
       "worktree-discard",
-      "会丢弃这些文件未提交的修改，无法恢复。",
+      `会把 ${naming(rest, "这些文件")} 恢复成已提交的样子，未提交的修改没有任何地方能找回。`,
       "要保留就先 stash。",
     );
   }
@@ -601,7 +612,7 @@ function evaluateGit(args) {
     if (["drop", "clear"].includes(rest[0] ?? "")) {
       return confirm(
         "stash-destruction",
-        `会删除 stash 里保存的改动，基本找不回。`,
+        `会删掉 ${naming(rest.slice(1), "全部 stash")} 里存着的改动，基本找不回。`,
       );
     }
     return allow("recoverable-stash");
@@ -629,17 +640,43 @@ function evaluateGit(args) {
   if (subcommand === "remote" && rest[0] === "add") return allow("ref-creation");
   if (subcommand === "worktree" && rest[0] === "add") return allow("worktree-creation");
   if (subcommand === "init") return allow("worktree-creation");
-  if (HISTORY_OR_BRANCH_MUTATIONS.has(subcommand)) {
+  // What is left in these two families splits cleanly. Most of it is a pointer
+  // git can find again — a deleted branch, a moved ref, a changed remote URL —
+  // and stopping for those bought nothing. Three of them drop work that has no
+  // copy anywhere, and those are the whole reason the families were gated.
+  if (subcommand === "clean") {
     return confirm(
-      "history-or-branch-mutation",
-      `git ${subcommand} 可能丢弃未提交的改动。`,
+      "untracked-file-deletion",
+      "会删掉未被 git 跟踪的文件，git 里没有它们的副本。",
+      "先跑 git clean -n 看会删什么。",
     );
   }
-  if (["branch", "tag", "remote", "worktree", "submodule", "init"].includes(subcommand)) {
+  if (subcommand === "reset") {
     return confirm(
-      "repository-structure-mutation",
-      `git ${subcommand} 会删改分支、标签、远端或工作树。`,
+      "worktree-discard",
+      "reset 的这个模式会覆盖工作区里未提交的改动。",
+      "要保留就先 stash。",
     );
+  }
+  if (HISTORY_OR_BRANCH_MUTATIONS.has(subcommand)) {
+    return allow("reflog-recoverable-history");
+  }
+  if (subcommand === "worktree" && rest.some((value) => value === "--force" || value === "-f")) {
+    return confirm(
+      "worktree-discard",
+      "--force 会连同那棵工作树里未提交的改动一起删掉。",
+      "先确认那棵树是干净的。",
+    );
+  }
+  if (
+    subcommand === "submodule" &&
+    rest[0] === "deinit" &&
+    rest.some((value) => value === "--force" || value === "-f")
+  ) {
+    return confirm("worktree-discard", "deinit --force 会丢掉子模块里未提交的改动。");
+  }
+  if (["branch", "tag", "remote", "worktree", "submodule", "init"].includes(subcommand)) {
+    return allow("recoverable-structure-change");
   }
 
   return confirm(
