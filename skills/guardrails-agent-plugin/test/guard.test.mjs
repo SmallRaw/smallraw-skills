@@ -229,6 +229,18 @@ test("reads commands out of a payload that carries them inside source", () => {
   assert.equal(plain.permissionDecision, "deny");
 });
 
+test("does not read TypeScript patch text as a shell command", () => {
+  const backtick = String.fromCharCode(96);
+  const source =
+    'await tools.apply_patch("*** Begin Patch\\n+const task = { command: ' +
+    backtick +
+    "sudo id" +
+    backtick +
+    ' };\\n*** End Patch");';
+  const result = runGuard(policies.shell, { tool_name: "exec", input: source });
+  assert.equal(result, null);
+});
+
 test("a spelling the extraction did not anticipate must not read as approval", () => {
   // Each of these runs `gh auth setup-git`. Guessing which field carries the
   // command is what let one through, so an execution-named tool whose command
@@ -239,6 +251,11 @@ test("a spelling the extraction did not anticipate must not read as approval", (
     { tool_name: "exec", input: 'await tools.exec_command({ cmd: "gh auth " + "setup-git" });' },
     { tool_name: "exec", input: 'await tools.exec_command({ cmd: ["gh","auth","setup-git"] });' },
     { tool_name: "exec", input: 'await tools.exec_command({ script: "gh auth setup-git" });' },
+    {
+      tool_name: "exec",
+      input:
+        'const run = tools.exec_command; await tools.apply_patch("safe"); await run({ ["cmd"]: buildCmd() });',
+    },
     {
       tool_name: "exec",
       tool_input: { arguments: 'await tools.exec_command({ cmd: "gh auth setup-git" });' },

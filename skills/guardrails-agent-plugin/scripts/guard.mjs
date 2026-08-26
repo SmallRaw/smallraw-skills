@@ -50,6 +50,84 @@ function denyExitCode() {
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
+// Keep data strings out of the structural scan below. An apply_patch program
+// can carry TypeScript such as a template-literal command property as plain
+// text; reading that text as part of the surrounding JavaScript invents a
+// shell command that will never run.
+function structuralSource(source) {
+  const output = Array.from(source, () => " ");
+  const backtick = String.fromCharCode(96);
+  const stack = [{ kind: "code", braceDepth: null }];
+
+  for (let index = 0; index < source.length; index += 1) {
+    const state = stack.at(-1);
+    const character = source[index];
+    const next = source[index + 1];
+
+    if (state.kind === "line-comment") {
+      if (character === "\n") {
+        stack.pop();
+        output[index] = character;
+      }
+      continue;
+    }
+    if (state.kind === "block-comment") {
+      if (character === "*" && next === "/") {
+        stack.pop();
+        index += 1;
+      }
+      continue;
+    }
+    if (state.kind === "string") {
+      if (character === "\\") index += 1;
+      else if (character === state.quote) stack.pop();
+      continue;
+    }
+    if (state.kind === "template") {
+      if (character === "\\") {
+        index += 1;
+      } else if (character === backtick) {
+        stack.pop();
+      } else if (character === "$" && next === "{") {
+        stack.push({ kind: "code", braceDepth: 0 });
+        index += 1;
+      }
+      continue;
+    }
+
+    if (state.braceDepth === 0 && character === "}") {
+      stack.pop();
+      continue;
+    }
+    if (character === "/" && next === "/") {
+      stack.push({ kind: "line-comment" });
+      index += 1;
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      stack.push({ kind: "block-comment" });
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      stack.push({ kind: "string", quote: character });
+      continue;
+    }
+    if (character === backtick) {
+      stack.push({ kind: "template" });
+      continue;
+    }
+
+    output[index] = character;
+    if (state.braceDepth !== null) {
+      if (character === "{") state.braceDepth += 1;
+      else if (character === "}") state.braceDepth -= 1;
+    }
+  }
+
+  return output.join("");
+}
+
 // Codex's `exec` tool takes a JavaScript program that calls
 // tools.exec_command({ cmd }), so the shell command is a literal inside source
 // rather than a field the policy can read. Pull out what is statically knowable
@@ -57,10 +135,12 @@ function denyExitCode() {
 function extractEmbeddedCommands(source) {
   const commands = [];
   let dynamic = false;
+  const structure = structuralSource(source);
   const pattern =
     /\b(?:cmd|command)\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|([A-Za-z_$][\w$]*))/g;
 
   for (const match of source.matchAll(pattern)) {
+    if (structure[match.index] !== source[match.index]) continue;
     const [, double, single, template, identifier] = match;
     if (identifier) {
       dynamic = true;
@@ -75,9 +155,19 @@ function extractEmbeddedCommands(source) {
       commands.push(raw);
     }
   }
-  // An exec program that never names a command builds one some other way.
-  if (commands.length === 0 && /exec_command|spawn|shell/u.test(source)) dynamic = true;
-  return { commands, dynamic };
+  const toolCalls = Array.from(
+    structure.matchAll(/\btools\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/gu),
+    (match) => match[1],
+  );
+  const executionCalls = toolCalls.filter((name) => EXECUTION_TOOL.test(name)).length;
+  if (executionCalls > commands.length) dynamic = true;
+  if (
+    commands.length === 0 &&
+    (/\b(?:exec_command|spawn|shell)\b/u.test(structure) || /\btools\s*\[/u.test(structure))
+  ) {
+    dynamic = true;
+  }
+  return { commands, dynamic, toolCalls: toolCalls.length };
 }
 
 // Any tool whose name says it runs things. Guessing which field carries the
@@ -107,16 +197,19 @@ function commandsFrom(input) {
 
   const commands = [];
   let dynamic = false;
+  let nestedToolCalls = 0;
   for (const source of collectStrings(toolInput).concat(
     typeof input?.input === "string" ? [input.input] : [],
   )) {
     const found = extractEmbeddedCommands(source);
     commands.push(...found.commands);
     dynamic ||= found.dynamic;
+    nestedToolCalls += found.toolCalls;
   }
   // A tool that exists to run things, whose command we could not read, is not
-  // evidence that nothing runs.
-  if (commands.length === 0) dynamic = true;
+  // evidence that nothing runs. A program made only of explicit non-execution
+  // tool calls is different: its string arguments are data for those tools.
+  if (commands.length === 0 && nestedToolCalls === 0) dynamic = true;
   return { commands, dynamic };
 }
 
