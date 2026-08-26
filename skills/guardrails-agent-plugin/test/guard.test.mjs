@@ -229,16 +229,26 @@ test("reads commands out of a payload that carries them inside source", () => {
   assert.equal(plain.permissionDecision, "deny");
 });
 
-test("does not read TypeScript patch text as a shell command", () => {
+test("does not read TypeScript patch templates as Bash wrappers", () => {
   const backtick = String.fromCharCode(96);
-  const source =
-    'await tools.apply_patch("*** Begin Patch\\n+const task = { command: ' +
+  const patch =
+    "*** Begin Patch\n+const label = " +
     backtick +
-    "sudo id" +
+    "text ${value}" +
     backtick +
-    ' };\\n*** End Patch");';
-  const result = runGuard(policies.shell, { tool_name: "exec", input: source });
-  assert.equal(result, null);
+    ";\n*** End Patch";
+  const payload = { tool_name: "apply_patch", tool_input: { command: patch } };
+
+  assert.equal(runGuard(policies.shell, payload), null);
+
+  const shellLikeText = patch.replace("text ${value}", "sudo id");
+  assert.equal(
+    runGuard(policies.shell, {
+      ...payload,
+      tool_input: { command: shellLikeText },
+    }),
+    null,
+  );
 });
 
 test("a spelling the extraction did not anticipate must not read as approval", () => {

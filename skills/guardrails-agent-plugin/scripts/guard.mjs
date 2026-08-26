@@ -160,6 +160,7 @@ function extractEmbeddedCommands(source) {
     (match) => match[1],
   );
   const executionCalls = toolCalls.filter((name) => EXECUTION_TOOL.test(name)).length;
+  const bashCalls = toolCalls.filter((name) => BASH_TOOL.test(name)).length;
   if (executionCalls > commands.length) dynamic = true;
   if (
     commands.length === 0 &&
@@ -167,13 +168,14 @@ function extractEmbeddedCommands(source) {
   ) {
     dynamic = true;
   }
-  return { commands, dynamic, toolCalls: toolCalls.length };
+  return { commands, dynamic, toolCalls: toolCalls.length, bashCalls };
 }
 
 // Any tool whose name says it runs things. Guessing which field carries the
 // command is what let a payload through once; for these, search the whole
 // thing rather than a field name someone happened to think of.
 const EXECUTION_TOOL = /^(?:bash|sh|shell|exec|exec_command|run|run_command|run_terminal|terminal|command|process)/iu;
+const BASH_TOOL = /^(?:bash|exec_command)$/iu;
 
 function collectStrings(value, out = [], depth = 0) {
   if (depth > 6 || out.length > 64) return out;
@@ -188,15 +190,20 @@ function collectStrings(value, out = [], depth = 0) {
 // Returns the shell commands a payload will run, however the host spells it.
 function commandsFrom(input) {
   const toolInput = input?.tool_input ?? input?.input ?? input?.args ?? {};
-  const direct = toolInput?.command ?? toolInput?.cmd;
-  if (typeof direct === "string") return { commands: [direct], dynamic: false };
+  const toolName = String(input?.tool_name ?? input?.tool ?? "");
 
-  if (!EXECUTION_TOOL.test(String(input?.tool_name ?? input?.tool ?? ""))) {
-    return { commands: [], dynamic: false };
+  if (!EXECUTION_TOOL.test(toolName)) {
+    return { commands: [], dynamic: false, bash: false };
+  }
+
+  const direct = toolInput?.command ?? toolInput?.cmd;
+  if (typeof direct === "string") {
+    return { commands: [direct], dynamic: false, bash: BASH_TOOL.test(toolName) };
   }
 
   const commands = [];
   let dynamic = false;
+  let bash = BASH_TOOL.test(toolName);
   let nestedToolCalls = 0;
   for (const source of collectStrings(toolInput).concat(
     typeof input?.input === "string" ? [input.input] : [],
@@ -204,13 +211,14 @@ function commandsFrom(input) {
     const found = extractEmbeddedCommands(source);
     commands.push(...found.commands);
     dynamic ||= found.dynamic;
+    bash ||= found.bashCalls > 0;
     nestedToolCalls += found.toolCalls;
   }
   // A tool that exists to run things, whose command we could not read, is not
   // evidence that nothing runs. A program made only of explicit non-execution
   // tool calls is different: its string arguments are data for those tools.
   if (commands.length === 0 && nestedToolCalls === 0) dynamic = true;
-  return { commands, dynamic };
+  return { commands, dynamic, bash };
 }
 
 const RANK = { allow: 0, confirm: 1, deny: 2 };
@@ -414,16 +422,18 @@ async function main() {
   // from going blind on `bash -c 'git push && rm -rf x'`: the payload is judged
   // by the same policy, as the command it is.
   let unreadableWrapper = false;
-  for (const command of embedded.commands) {
-    const carried = wrappedCommands(command);
-    unreadableWrapper ||= carried.unreadable;
-    for (const payload of carried.payloads) {
-      const each = await evaluatePolicy({
-        ...input,
-        tool_name: "Bash",
-        tool_input: { ...(input?.tool_input ?? {}), command: payload },
-      });
-      if (RANK[each?.decision] > RANK[value?.decision ?? "allow"]) value = each;
+  if (embedded.bash) {
+    for (const command of embedded.commands) {
+      const carried = wrappedCommands(command);
+      unreadableWrapper ||= carried.unreadable;
+      for (const payload of carried.payloads) {
+        const each = await evaluatePolicy({
+          ...input,
+          tool_name: "Bash",
+          tool_input: { ...(input?.tool_input ?? {}), command: payload },
+        });
+        if (RANK[each?.decision] > RANK[value?.decision ?? "allow"]) value = each;
+      }
     }
   }
   // A payload that only exists once the shell expands it cannot be judged at
