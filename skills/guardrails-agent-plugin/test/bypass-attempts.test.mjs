@@ -141,3 +141,35 @@ test("the workspace rc split cannot be walked out of", async () => {
   assert.equal(await decide("local", "cat ../../../.npmrc"), "deny");
   assert.equal(await decide("local", "cat packages/w/.npmrc"), "confirm");
 });
+
+// The host's own directory is where the runtime keeps job scratch, caches,
+// transcripts, and the notes the agent carries between sessions; writing there
+// is it working in the space handed to it. The narrow exception is the files
+// that decide what it may do — a write to those is it editing its own
+// guardrails, and no amount of ordinary-looking traffic should launder one.
+test("the agent's own quarters open without opening its rulebook", async () => {
+  const home = process.env.HOME;
+  for (const command of [
+    `echo x > ${home}/.claude/jobs/abc/tmp/tsc.log`,
+    `echo x >> ${home}/.claude/projects/p/memory/MEMORY.md`,
+    `echo x > ${home}/.claude/cache/f.json`,
+    `echo x > ${home}/.codex/sessions/s.jsonl`,
+  ]) {
+    assert.equal(await decide("shell", command), "allow", command);
+  }
+  for (const command of [
+    `echo x > ${home}/.claude/settings.json`,
+    `echo x > ${home}/.claude/settings.local.json`,
+    `echo x > ${home}/.claude/settings.json.bak`,
+    `echo x > ${home}/.claude/skills/guidelines-git/scripts/policy.mjs`,
+    `echo x > ${home}/.claude/plugins/p/hook.mjs`,
+    `echo x > ${home}/.claude/hooks/pre.sh`,
+    `echo x > ${home}/.claude/rules/global.md`,
+    `echo x > ${home}/.claude/agents/a.md`,
+    `echo x > ${home}/.claude/statusline-command.sh`,
+    `echo x >> ${home}/.codex/AGENTS.md`,
+    `echo x > ${home}/.codex/skills/github-kb/SKILL.md`,
+  ]) {
+    assert.ok(await stops("shell", command), command);
+  }
+});

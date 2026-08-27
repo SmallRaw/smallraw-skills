@@ -469,6 +469,33 @@ function isSystemPath(resolved) {
   return SYSTEM_ROOTS.some((root) => lowered === root || lowered.startsWith(`${root}/`));
 }
 
+// The host hands the agent a place to keep notes across sessions. Working in it
+// is the agent using its own store, which stands with the workspace rather than
+// with someone else's repository. What sits next to it does not: the skills,
+// settings, and plugin directories hold the rules the agent runs under, and a
+// write there is it editing its own guardrails — that keeps asking.
+// Most of what sits under the host's own directory is the runtime keeping its
+// own state: job scratch, caches, transcripts, shell snapshots, the notes the
+// agent keeps between sessions. Writing there is the agent working in the space
+// handed to it, and it stands with the workspace rather than with someone
+// else's repository. The exception is small and specific — the files that
+// decide what the agent is allowed to do. A write there is it editing its own
+// guardrails, and that keeps asking however routine it looks.
+const AGENT_HOME = /(^|\/)\.(claude|codex)(\/|$)/u;
+const AGENT_RULE_SURFACE = [
+  /\/settings[^/]*\.json[^/]*$/u,
+  /\/keybindings\.json$/u,
+  /\/(CLAUDE|AGENTS)\.md$/u,
+  /\/mcp[^/]*\.json$/u,
+  /\/\.(claude|codex)\/(skills|plugins|hooks|agents|commands|rules)(\/|$)/u,
+  /\/statusline-[^/]*$/u,
+];
+
+function isAgentStore(resolved) {
+  if (!AGENT_HOME.test(resolved)) return false;
+  return !AGENT_RULE_SURFACE.some((pattern) => pattern.test(resolved));
+}
+
 function isCriticalRoot(resolved) {
   const normalized = resolved.replace(/\/+$/u, "") || "/";
   if (CRITICAL_ROOTS.has(normalized.toLowerCase())) return true;
@@ -499,7 +526,7 @@ function classifyTargets(targets, context) {
     }
     const resolved = path.resolve(context.cwd ?? process.cwd(), expanded);
     if (isCriticalRoot(resolved)) return { scope: "critical", path: resolved };
-    if (!isWithin(resolved, context.workspace) && !isTempPath(resolved)) {
+    if (!isWithin(resolved, context.workspace) && !isTempPath(resolved) && !isAgentStore(resolved)) {
       outside ??= { scope: "outside", path: resolved };
     }
   }
