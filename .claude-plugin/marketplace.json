@@ -176,6 +176,15 @@
       "skills": [
         "./skills/guardrails-agent-plugin"
       ]
+    },
+    {
+      "name": "orca-computer-use",
+      "description": "Orca 桌面自动化 - 通过无障碍树读取和操作本地桌面应用窗口（点击、输入、截图、获取 app state）",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/orca-computer-use"
+      ]
     }
   ]
 }
