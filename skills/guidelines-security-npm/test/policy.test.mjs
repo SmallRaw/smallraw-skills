@@ -19,6 +19,16 @@ test("allows routine scripts without forcing a rescan", () => {
   assert.equal(evaluateCommand("yarn build").decision, "allow");
   assert.equal(evaluateCommand("bun run test").decision, "allow");
   assert.equal(evaluateCommand("npm cache clean --force").decision, "allow");
+  for (const command of [
+    "npm --version",
+    "pnpm -v",
+    "yarn --version",
+    "bun --help",
+    "corepack yarn install --help",
+    "/Users/example/.local/bin/corepack pnpm --version",
+  ]) {
+    assert.equal(evaluateCommand(command).decision, "allow", command);
+  }
 });
 
 test("CLI runs and emits a verdict when invoked through a symlink", (context) => {
@@ -112,6 +122,9 @@ test("allows an install that provably cannot change the dependency graph", () =>
     "yarn install --immutable --ignore-scripts",
     "yarn install --frozen-lockfile --ignore-scripts",
     "pnpm install --frozen-lockfile --ignore-scripts",
+    "YARN_ENABLE_SCRIPTS=false yarn install --immutable",
+    "NPM_CONFIG_IGNORE_SCRIPTS=true npm ci",
+    "env PNPM_CONFIG_IGNORE_SCRIPTS=1 pnpm install --frozen-lockfile",
   ]) {
     assert.equal(evaluateCommand(command).ruleId, "lockfile-immutable-install", command);
   }
@@ -125,10 +138,14 @@ test("allows an install that provably cannot change the dependency graph", () =>
     evaluateCommand("npm install --package-lock-only --ignore-scripts").ruleId,
     "isolated-lockfile-resolution",
   );
+  assert.equal(
+    evaluateCommand("YARN_ENABLE_SCRIPTS=false yarn install").ruleId,
+    "scripts-disabled-install",
+  );
 });
 
 test("lets a runner report on itself without naming a package", () => {
-  for (const command of ["npx --version", "npx -v", "npx --help"]) {
+  for (const command of ["npx --version", "npx -v", "npx --help", "bunx --help"]) {
     assert.equal(evaluateCommand(command).ruleId, "runner-self-report", command);
   }
   // Naming a package to fetch is still refused.
@@ -208,6 +225,10 @@ test("fails conservatively on malformed commands", () => {
 
 test("allows dry-run publish previews but keeps real registry writes gated", () => {
   assert.equal(evaluateCommand("npm publish --dry-run").ruleId, "registry-write-dry-run");
+  assert.equal(
+    evaluateCommand("npm pack --dry-run > /tmp/package-review.txt 2>&1").decision,
+    "allow",
+  );
   assert.equal(evaluateCommand("cd pkg && npm publish --dry-run 2>&1 | tail -5").decision, "allow");
   assert.equal(evaluateCommand("yarn npm publish --dry-run").decision, "allow");
   assert.equal(evaluateCommand("npm pack --dry-run").ruleId, "registry-write-dry-run");

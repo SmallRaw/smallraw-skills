@@ -22,6 +22,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { CODEX_HOOK_TIMEOUT_SECONDS } from "./codex-confirm.mjs";
 
 const MARKER = "guardrails";
 const SKILL_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -41,7 +42,11 @@ const POLICIES = [
   },
   {
     name: "guidelines-security-shell",
-    matchers: { "claude-code": "Bash", codex: "Bash|exec|exec_command|shell", cursor: "Bash" },
+    matchers: {
+      "claude-code": "Bash|Write|Edit|NotebookEdit",
+      codex: "Bash|exec|exec_command|shell|apply_patch|Edit|Write",
+      cursor: "Bash|Write|Edit",
+    },
   },
   {
     name: "guidelines-security-local",
@@ -117,6 +122,10 @@ function markerFor(policyName) {
   return `${MARKER}:${policyName}`;
 }
 
+function hookTimeout(hostName) {
+  return hostName === "codex" ? CODEX_HOOK_TIMEOUT_SECONDS : 15;
+}
+
 // `|| exit 2` is the fail-closed compensation, not decoration: hosts treat a
 // non-2 exit as a non-blocking error and run the command anyway, so a guard
 // that cannot start at all would silently wave everything through. The guard
@@ -124,7 +133,7 @@ function markerFor(policyName) {
 function hookCommand(policyName, hostName) {
   const denyExit = HOSTS[hostName]?.denyExit;
   const suffix = denyExit ? ` --deny-exit ${denyExit}` : "";
-  return `node ${JSON.stringify(GUARD)} ${JSON.stringify(policyPath(policyName))}${suffix} || exit 2`;
+  return `node ${JSON.stringify(GUARD)} ${JSON.stringify(policyPath(policyName))} --host ${hostName}${suffix} || exit 2`;
 }
 
 function readJson(file) {
@@ -193,11 +202,18 @@ function inspect() {
       const found = findEntry(container, policy.name);
       if (!found) continue;
       const expected = hookCommand(policy.name, name);
+      const expectedMatcher = policy.matchers[name];
+      const expectedTimeout = hookTimeout(name);
       findings.push({
         host: name,
         file,
         policy: policy.name,
-        state: found.hook.command === expected ? "registered" : "registered-stale",
+        state:
+          found.hook.command === expected &&
+          found.group.matcher === expectedMatcher &&
+          found.hook.timeout === expectedTimeout
+            ? "registered"
+            : "registered-stale",
         matcher: found.group.matcher,
         command: found.hook.command,
       });
@@ -241,8 +257,16 @@ function unmarkedRegistrations(container, host, file) {
 function checkCommand(hostInfo, asJson) {
   const findings = inspect();
   const missingPolicies = POLICIES.filter((p) => !fs.existsSync(policyPath(p.name))).map((p) => p.name);
-  const registered = new Set(findings.filter((f) => f.state === "registered").map((f) => f.policy));
-  const stale = new Set(findings.filter((f) => f.state === "registered-stale").map((f) => f.policy));
+  const statusHost = hostInfo.host ?? hostInfo.candidate ?? null;
+  const hostFindings = statusHost
+    ? findings.filter((finding) => finding.host === statusHost)
+    : [];
+  const registered = new Set(
+    hostFindings.filter((f) => f.state === "registered").map((f) => f.policy),
+  );
+  const stale = new Set(
+    hostFindings.filter((f) => f.state === "registered-stale").map((f) => f.policy),
+  );
 
   const perPolicy = POLICIES.map((policy) => ({
     policy: policy.name,
@@ -353,14 +377,34 @@ function installCommand(hostInfo, { dryRun, asJson }) {
       type: "command",
       command,
       statusMessage: markerFor(policy.name),
-      timeout: 15,
+      timeout: hookTimeout(hostInfo.host),
     };
     const found = findEntry(container, policy.name);
     if (found) {
-      // Update in place: same marker means this is our entry, so never append.
-      const unchanged = found.hook.command === command && found.group.matcher === matcher;
-      found.group.matcher = matcher;
+      // Same marker means this is our entry. A matcher belongs to its whole
+      // group, so move just this hook when policies that used to share a group
+      // now need different matchers; mutating the group would retarget all of
+      // its siblings and the last policy processed would win.
+      const unchanged =
+        found.hook.command === command &&
+        found.group.matcher === matcher &&
+        found.hook.timeout === entry.timeout;
       Object.assign(found.hook, entry);
+      if (found.group.matcher !== matcher) {
+        found.group.hooks.splice(found.hookIndex, 1);
+        let targetGroup = container.PreToolUse.find(
+          (candidate) => candidate?.matcher === matcher && Array.isArray(candidate.hooks),
+        );
+        if (!targetGroup) {
+          targetGroup = { matcher, hooks: [] };
+          container.PreToolUse.push(targetGroup);
+        }
+        targetGroup.hooks.push(found.hook);
+        if (found.group.hooks.length === 0) {
+          const groupIndex = container.PreToolUse.indexOf(found.group);
+          if (groupIndex >= 0) container.PreToolUse.splice(groupIndex, 1);
+        }
+      }
       actions.push({ policy: policy.name, action: unchanged ? "unchanged" : "updated" });
       continue;
     }
@@ -414,6 +458,7 @@ function formatInstall(report) {
 // nothing here is ever executed.
 const VECTORS = [
   { policy: "guidelines-git", command: "git status --short", expect: "allow" },
+  { policy: "guidelines-git", command: "git push origin HEAD", expect: "confirm" },
   { policy: "guidelines-git", command: "gh auth setup-git", expect: "deny" },
   { policy: "guidelines-security-npm", command: "npm test", expect: "allow" },
   { policy: "guidelines-security-npm", command: "npx cowsay hi", expect: "deny" },
@@ -421,7 +466,20 @@ const VECTORS = [
   { policy: "guidelines-security-shell", command: "sudo id", expect: "deny" },
   { policy: "guidelines-security-local", command: "cat README.md", expect: "allow" },
   { policy: "guidelines-security-local", command: "cat .env", expect: "deny" },
+  {
+    policy: "guidelines-security-local",
+    command: "test -e secrets/config.yaml",
+    expect: "confirm",
+  },
 ];
+
+function expectedGuardDecision(host, vector) {
+  if (host === "codex" && vector.policy === "guidelines-git" && vector.command === "git push origin HEAD") {
+    return "allow";
+  }
+  if (vector.expect !== "confirm") return vector.expect;
+  return host === "codex" ? "deny" : "ask";
+}
 
 function verifyCommand(hostInfo, asJson) {
   const results = [];
@@ -431,9 +489,11 @@ function verifyCommand(hostInfo, asJson) {
       results.push({ ...vector, got: "missing-module", ok: false });
       continue;
     }
+    const guardArgs = [GUARD, module];
+    if (hostInfo.host) guardArgs.push("--host", hostInfo.host);
     const run = spawnSync(
       process.execPath,
-      [GUARD, module],
+      guardArgs,
       {
         input: JSON.stringify({
           hook_event_name: "PreToolUse",
@@ -452,7 +512,7 @@ function verifyCommand(hostInfo, asJson) {
         got = "unparseable";
       }
     }
-    const expected = vector.expect === "confirm" ? "ask" : vector.expect;
+    const expected = expectedGuardDecision(hostInfo.host, vector);
     results.push({ ...vector, got, ok: got === expected });
   }
 
@@ -461,11 +521,16 @@ function verifyCommand(hostInfo, asJson) {
     pipeline: failed.length === 0 ? "ok" : "failed",
     results,
     // The script cannot make the host fire its own hooks; only an in-session
-    // attempt proves that half, so hand the agent the exact checks to run.
+    // attempt proves that half, so hand the agent the exact checks to run. The
+    // synthetic payload deliberately has no invocation ids, which keeps this
+    // non-interactive verification from opening a desktop confirmation dialog.
     inSessionChecks: [
       "Run `git status --short` — it must run normally.",
       "Run `npx cowsay hi` — it must be blocked with [one-off-package-runner].",
       "Run `sudo id` — it must be blocked with [privilege-escalation].",
+      hostInfo.host === "codex"
+        ? "Run `test -e secrets/config.yaml` — a macOS ‘Codex 安全确认’ dialog must appear; choose 拒绝 and the call must be blocked with [codex-confirm-declined]."
+        : "Run `test -e secrets/config.yaml` — it must request confirmation.",
       "A block without a [rule-id] prefix came from some other layer, not these hooks.",
     ],
     trustNote: hostInfo.host ? HOSTS[hostInfo.host]?.trust ?? null : null,

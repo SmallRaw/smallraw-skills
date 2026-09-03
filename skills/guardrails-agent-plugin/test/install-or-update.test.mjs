@@ -90,6 +90,52 @@ test("reports registered-stale when a command drifts, then repairs it", (context
   assert.equal(ourEntries(file).length, 4, "repair must not duplicate");
 });
 
+test("reports registered-stale when a matcher drifts", (context) => {
+  const { home, env } = sandbox(context);
+  const file = path.join(home, ".claude", "settings.json");
+  run(env, ["--install", "--host", "claude-code"]);
+
+  const config = JSON.parse(fs.readFileSync(file, "utf8"));
+  config.hooks.PreToolUse[0].matcher = "*";
+  fs.writeFileSync(file, JSON.stringify(config, null, 2));
+
+  const check = run(env, ["--check", "--host", "claude-code"]);
+  assert.equal(check.status, 1);
+  assert.match(check.stdout, /registered-stale/u);
+});
+
+test("uses a longer Codex timeout for the local confirmation dialog", (context) => {
+  const { home, env } = sandbox(context, { codex: true });
+  const file = path.join(home, ".codex", "hooks.json");
+  run(env, ["--install", "--host", "codex"]);
+
+  assert.ok(ourEntries(file).every((entry) => entry.timeout === 75));
+  const config = JSON.parse(fs.readFileSync(file, "utf8"));
+  config.hooks.PreToolUse[0].hooks[0].timeout = 15;
+  fs.writeFileSync(file, JSON.stringify(config, null, 2));
+  assert.equal(run(env, ["--check", "--host", "codex"]).status, 1);
+  assert.match(run(env, ["--check", "--host", "codex"]).stdout, /registered-stale/u);
+});
+
+test("reports policy state for the selected host only", (context) => {
+  const { home, env } = sandbox(context, { codex: true });
+  run(env, ["--install", "--host", "claude-code"]);
+  run(env, ["--install", "--host", "codex"]);
+
+  const claudeFile = path.join(home, ".claude", "settings.json");
+  const config = JSON.parse(fs.readFileSync(claudeFile, "utf8"));
+  config.hooks.PreToolUse[0].hooks[0].command = "node /stale/path.mjs";
+  fs.writeFileSync(claudeFile, JSON.stringify(config, null, 2));
+
+  const codex = JSON.parse(run(env, ["--check", "--host", "codex", "--json"]).stdout);
+  assert.ok(codex.policies.every((entry) => entry.state === "registered"));
+
+  const claude = JSON.parse(
+    run(env, ["--check", "--host", "claude-code", "--json"]).stdout,
+  );
+  assert.ok(claude.policies.some((entry) => entry.state === "registered-stale"));
+});
+
 test("uses host-specific matchers", (context) => {
   const claude = sandbox(context);
   run(claude.env, ["--install", "--host", "claude-code"]);
@@ -109,7 +155,22 @@ test("uses host-specific matchers", (context) => {
   const codexLocal = codexConfig.hooks.PreToolUse.find((group) =>
     group.hooks.some((h) => h.statusMessage === "guardrails:guidelines-security-local"),
   );
+  const codexShell = codexConfig.hooks.PreToolUse.find((group) =>
+    group.hooks.some((h) => h.statusMessage === "guardrails:guidelines-security-shell"),
+  );
+  const codexGit = codexConfig.hooks.PreToolUse.find((group) =>
+    group.hooks.some((h) => h.statusMessage === "guardrails:guidelines-git"),
+  );
+  const codexNpm = codexConfig.hooks.PreToolUse.find((group) =>
+    group.hooks.some((h) => h.statusMessage === "guardrails:guidelines-security-npm"),
+  );
   assert.match(codexLocal.matcher, /apply_patch/u);
+  assert.match(codexShell.matcher, /apply_patch/u);
+  assert.doesNotMatch(codexGit.matcher, /apply_patch/u);
+  assert.doesNotMatch(codexNpm.matcher, /apply_patch/u);
+  assert.match(codexLocal.hooks[0].command, /--host codex/u);
+  assert.match(claudeLocal.hooks[0].command, /--host claude-code/u);
+  assert.equal(run(codex.env, ["--check", "--host", "codex"]).status, 0);
 });
 
 test("compensates for a fail-open host with an explicit deny exit code", (context) => {
@@ -220,6 +281,23 @@ test("verify self-tests the guard pipeline", (context) => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /pipeline: ok/u);
   assert.match(result.stdout, /rule-id/u, "must explain how to tell our blocks apart");
+});
+
+test("verify covers the non-interactive Codex confirm fallback", (context) => {
+  const { env } = sandbox(context, { codex: true });
+  const result = run(env, ["--verify", "--host", "codex", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  const confirmation = report.results.find(
+    (entry) => entry.expect === "confirm" && entry.command !== "git push origin HEAD",
+  );
+  assert.equal(confirmation.got, "deny");
+  assert.equal(confirmation.ok, true);
+  const push = report.results.find((entry) => entry.command === "git push origin HEAD");
+  assert.equal(push.got, "allow");
+  assert.equal(push.ok, true);
+  assert.match(report.inSessionChecks.join("\n"), /Codex 安全确认/u);
+  assert.match(report.inSessionChecks.join("\n"), /codex-confirm-declined/u);
 });
 
 test("dry run reports actions without writing", (context) => {

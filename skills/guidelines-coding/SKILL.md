@@ -83,8 +83,10 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 **Cluster the steps that stop for the user at the edges, not through the middle.**
 
 Some operations wait for a human — pushes, dependency installs, anything reaching outside
-the workspace. A conversational go-ahead does not clear them in advance, so where they sit
-in the plan decides whether a long run flows or stalls halfway.
+the workspace. A request for the exact operation is its authorization; do not ask twice.
+Broad instructions such as “finish the task” do not pre-authorize unrelated publication,
+destruction, or external writes, so where gated steps sit still determines whether a long
+run flows or stalls halfway.
 
 - Put prerequisites first, while the user is still around: installs, setup, scaffolding.
 - Keep the middle to work that needs no approval — edits, tests, commits, local cleanup.

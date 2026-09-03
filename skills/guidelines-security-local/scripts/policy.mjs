@@ -482,6 +482,17 @@ function collectValues(value, keyPattern, output = []) {
   return output;
 }
 
+function patchPaths(source) {
+  if (typeof source !== "string") return [];
+  const targets = [];
+  for (const line of source.split("\n")) {
+    const match = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/u.exec(line) ??
+      /^\*\*\* Move to: (.+)$/u.exec(line);
+    if (match) targets.push(match.at(-1).trim());
+  }
+  return targets;
+}
+
 function shellTokens(command) {
   const tokens = [];
   let token = "";
@@ -520,6 +531,46 @@ function shellTokens(command) {
   return tokens;
 }
 
+function commandSegments(command) {
+  const segments = [];
+  let segment = "";
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+    if (escaped) {
+      segment += character;
+      escaped = false;
+      continue;
+    }
+    if (character === "\\" && quote !== "'") {
+      segment += character;
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      segment += character;
+      if (character === quote) quote = "";
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      segment += character;
+      quote = character;
+      continue;
+    }
+    const pair = command.slice(index, index + 2);
+    if (character === "\n" || character === ";" || character === "|" || character === "&") {
+      if (segment.trim()) segments.push(segment.trim());
+      segment = "";
+      if (pair === "||" || pair === "&&") index += 1;
+      continue;
+    }
+    segment += character;
+  }
+  if (segment.trim()) segments.push(segment.trim());
+  return segments;
+}
+
 function pathCandidateFromToken(token) {
   let candidate = token.replace(/^\d*[<>]+/u, "");
   const assignment = candidate.match(/^[A-Za-z_][A-Za-z0-9_]*=(.+)$/u);
@@ -532,6 +583,10 @@ function pathCandidateFromToken(token) {
     if (gitObject) candidate = gitObject[1];
   }
   if (!candidate || candidate.startsWith("@") || candidate.includes("://")) return null;
+  // A negated glob is an exclusion pattern, not a path the command opens.
+  if (candidate.startsWith("!") && !candidate.includes("/") && /[?*\[]/u.test(candidate)) {
+    return null;
+  }
 
   const basename = path.basename(candidate).toLowerCase();
   const looksLikePath =
@@ -548,6 +603,97 @@ function pathCandidateFromToken(token) {
     PROTECTED_EXTENSIONS.has(path.extname(basename)) ||
     NAME_HEURISTIC_EXTENSIONS.has(path.extname(basename));
   return looksLikePath ? candidate : null;
+}
+
+function safeFindPatternIndexes(command, tokens) {
+  const ignored = new Set();
+  const skeleton = quotedSpansBlanked(command);
+  if (!/^\s*find(?:\s|$)/u.test(skeleton)) return ignored;
+  if (/[|;&]/u.test(skeleton)) return ignored;
+  if (/\s-(?:delete|exec|execdir|ok|okdir)(?:\s|$)/u.test(skeleton)) return ignored;
+  const predicates = new Set(["-name", "-iname", "-path", "-ipath", "-lname", "-regex", "-iregex"]);
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    if (predicates.has(tokens[index])) ignored.add(index + 1);
+  }
+  return ignored;
+}
+
+function jqFilterIndex(tokens) {
+  if (path.basename(tokens[0] ?? "").toLowerCase() !== "jq") return -1;
+  let index = 1;
+  while (index < tokens.length && tokens[index].startsWith("-")) {
+    const option = tokens[index];
+    if (["-f", "--from-file"].includes(option) || option.startsWith("--from-file=")) {
+      return -1;
+    }
+    if (["--arg", "--argfile", "--argjson", "--rawfile", "--slurpfile"].includes(option)) {
+      index += 3;
+    } else if (["--indent", "-L"].includes(option)) {
+      index += 2;
+    } else {
+      index += 1;
+    }
+  }
+  return index < tokens.length ? index : -1;
+}
+
+function sourceOnlySearch(tokens) {
+  if (!["rg", "ripgrep"].includes(path.basename(tokens[0] ?? "").toLowerCase())) return false;
+  const positiveGlobs = [];
+  for (let index = 1; index < tokens.length; index += 1) {
+    const value = tokens[index];
+    if (["-g", "--glob"].includes(value) && tokens[index + 1]) {
+      const glob = tokens[index + 1];
+      if (!glob.startsWith("!")) positiveGlobs.push(glob);
+      index += 1;
+    } else if (value.startsWith("--glob=")) {
+      const glob = value.slice("--glob=".length);
+      if (!glob.startsWith("!")) positiveGlobs.push(glob);
+    }
+  }
+  return (
+    positiveGlobs.length > 0 &&
+    positiveGlobs.every((glob) => {
+      const match = /\.([A-Za-z0-9]+)$/u.exec(glob);
+      return match && SOURCE_CODE_EXTENSIONS.has(`.${match[1].toLowerCase()}`);
+    })
+  );
+}
+
+function commandMentionsUnconstrainedHeuristicName(command, cwd) {
+  return commandSegments(command).some((segment) => {
+    const tokens = shellTokens(segment);
+    return !sourceOnlySearch(tokens) && commandMentionsHeuristicName(segment, cwd);
+  });
+}
+
+function readsClipboard(command) {
+  return commandSegments(command).some((segment) => {
+    const tokens = shellTokens(segment);
+    let index = 0;
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? "")) index += 1;
+    if (["command", "builtin"].includes(tokens[index])) index += 1;
+
+    const executable = path.basename(tokens[index] ?? "").toLowerCase();
+    const args = tokens.slice(index + 1);
+    if (["pbpaste", "wl-paste"].includes(executable)) return true;
+    if (["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(executable)) {
+      return args.some((value) => /^get-clipboard$/iu.test(value));
+    }
+    if (executable === "xclip") {
+      return args.some((value) => ["-o", "-out", "--output"].includes(value));
+    }
+    if (executable === "xsel") {
+      return args.some((value) => ["-o", "--output"].includes(value));
+    }
+    if (executable !== "osascript") return false;
+
+    const script = args.join(" ");
+    return (
+      /\b(?:return\s+)?(?:the\s+)?clipboard(?:\s+as\s+\w+)?\b/iu.test(script) ||
+      /\bclipboard\s+info\b/iu.test(script)
+    ) && !/\bset\s+(?:the\s+)?clipboard\s+to\b/iu.test(script);
+  });
 }
 
 // The raw-command sweep backs up token scanning for spellings tokens miss, but
@@ -573,6 +719,13 @@ function commandMentionsHeuristicName(command, cwd) {
 function evaluateCommand(command, cwd) {
   if (typeof command !== "string") {
     return blocked("invalid-command-input", "Shell 命令缺失。");
+  }
+
+  if (readsClipboard(command)) {
+    return blocked(
+      "clipboard-read",
+      "禁止读取剪贴板内容；其中可能残留密码、密钥或其他跨任务数据。",
+    );
   }
 
   // These read `;`, `&`, and `|` as shell syntax, so they have to be matched
@@ -615,48 +768,36 @@ function evaluateCommand(command, cwd) {
   }
 
   let strongest = allow();
-  for (const token of shellTokens(command)) {
-    const candidate = pathCandidateFromToken(token);
-    if (!candidate) continue;
-    const pathDecision = evaluatePath(candidate, cwd);
-    if (pathDecision.decision === "deny") {
-      return blocked(
-        "protected-path-in-command",
-        `该 shell 命令引用了受保护的本地内容（${pathDecision.ruleId}）。`,
-      );
+  for (const segment of commandSegments(command)) {
+    const tokens = shellTokens(segment);
+    const ignoredFindPatterns = safeFindPatternIndexes(command, tokens);
+    const ignoredJqFilter = jqFilterIndex(tokens);
+    const sourceConstrained = sourceOnlySearch(tokens);
+    for (const [index, token] of tokens.entries()) {
+      if (ignoredFindPatterns.has(index) || index === ignoredJqFilter) continue;
+      const candidate = pathCandidateFromToken(token);
+      if (!candidate) continue;
+      const pathDecision = evaluatePath(candidate, cwd);
+      if (
+        sourceConstrained &&
+        pathDecision.ruleId === "workspace-name-heuristic" &&
+        path.extname(candidate) === ""
+      ) {
+        continue;
+      }
+      if (pathDecision.decision === "deny") {
+        return blocked(
+          "protected-path-in-command",
+          `该 shell 命令引用了受保护的本地内容（${pathDecision.ruleId}）。`,
+        );
+      }
+      strongest = strongerOf(strongest, pathDecision);
     }
-    strongest = strongerOf(strongest, pathDecision);
-  }
-
-  if (
-    /(?:^|[\/\\:])\.env(?:$|[\/\\\s'"]|\.(?![\w.-]*(?:example|sample|template)(?:[\/\\\s'"]|$)))/iu.test(command) ||
-    /(?:^|[\/\\])(?:\.ssh|\.gnupg)(?:[\/\\\s'"]|$)/iu.test(command) ||
-    /\.(?:key|p12|pfx|jks|keystore|kdbx)(?:\s|$|['"])/iu.test(command) ||
-    // A .pem holds whatever it was named for. cacert, ca-bundle, and fullchain
-    // are the public trust material every TLS client reads; a private key is
-    // not spelled that way. Refusing the extension outright turned
-    // `SSL_CERT_FILE=…/cacert.pem` on a test device into a denial.
-    /(?:^|[/\\\s'"=])(?!(?:ca|cacert|ca-bundle|cabundle|cert|chain|fullchain)\.pem)[\w.-]*\.pem(?:\s|$|['"])/iu.test(
-      command,
-    ) ||
-    /(?:\.pypirc|\.netrc|\.git-credentials|\.zsh_history|\.bash_history)/iu.test(command) ||
-    // An npm or yarn rc file exists in two places. The one in $HOME carries the
-    // auth token; the one committed in a repository carries registry and mirror
-    // settings and is read constantly. Only the first is a credential store —
-    // the workspace copy falls through to the name heuristic below.
-    /(?:~|\$HOME|\$\{HOME\}|\/Users\/[^/\s'"]+|\/home\/[^/\s'"]+)[/\\]\.(?:npmrc|yarnrc\S*|pnpmrc)/iu.test(
-      command,
-    )
-  ) {
-    return blocked(
-      "protected-path-in-command",
-      "该 shell 命令引用了受保护的本地内容。",
-    );
   }
 
   if (
     strongest.decision === "allow" &&
-    (commandMentionsHeuristicName(command, cwd) ||
+    (commandMentionsUnconstrainedHeuristicName(command, cwd) ||
       /\.(?:tfvars|tfstate)(?:\s|$|['"])/iu.test(command))
   ) {
     strongest = confirmDecision(
@@ -747,6 +888,12 @@ function normalizeInput(input) {
       target: toolInput.url ?? toolInput.ref_id,
       cwd: operationCwd,
     };
+  }
+  if (toolName === "apply_patch") {
+    const targets = patchPaths(toolInput.patch ?? toolInput.command ?? toolInput.input);
+    return targets.length > 0
+      ? { kind: "paths", targets, cwd: operationCwd }
+      : { kind: "other" };
   }
 
   const urls = collectValues(toolInput, /(?:^|_)(?:url|uri|href)$/iu);

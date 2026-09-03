@@ -95,12 +95,30 @@ test("confirms process sweeps, volume loss, and publishing", () => {
   assert.equal(evaluateCommand("docker ps -a", cwd).decision, "allow");
 });
 
-test("blocks shell indirection but allows running script files", () => {
-  assert.equal(evaluateCommand("bash -c 'cat .env'", cwd).ruleId, "shell-indirection");
+test("judges literal shell payloads and blocks runtime-built ones", () => {
+  assert.equal(evaluateCommand("bash -c 'printf ok'", cwd).decision, "allow");
+  assert.equal(evaluateCommand("zsh -lic 'functions npmqu'", cwd).decision, "allow");
+  assert.equal(evaluateCommand("bash -c 'rm -rf /'", cwd).ruleId, "critical-root-deletion");
+  assert.equal(evaluateCommand('bash -c "$CMD"', cwd).ruleId, "shell-indirection");
   assert.equal(evaluateCommand("zsh", cwd).decision, "deny");
   assert.equal(evaluateCommand("eval $PAYLOAD", cwd).decision, "deny");
   assert.equal(evaluateCommand("bash scripts/build.sh --release", cwd).ruleId, "script-execution");
   assert.equal(evaluateCommand("sh ./setup-dev.sh", cwd).decision, "allow");
+});
+
+test("keeps xargs data out of shell source", () => {
+  assert.equal(
+    evaluateCommand("printf '%s\\n' a | xargs -I{} sh -c 'echo {}; sed -n 1p \"{}\"'", cwd)
+      .ruleId,
+    "shell-template-expansion",
+  );
+  assert.equal(
+    evaluateCommand(
+      "printf '%s\\n' a | xargs -I{} sh -c 'echo \"$1\"; sed -n 1p \"$1\"' sh {}",
+      cwd,
+    ).decision,
+    "allow",
+  );
 });
 
 test("sees through wrapper prefixes and shell chains", () => {
@@ -196,6 +214,35 @@ test("sees a write landing outside the workspace, not only a deletion", () => {
   ]) {
     assert.equal(evaluateCommand(command, cwd).decision, "allow", command);
   }
+});
+
+test("checks file-edit tool targets with the same workspace rule", () => {
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "apply_patch",
+      tool_input: { command: "*** Begin Patch\n*** Update File: src/index.ts\n*** End Patch" },
+      cwd,
+    }).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "apply_patch",
+      tool_input: {
+        command: "*** Begin Patch\n*** Update File: /Users/someone/other-repo/index.ts\n*** End Patch",
+      },
+      cwd,
+    }).ruleId,
+    "outside-workspace-write",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "Write",
+      tool_input: { file_path: "/Users/someone/other-repo/index.ts" },
+      cwd,
+    }).ruleId,
+    "outside-workspace-write",
+  );
 });
 
 test("reads ordinary shell syntax instead of calling it ambiguous", () => {

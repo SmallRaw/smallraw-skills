@@ -3,10 +3,13 @@
 // Claude-compatible PreToolUse adapter: reads one hook payload from stdin,
 // evaluates it with the policy module given as argv[2], and translates the
 // host-neutral decision. Policy `allow` stays silent so native permissions
-// remain authoritative; every guard failure denies (fail closed).
+// remain authoritative; every guard failure denies (fail closed). Pass
+// `--host codex` to use the local user-presence prompt for confirmations,
+// because Codex PreToolUse currently cannot present native `ask`.
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { requestCodexConfirmation } from "./codex-confirm.mjs";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 
@@ -35,6 +38,12 @@ function emit(decision, reason) {
 const WHEN_NO_SAFE_FORM =
   "换不成安全写法就停在这里：记下这一步和它要做的事，把不需要审批的先做完，收尾时一并提出来。不要改写命令重试。";
 
+// A normal push is authorized at the conversational layer: the Git guideline
+// already requires an explicit user request, while this deterministic gate
+// still refuses unsafe transports. Every other confirmation uses the local
+// user-presence prompt below rather than silently weakening the policy.
+const CODEX_CONVERSATION_GATED_RULES = new Set(["git-push"]);
+
 function reasonText(value, decision) {
   const parts = [value.reason ?? "该操作不被策略允许。", value.nextAction].filter(Boolean);
   if (decision === "deny") parts.push(WHEN_NO_SAFE_FORM);
@@ -48,6 +57,24 @@ function denyExitCode() {
   if (index < 0) return 0;
   const value = Number(process.argv[index + 1]);
   return Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function hostName() {
+  const index = process.argv.indexOf("--host");
+  return index < 0 ? null : process.argv[index + 1] ?? null;
+}
+
+function codexConfirmReason(value, confirmation) {
+  const original = [`[${value.ruleId ?? "policy"}]`, value.reason, value.nextAction]
+    .filter(Boolean)
+    .join(" ");
+  const tag =
+    confirmation.status === "declined"
+      ? "codex-confirm-declined"
+      : confirmation.status === "timed-out"
+        ? "codex-confirm-timeout"
+        : "codex-confirm-unavailable";
+  return `[${tag}] ${confirmation.reason} 原策略要求确认：${original} ${WHEN_NO_SAFE_FORM}`;
 }
 
 // Keep data strings out of the structural scan below. An apply_patch program
@@ -134,13 +161,15 @@ function structuralSource(source) {
 // and report whether anything was built at runtime, which cannot be read here.
 function extractEmbeddedCommands(source) {
   const commands = [];
+  const commandCwds = [];
   let dynamic = false;
   const structure = structuralSource(source);
   const pattern =
-    /\b(?:cmd|command)\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|([A-Za-z_$][\w$]*))/g;
+    /(?:\b(?:cmd|command)|["'](?:cmd|command)["'])\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|([A-Za-z_$][\w$]*))/g;
 
   for (const match of source.matchAll(pattern)) {
-    if (structure[match.index] !== source[match.index]) continue;
+    const colon = match.index + match[0].indexOf(":");
+    if (structure[colon] !== ":") continue;
     const [, double, single, template, identifier] = match;
     if (identifier) {
       dynamic = true;
@@ -149,11 +178,14 @@ function extractEmbeddedCommands(source) {
     const raw = double ?? single ?? template;
     if (raw === undefined) continue;
     if (template !== undefined && /\$\{/u.test(template)) dynamic = true;
-    try {
-      commands.push(JSON.parse(`"${raw.replace(/"/g, '\\"').replace(/\\'/g, "'")}"`));
-    } catch {
-      commands.push(raw);
-    }
+    commands.push(decodeJsLiteral(raw));
+
+    const object = enclosingObject(source, structure, match.index);
+    const workdir = object
+      ? literalWorkdir(object.source, source)
+      : { value: undefined, dynamic: false };
+    commandCwds.push(workdir.value);
+    dynamic ||= workdir.dynamic;
   }
   const toolCalls = Array.from(
     structure.matchAll(/\btools\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/gu),
@@ -168,7 +200,110 @@ function extractEmbeddedCommands(source) {
   ) {
     dynamic = true;
   }
-  return { commands, dynamic, toolCalls: toolCalls.length, bashCalls };
+  return { commands, commandCwds, dynamic, toolCalls: toolCalls.length, bashCalls };
+}
+
+function enclosingObject(source, structure, position) {
+  const stack = [];
+  for (let index = 0; index < position; index += 1) {
+    if (structure[index] === "{") stack.push(index);
+    else if (structure[index] === "}") stack.pop();
+  }
+  const start = stack.at(-1);
+  if (start === undefined) return null;
+  let depth = 0;
+  for (let index = start; index < structure.length; index += 1) {
+    if (structure[index] === "{") depth += 1;
+    else if (structure[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return { source: source.slice(start, index + 1) };
+    }
+  }
+  return null;
+}
+
+function constantString(source, name) {
+  const structure = structuralSource(source);
+  const pattern =
+    /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`)\s*;/gu;
+  for (const match of source.matchAll(pattern)) {
+    if (match[1] !== name || structure[match.index] !== source[match.index]) continue;
+    if (match[4] !== undefined && /\$\{/u.test(match[4])) return undefined;
+    return decodeJsLiteral(match[2] ?? match[3] ?? match[4] ?? "");
+  }
+  return undefined;
+}
+
+function literalWorkdir(objectSource, enclosingSource) {
+  const structure = structuralSource(objectSource);
+  const pattern =
+    /(?:\b(?:workdir|cwd)|["'](?:workdir|cwd)["'])\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|([A-Za-z_$][\w$]*))/gu;
+  for (const match of objectSource.matchAll(pattern)) {
+    const colon = match.index + match[0].indexOf(":");
+    if (structure[colon] !== ":") continue;
+    if (match[4]) {
+      const value = constantString(enclosingSource, match[4]);
+      return value === undefined ? { value, dynamic: true } : { value, dynamic: false };
+    }
+    if (match[3] !== undefined && /\$\{/u.test(match[3])) {
+      return { value: undefined, dynamic: true };
+    }
+    return { value: decodeJsLiteral(match[1] ?? match[2] ?? match[3] ?? ""), dynamic: false };
+  }
+  return { value: undefined, dynamic: false };
+}
+
+function decodeJsLiteral(raw) {
+  const simple = new Map([
+    ["b", "\b"],
+    ["f", "\f"],
+    ["n", "\n"],
+    ["r", "\r"],
+    ["t", "\t"],
+    ["v", "\v"],
+  ]);
+  let output = "";
+  for (let index = 0; index < raw.length; index += 1) {
+    const character = raw[index];
+    if (character !== "\\" || index + 1 >= raw.length) {
+      output += character;
+      continue;
+    }
+    const escaped = raw[index + 1];
+    index += 1;
+    if (escaped === "\n") continue;
+    if (escaped === "\r") {
+      if (raw[index + 1] === "\n") index += 1;
+      continue;
+    }
+    if (simple.has(escaped)) {
+      output += simple.get(escaped);
+      continue;
+    }
+    if (escaped === "x" && /^[0-9A-Fa-f]{2}$/u.test(raw.slice(index + 1, index + 3))) {
+      output += String.fromCodePoint(Number.parseInt(raw.slice(index + 1, index + 3), 16));
+      index += 2;
+      continue;
+    }
+    if (escaped === "u") {
+      const braced = /^\{([0-9A-Fa-f]{1,6})\}/u.exec(raw.slice(index + 1));
+      if (braced) {
+        output += String.fromCodePoint(Number.parseInt(braced[1], 16));
+        index += braced[0].length;
+        continue;
+      }
+      const digits = raw.slice(index + 1, index + 5);
+      if (/^[0-9A-Fa-f]{4}$/u.test(digits)) {
+        output += String.fromCodePoint(Number.parseInt(digits, 16));
+        index += 4;
+        continue;
+      }
+    }
+    // Quotes, backslashes and legacy identity escapes all evaluate to the
+    // escaped character in a JavaScript string literal.
+    output += escaped;
+  }
+  return output;
 }
 
 // Any tool whose name says it runs things. Guessing which field carries the
@@ -193,15 +328,21 @@ function commandsFrom(input) {
   const toolName = String(input?.tool_name ?? input?.tool ?? "");
 
   if (!EXECUTION_TOOL.test(toolName)) {
-    return { commands: [], dynamic: false, bash: false };
+    return { commands: [], commandCwds: [], dynamic: false, bash: false };
   }
 
   const direct = toolInput?.command ?? toolInput?.cmd;
   if (typeof direct === "string") {
-    return { commands: [direct], dynamic: false, bash: BASH_TOOL.test(toolName) };
+    return {
+      commands: [direct],
+      commandCwds: [toolInput?.cwd ?? toolInput?.workdir ?? input?.cwd],
+      dynamic: false,
+      bash: BASH_TOOL.test(toolName),
+    };
   }
 
   const commands = [];
+  const commandCwds = [];
   let dynamic = false;
   let bash = BASH_TOOL.test(toolName);
   let nestedToolCalls = 0;
@@ -210,6 +351,7 @@ function commandsFrom(input) {
   )) {
     const found = extractEmbeddedCommands(source);
     commands.push(...found.commands);
+    commandCwds.push(...found.commandCwds);
     dynamic ||= found.dynamic;
     bash ||= found.bashCalls > 0;
     nestedToolCalls += found.toolCalls;
@@ -218,7 +360,7 @@ function commandsFrom(input) {
   // evidence that nothing runs. A program made only of explicit non-execution
   // tool calls is different: its string arguments are data for those tools.
   if (commands.length === 0 && nestedToolCalls === 0) dynamic = true;
-  return { commands, dynamic, bash };
+  return { commands, commandCwds, dynamic, bash };
 }
 
 const RANK = { allow: 0, confirm: 1, deny: 2 };
@@ -229,8 +371,44 @@ const RANK = { allow: 0, confirm: 1, deny: 2 };
 // nothing but a quoted string. Opening it is a choice, not a capability: the
 // payload is a literal sitting right there.
 const MAX_WRAPPER_DEPTH = 3;
-const SHELL_DASH_C = /\b(?:ba|da|k|z)?sh\s+(?:-[A-Za-z]+\s+)*-c\s+(?:'([^']*)'|"([^"]*)"|(\S+))/gu;
+// The command flag is a single-dash cluster that carries a lowercase `c`
+// (`-c`, `-lc`, `-euc`, `-cx`), so matching only a lone `-c` token let
+// `bash -lc 'cat .env'` — and every other bundled form — ride through unopened.
+// Anything before it is a leading option: a long flag (`--login`), an option
+// that takes its own argument (`-o pipefail`), or a short cluster without `c`.
+const SHELL_DASH_C =
+  /\b(?:ba|da|k|z)?sh\s+(?:(?:-o\s+\S+|--[A-Za-z][\w-]*|-[A-Zabd-z]+)\s+)*?-[A-Za-z]*c[A-Za-z]*\s+(?:'([^']*)'|"([^"]*)"|(\S+))/gu;
 const LITERAL_ASSIGNMENT = /(?:^|[\s;&|])([A-Za-z_][A-Za-z0-9_]*)=("([^"$`]*)"|'([^']*)'|([^\s;&|'"$`]+))/gu;
+
+// A quoted heredoc body is input to the receiving program, not shell source.
+// Looking for backticks or $() inside it invented wrapper commands from
+// JavaScript and documentation snippets. Unquoted bodies that really do ask
+// the shell to expand a substitution stay visible.
+function stripHeredocBodies(command) {
+  const opener = /<<(-?)(?!<)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|([A-Za-z0-9_][\w.-]*))/gu;
+  let output = "";
+  let cursor = 0;
+  let match;
+  while ((match = opener.exec(command)) !== null) {
+    if (match.index < cursor) continue;
+    const literal = match[2] !== undefined || match[3] !== undefined;
+    const delimiter = match[2] ?? match[3] ?? match[4];
+    const bodyStart = command.indexOf("\n", opener.lastIndex);
+    if (bodyStart === -1) continue;
+    const terminator = new RegExp(
+      `(?:^|\\n)${match[1] ? "\\t*" : ""}${delimiter.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}[ \\t]*(?=\\n|$)`,
+      "u",
+    );
+    const tail = command.slice(bodyStart + 1);
+    const found = terminator.exec(tail);
+    if (!found) continue;
+    const body = tail.slice(0, found.index);
+    if (!literal && /`|\$\(/u.test(body)) continue;
+    output += command.slice(cursor, bodyStart + 1);
+    cursor = bodyStart + 1 + found.index + found[0].length;
+  }
+  return output + command.slice(cursor);
+}
 
 // Bodies of $( ) and ` `, found without treating a quote inside one as if it
 // belonged to the text around it. A substitution runs even inside double
@@ -321,18 +499,19 @@ function wrappedCommands(command, depth = 0) {
   const payloads = [];
   let unreadable = false;
   if (depth >= MAX_WRAPPER_DEPTH) return { payloads, unreadable };
+  const shellSource = stripHeredocBodies(command);
 
   const found = [];
   SHELL_DASH_C.lastIndex = 0;
-  for (const match of command.matchAll(SHELL_DASH_C)) {
+  for (const match of shellSource.matchAll(SHELL_DASH_C)) {
     const literal = match[1] ?? match[2];
     if (literal === undefined) unreadable = true;
     else found.push(literal);
   }
-  found.push(...substitutionBodies(command));
+  found.push(...substitutionBodies(shellSource));
 
   for (const body of found) {
-    const resolved = withLiteralsResolved(body, command);
+    const resolved = withLiteralsResolved(body, shellSource);
     if (namesNoCommand(resolved)) {
       unreadable = true;
       continue;
@@ -395,8 +574,14 @@ async function main() {
   let value;
   if (embedded.commands.length > 1 || embedded.dynamic) {
     value = { decision: "allow", ruleId: "no-command-found" };
-    for (const command of embedded.commands) {
-      const each = await evaluatePolicy({ ...input, tool_name: "Bash", tool_input: { command } });
+    for (const [index, command] of embedded.commands.entries()) {
+      const cwd = embedded.commandCwds[index] ?? input?.cwd;
+      const each = await evaluatePolicy({
+        ...input,
+        cwd,
+        tool_name: "Bash",
+        tool_input: { command, cwd },
+      });
       if (RANK[each?.decision] > RANK[value.decision]) value = each;
     }
     if (embedded.dynamic && value.decision === "allow") {
@@ -408,10 +593,12 @@ async function main() {
       };
     }
   } else if (embedded.commands.length === 1) {
+    const cwd = embedded.commandCwds[0] ?? input?.cwd;
     value = await evaluatePolicy({
       ...input,
+      cwd,
       tool_name: "Bash",
-      tool_input: { ...(input?.tool_input ?? {}), command: embedded.commands[0] },
+      tool_input: { ...(input?.tool_input ?? {}), command: embedded.commands[0], cwd },
     });
   } else {
     // await tolerates a policy that returns a promise; a sync one is unaffected.
@@ -423,14 +610,16 @@ async function main() {
   // by the same policy, as the command it is.
   let unreadableWrapper = false;
   if (embedded.bash) {
-    for (const command of embedded.commands) {
+    for (const [index, command] of embedded.commands.entries()) {
+      const cwd = embedded.commandCwds[index] ?? input?.cwd;
       const carried = wrappedCommands(command);
       unreadableWrapper ||= carried.unreadable;
       for (const payload of carried.payloads) {
         const each = await evaluatePolicy({
           ...input,
+          cwd,
           tool_name: "Bash",
-          tool_input: { ...(input?.tool_input ?? {}), command: payload },
+          tool_input: { ...(input?.tool_input ?? {}), command: payload, cwd },
         });
         if (RANK[each?.decision] > RANK[value?.decision ?? "allow"]) value = each;
       }
@@ -458,7 +647,14 @@ async function main() {
   if (value.decision === "deny") {
     emit("deny", reasonText(value, "deny"));
   } else if (value.decision === "confirm") {
-    emit("ask", reasonText(value, "confirm"));
+    if (hostName() === "codex") {
+      if (!CODEX_CONVERSATION_GATED_RULES.has(value.ruleId)) {
+        const confirmation = requestCodexConfirmation(input, value);
+        if (!confirmation.approved) emit("deny", codexConfirmReason(value, confirmation));
+      }
+    } else {
+      emit("ask", reasonText(value, "confirm"));
+    }
   }
 }
 

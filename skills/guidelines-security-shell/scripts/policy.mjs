@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -364,7 +364,16 @@ function stripInvocationPrefixes(tokens) {
     }
     if (tokens[index] === "xargs") {
       index += 1;
-      while (index < tokens.length && tokens[index].startsWith("-")) index += 1;
+      while (index < tokens.length && tokens[index].startsWith("-")) {
+        const option = tokens[index];
+        if (
+          ["-E", "-I", "-L", "-n", "-P", "-s", "--delimiter", "--eof", "--max-args", "--max-chars", "--max-lines", "--max-procs", "--replace"].includes(option)
+        ) {
+          index += 2;
+        } else {
+          index += 1;
+        }
+      }
       changed = true;
       continue;
     }
@@ -426,6 +435,28 @@ function workspaceRootFor(cwd) {
     return realpathSync(base);
   } catch {
     return base;
+  }
+}
+
+// Resolve the existing portion of a target and append any not-yet-created
+// suffix. Comparing a real workspace root with a lexical target made macOS
+// aliases such as /Users/... -> /Volumes/... look like outside writes.
+function resolveWithoutReading(target, cwd) {
+  const absolute = path.resolve(cwd || process.cwd(), target);
+  let existing = absolute;
+  const suffix = [];
+
+  while (!existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) break;
+    suffix.unshift(path.basename(existing));
+    existing = parent;
+  }
+
+  try {
+    return path.resolve(realpathSync(existing), ...suffix);
+  } catch {
+    return absolute;
   }
 }
 
@@ -498,9 +529,16 @@ function isAgentStore(resolved) {
 
 function isCriticalRoot(resolved) {
   const normalized = resolved.replace(/\/+$/u, "") || "/";
-  if (CRITICAL_ROOTS.has(normalized.toLowerCase())) return true;
-  const home = path.resolve(os.homedir());
-  return normalized === home;
+  const lowered = normalized.toLowerCase();
+  const roots = [...CRITICAL_ROOTS, path.resolve(os.homedir())];
+  return roots.some((root) => {
+    if (lowered === root.toLowerCase()) return true;
+    try {
+      return lowered === realpathSync(root).replace(/\/+$/u, "").toLowerCase();
+    } catch {
+      return false;
+    }
+  });
 }
 
 // Returns { scope: "critical" | "outside" | "inside" | "unknown", path, why }.
@@ -524,7 +562,7 @@ function classifyTargets(targets, context) {
       unknown ??= { why: "cwd", path: raw };
       continue;
     }
-    const resolved = path.resolve(context.cwd ?? process.cwd(), expanded);
+    const resolved = resolveWithoutReading(expanded, context.cwd ?? process.cwd());
     if (isCriticalRoot(resolved)) return { scope: "critical", path: resolved };
     if (!isWithin(resolved, context.workspace) && !isTempPath(resolved) && !isAgentStore(resolved)) {
       outside ??= { scope: "outside", path: resolved };
@@ -688,6 +726,61 @@ function evaluateWrite(targets, context) {
   return null;
 }
 
+function xargsReplacementToken(tokens) {
+  const index = tokens.indexOf("xargs");
+  if (index < 0) return null;
+  for (let cursor = index + 1; cursor < tokens.length; cursor += 1) {
+    const value = tokens[cursor];
+    if (value === "-I" || value === "--replace") return tokens[cursor + 1] ?? null;
+    if (value.startsWith("-I") && value.length > 2) return value.slice(2);
+    if (value.startsWith("--replace=")) return value.slice("--replace=".length);
+    if (!value.startsWith("-")) return null;
+  }
+  return null;
+}
+
+function shellCommandFlag(args) {
+  return args.findIndex(
+    (value) => value === "-c" || (/^-[A-Za-z]+$/u.test(value) && value.includes("c")),
+  );
+}
+
+function patchChanges(source) {
+  if (typeof source !== "string") return null;
+  const writes = [];
+  const deletions = [];
+  for (const line of source.split("\n")) {
+    const file = /^\*\*\* (Add|Update|Delete) File: (.+)$/u.exec(line);
+    if (file) {
+      (file[1] === "Delete" ? deletions : writes).push(file[2].trim());
+      continue;
+    }
+    const move = /^\*\*\* Move to: (.+)$/u.exec(line);
+    if (move) writes.push(move[1].trim());
+  }
+  return writes.length > 0 || deletions.length > 0 ? { writes, deletions } : null;
+}
+
+function evaluateFileChanges(changes, cwd) {
+  const context = {
+    cwd: cwd || process.cwd(),
+    workspace: workspaceRootFor(cwd),
+    vars: new Map(),
+  };
+  let strongest = allow("workspace-file-change");
+  if (changes.deletions.length > 0) {
+    const value = evaluateDeletion("apply_patch", changes.deletions, context);
+    if (value.decision === "deny") return value;
+    if (value.decision === "confirm") strongest = value;
+  }
+  if (changes.writes.length > 0) {
+    const value = evaluateWrite(changes.writes, context);
+    if (value?.decision === "deny") return value;
+    if (value?.decision === "confirm") strongest = value;
+  }
+  return strongest;
+}
+
 function evaluateSegment(segment, context) {
   const rawTokens = tokenize(segment);
   if (!rawTokens) {
@@ -697,6 +790,7 @@ function evaluateSegment(segment, context) {
       "简化或拆开后重发。",
     );
   }
+  const xargsReplacement = xargsReplacementToken(rawTokens);
   const tokens = stripInvocationPrefixes(rawTokens);
   if (tokens.length === 0) return allow();
 
@@ -902,12 +996,41 @@ function evaluateSegment(segment, context) {
     );
   }
   if (SHELLS.has(executable)) {
-    if (args.length === 0 || args.includes("-c") || args.includes("-i")) {
+    const commandFlag = shellCommandFlag(args);
+    const interactive = args.some(
+      (value) => value === "-i" || (/^-[A-Za-z]+$/u.test(value) && value.includes("i")),
+    );
+    if (args.length === 0 || (interactive && commandFlag < 0)) {
       return deny(
         "shell-indirection",
-        `${executable} ${args.includes("-c") ? "-c 里的命令没法审查" : "交互式 shell 没法审查"}。`,
-        "直接执行内层命令。",
+        `${executable} ${args.length === 0 ? "没有写明要执行的脚本" : "会启动交互式 shell"}。`,
+        "提供脚本文件，或直接执行内层命令。",
       );
+    }
+    if (commandFlag >= 0) {
+      const payload = args[commandFlag + 1] ?? "";
+      if (!payload || /^\s*(?:\$|`)/u.test(payload)) {
+        return deny(
+          "shell-indirection",
+          `${executable} -c 的命令要到变量展开后才知道。`,
+          "把内层命令写成字面量。",
+        );
+      }
+      if (xargsReplacement && payload.includes(xargsReplacement)) {
+        return deny(
+          "shell-template-expansion",
+          `xargs 会把 ${xargsReplacement} 直接替换进 shell 源码，输入内容可能变成命令。`,
+          "把替换值作为 sh 的位置参数传入，不要拼进 -c 脚本。",
+        );
+      }
+      if ((context.depth ?? 0) >= MAX_SUBSTITUTION_DEPTH) {
+        return deny(
+          "shell-indirection",
+          "shell 包装嵌套太深，无法完整审查。",
+          "直接执行内层命令。",
+        );
+      }
+      return evaluateCommand(payload, context.cwd, (context.depth ?? 0) + 1);
     }
     return allow("script-execution");
   }
@@ -936,7 +1059,7 @@ export function evaluateCommand(command, cwd, depth = 0) {
   let current = cwd || process.cwd();
   let strongest = allow();
   for (const segment of commandSegments(stripped)) {
-    const value = evaluateSegment(segment, { cwd: current, workspace, vars });
+    const value = evaluateSegment(segment, { cwd: current, workspace, vars, depth });
     if (value.decision === "deny") return value;
     if (value.decision === "confirm") strongest = value;
     else if (strongest.decision === "allow") strongest = value;
@@ -964,6 +1087,17 @@ function normalizeInput(input) {
   if (toolName === "bash" || toolName === "exec_command") {
     return { command: toolInput.command ?? toolInput.cmd ?? null, cwd };
   }
+  if (toolName === "apply_patch") {
+    return { changes: patchChanges(toolInput.patch ?? toolInput.command ?? toolInput.input), cwd };
+  }
+  if (toolName === "edit" || toolName === "write" || toolName === "notebookedit") {
+    const target =
+      toolInput.file_path ?? toolInput.notebook_path ?? toolInput.path ?? toolInput.filename;
+    return {
+      changes: typeof target === "string" ? { writes: [target], deletions: [] } : null,
+      cwd,
+    };
+  }
   return undefined;
 }
 
@@ -971,12 +1105,22 @@ export function evaluatePolicy(input) {
   try {
     const normalized = normalizeInput(input);
     if (normalized === undefined) return allow("tool-not-covered");
-    if (normalized === null || normalized.command === null) {
+    if (normalized === null || (normalized.command === null && normalized.changes === undefined)) {
       return deny(
         "invalid-policy-input",
         "策略输入必须包含规范化的 shell 命令。",
         "提供工具名和命令。",
       );
+    }
+    if (normalized.changes !== undefined) {
+      if (normalized.changes === null) {
+        return deny(
+          "invalid-file-change-input",
+          "文件修改工具没有提供可识别的目标路径。",
+          "提供规范化的文件路径或 patch。",
+        );
+      }
+      return evaluateFileChanges(normalized.changes, normalized.cwd);
     }
     return evaluateCommand(normalized.command, normalized.cwd);
   } catch {

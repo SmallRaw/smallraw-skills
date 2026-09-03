@@ -1,6 +1,6 @@
 # Open Plugins and Claude-Compatible Hosts
 
-Checked against each host's own documentation on 2026-08-04; a capability claim is only as
+Checked against each host's own documentation on 2026-09-03; a capability claim is only as
 current as that date. Re-check before relying on one, and never carry it over from another
 Agent.
 
@@ -96,7 +96,7 @@ For the widest command-hook compatibility:
 | Host | Configuration and mapping | Important limit |
 | --- | --- | --- |
 | Claude Code | User/project settings or plugin `hooks/hooks.json`; `PreToolUse` supports `allow`, `deny`, `ask`, and `defer`. | Hooks run with the user's environment and credentials. |
-| Codex | `~/.codex/hooks.json` (or `$CODEX_HOME`), project `<repo>/.codex/hooks.json`, or inline in `config.toml`. `PreToolUse` matches `Bash`, `apply_patch`/`Edit`/`Write`, and MCP tool names. `permissionDecision` supports `allow`, `deny`, and `ask`. | Hooks are on by default but **untrusted until reviewed**: Codex records trust against the hook's current hash, so any edit invalidates it and `/hooks` review is required again. A registered-but-untrusted hook does not run — it is not the same as "not installed". |
+| Codex | `~/.codex/hooks.json` (or `$CODEX_HOME`), project `<repo>/.codex/hooks.json`, or inline in `config.toml`. `PreToolUse` matches `Bash`, `apply_patch`/`Edit`/`Write`, and MCP tool names. `allow` and `deny` are supported; `ask` is parsed but not yet supported. On macOS this adapter handles `confirm` with a synchronous `Codex 安全确认` system dialog for the current tool invocation. | Hooks are on by default but **untrusted until reviewed**: Codex records trust against the hook's current hash, so any edit invalidates it and `/hooks` review is required again. A registered-but-untrusted hook does not run — it is not the same as "not installed". No GUI, missing invocation identity, rejection, or timeout denies. |
 | Cursor | Native `.cursor/hooks.json`, or load Claude hooks when third-party compatibility is enabled. It accepts Claude's nested output and maps Claude tool names. | Native hook failures may be fail-open unless the relevant hook is configured to fail closed. |
 | GitHub Copilot | Repository `.github/hooks/*.json`, user hooks, or a plugin. PascalCase `PreToolUse` selects Claude-compatible fields and matcher semantics. | Cloud runs cannot answer `ask`; command-hook timeouts are fail-open. |
 | Factory Droid | User/project `.factory/hooks.json` or plugin hook; Claude-style input/output and plugin-root aliases are supported. | It is Claude-compatible but is not a substitute for verifying Open Plugins discovery on the installed version. |
@@ -120,8 +120,11 @@ Keep the domain policy host-neutral:
 
 Translate at the edge:
 
-- Claude Code and Codex: `confirm` becomes `ask` (both accept the same
-  `permissionDecision` values).
+- Claude Code: `confirm` becomes native `ask`.
+- Codex `PreToolUse`: never emit unsupported `ask`. On macOS the bundled adapter blocks the
+  current hook process on a system dialog and allows only when the user clicks `允许一次`.
+  It writes no reusable grant. Rejection, timeout, missing invocation identity, no GUI, or
+  another platform becomes an explicit deny carrying a `[codex-confirm-*]` reason.
 - Codex `PermissionRequest`: map `deny` to deny; return no decision for `allow` or
   `confirm` so the native approval prompt remains authoritative.
 - Cursor: use `ask` only where that event supports it; otherwise deny and report the gap.
@@ -133,9 +136,11 @@ Validate the object before translation: only the three listed decisions are vali
 object must take the host's explicit blocking path. If the host itself forces hook
 timeouts to fail open, report that path as unenforced.
 
-If the caller explicitly requires confirmation on a host without `ask`, a grant must be
-short-lived, single-use, and bound to the session plus a normalized operation fingerprint.
-Do not use a broad or persistent bypass.
+If the caller explicitly requires confirmation on a host without `ask`, prefer a synchronous
+user-presence prompt bound to the live invocation, like the bundled macOS Codex dialog. If a
+host cannot do that and a grant is requested instead, it must be short-lived, single-use, and
+bound to the session plus a normalized operation fingerprint. Do not use a broad or persistent
+bypass.
 
 ## Sources
 

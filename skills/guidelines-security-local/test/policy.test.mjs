@@ -61,6 +61,28 @@ test("blocks established credential stores by their conventional names", () => {
   }
 });
 
+test("allows Claude and Codex conversation transcripts but keeps command history blocked", () => {
+  const transcripts = [
+    "/Users/example/.claude/projects/-workspace/session-id.jsonl",
+    "/Users/example/.codex/sessions/2026/09/02/rollout-session-id.jsonl",
+  ];
+
+  for (const transcript of transcripts) {
+    assert.equal(evaluatePath(transcript).decision, "allow", transcript);
+    assert.equal(
+      evaluatePolicy({ tool_name: "Read", tool_input: { file_path: transcript } }).decision,
+      "allow",
+      transcript,
+    );
+    assert.equal(decideCommand(`tail -n 40 ${transcript}`).decision, "allow", transcript);
+  }
+
+  for (const history of ["~/.zsh_history", "~/.python_history", "~/.viminfo"]) {
+    assert.equal(evaluatePath(history).decision, "deny", history);
+    assert.equal(decideCommand(`tail -n 40 ${history}`).decision, "deny", history);
+  }
+});
+
 test("does not block ordinary source names containing token", () => {
   assert.equal(evaluatePath("/workspace/src/token_bucket.ts").decision, "allow");
   assert.equal(evaluatePath("/workspace/client_secretary_notes.md").decision, "allow");
@@ -116,6 +138,52 @@ test("blocks environment dumps and protected paths in shell commands", () => {
   }
 });
 
+test("treats query syntax as data but still blocks real path operands", () => {
+  for (const command of [
+    "jq -r '.key' package.json",
+    `jq -r '.result.refs | to_entries[] | select(.value.role == "button") | .key' result.json`,
+    "git config --get-regexp '^(gpg\\.ssh\\.|user\\.signingkey)$'",
+    "rg -n 'process.env.NODE_ENV' src",
+    "rg --files -g '!*.pem'",
+    "rg -n 'deriveKey' packages/core/src/secret -g '*.ts'",
+    "find . -maxdepth 2 -type f -name '.env' -o -name '*.pem' -o -name '*.key'",
+  ]) {
+    assert.equal(decideCommand(command).decision, "allow", command);
+  }
+  for (const command of ["cat client.key", "cat ~/.ssh/id_rsa", "git show HEAD:.env.production"]) {
+    assert.equal(decideCommand(command).decision, "deny", command);
+  }
+  assert.equal(decideCommand("cat 'backups/client private.key'").decision, "deny");
+  assert.equal(decideCommand("rg -n 'deriveKey' packages/core/src/secret").decision, "confirm");
+  assert.equal(
+    decideCommand("rg -n 'deriveKey' packages/core/src/secret -g '*'").decision,
+    "confirm",
+  );
+  assert.equal(decideCommand("find . -name '.env' -exec cat {} \\;").decision, "deny");
+  assert.equal(decideCommand("find . -name '.env' | xargs cat").decision, "deny");
+});
+
+test("checks apply_patch headers without treating patch contents as paths", () => {
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "apply_patch",
+      tool_input: {
+        command: "*** Begin Patch\n*** Update File: src/config.ts\n@@\n+const example = '.env';\n*** End Patch",
+      },
+      cwd: process.cwd(),
+    }).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "apply_patch",
+      tool_input: { command: "*** Begin Patch\n*** Update File: .env\n*** End Patch" },
+      cwd: process.cwd(),
+    }).decision,
+    "deny",
+  );
+});
+
 test("blocks only commands that actually print the environment", () => {
   for (const command of [
     "env",
@@ -154,6 +222,31 @@ test("blocks only commands that actually print the environment", () => {
       "allow",
       command,
     );
+  }
+});
+
+test("blocks clipboard reads without blocking clipboard writes", () => {
+  for (const command of [
+    "pbpaste",
+    "/usr/bin/pbpaste",
+    "command pbpaste",
+    "wl-paste",
+    "xclip -selection clipboard -o",
+    "xsel --clipboard --output",
+    "pwsh -Command Get-Clipboard",
+    "osascript -e 'return the clipboard as text'",
+    "osascript -e 'clipboard info'",
+  ]) {
+    assert.equal(decideCommand(command).ruleId, "clipboard-read", command);
+  }
+
+  for (const command of [
+    "printf hello | pbcopy",
+    "wl-copy hello",
+    "osascript -e 'set the clipboard to \"hello\"'",
+    "rg -n pbpaste src/",
+  ]) {
+    assert.equal(decideCommand(command).decision, "allow", command);
   }
 });
 

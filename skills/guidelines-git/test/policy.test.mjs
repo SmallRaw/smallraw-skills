@@ -259,9 +259,20 @@ test("blocks default gh authentication and write actions", () => {
   );
 });
 
-test("denies global Git configuration writes", () => {
-  assert.equal(evaluateCommand('git config --global user.email "me@example.com"').decision, "deny");
+test("grades Git configuration writes by scope and effect", () => {
+  assert.equal(evaluateCommand('git config --global user.email "me@example.com"').decision, "confirm");
+  assert.equal(evaluateCommand('git config --file=/tmp/test.conf user.email "me@example.com"').decision, "confirm");
   assert.equal(evaluateCommand('git config user.email "repo@example.com"').decision, "confirm");
+  assert.equal(
+    evaluateCommand("git config --local gpg.ssh.program /Applications/op-ssh-sign").decision,
+    "confirm",
+  );
+  assert.equal(
+    evaluateCommand("git config submodule.modules/demo.url git@work-github.com:o/r.git").ruleId,
+    "recoverable-git-config-write",
+  );
+  assert.equal(evaluateCommand("git config advice.detachedHead false").decision, "allow");
+  assert.equal(evaluateCommand('git config --system user.email "me@example.com"').decision, "deny");
 });
 
 test("finds Git mutations in shell chains and normalized hook payloads", () => {
@@ -352,6 +363,8 @@ test("allows reflog-recoverable history work and pure creations", () => {
     "git branch -m old new",
     "git branch -f feature HEAD~1",
     "git clone https://github.com/o/r.git target",
+    "git sparse-checkout set src docs",
+    "git -C target sparse-checkout add tests",
     "git remote add upstream https://github.com/o/r.git",
     "git worktree add ../wt feature",
     "git init",

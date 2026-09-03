@@ -45,6 +45,30 @@ test("stays silent on allow so native permissions remain authoritative", () => {
   assert.equal(runGuard(policies.git, bashPayload("git status --short")), null);
   assert.equal(runGuard(policies.local, bashPayload("ls -la src/")), null);
   assert.equal(runGuard(policies.npm, bashPayload("npm test")), null);
+  assert.equal(runGuard(policies.shell, bashPayload("bash -c 'printf ok'")), null);
+});
+
+test("reads literal shell wrappers without mistaking xargs data for source", () => {
+  const destructive = runGuard(policies.shell, bashPayload("bash -c 'rm -rf /'"));
+  assert.equal(destructive.permissionDecision, "deny");
+  assert.match(destructive.permissionDecisionReason, /critical-root-deletion/u);
+
+  const template = runGuard(
+    policies.shell,
+    bashPayload(`find . -type f -print0 | xargs -0 -I{} sh -c 'sed -n "1p" "{}"'`),
+  );
+  assert.equal(template.permissionDecision, "deny");
+  assert.match(template.permissionDecisionReason, /shell-template-expansion/u);
+
+  assert.equal(
+    runGuard(
+      policies.shell,
+      bashPayload(
+        `find . -type f -print0 | xargs -0 -I{} sh -c 'sed -n "1p" "$1"' sh {}`,
+      ),
+    ),
+    null,
+  );
 });
 
 test("translates confirm to ask with the policy reason and next action", () => {
@@ -58,6 +82,24 @@ test("translates confirm to ask with the policy reason and next action", () => {
   const install = runGuard(policies.npm, bashPayload("yarn install --ignore-scripts"));
   assert.equal(install.permissionDecision, "ask");
   assert.match(install.permissionDecisionReason, /^\[scripts-disabled-install\]/u);
+});
+
+test("lets Codex perform a normal push after conversational authorization", () => {
+  const normal = runGuard(
+    policies.git,
+    bashPayload("git push origin HEAD"),
+    ["--host", "codex"],
+  );
+  assert.equal(normal, null);
+
+  const forced = runGuard(
+    policies.git,
+    bashPayload("git push --force-with-lease origin HEAD"),
+    ["--host", "codex"],
+  );
+  assert.equal(forced.permissionDecision, "deny");
+  assert.match(forced.permissionDecisionReason, /^\[codex-confirm-unavailable\]/u);
+  assert.match(forced.permissionDecisionReason, /\[force-push\]/u);
 });
 
 test("a refusal carries both halves, an ask only the first", () => {
@@ -195,6 +237,60 @@ test("opens a wrapper so a gate is not left reading a quoted string", () => {
   assert.equal(runGuard(policies.git, bashPayload(`grep -c '^git push' notes.txt`)), null);
 });
 
+test("opens a wrapper whatever shape its flags take", () => {
+  // The command flag is not always a lone `-c`: it bundles (`-lc`, `-euc`,
+  // `-cx`, `-xc`), follows an option that takes an argument (`-o pipefail`),
+  // and follows long flags (`--login`). Each form used to sail past every gate
+  // because only a standalone `-c` token was recognised as a wrapper.
+  const secret = "cat .env";
+  const bundled = [
+    `bash -lc '${secret}'`,
+    `bash -ic '${secret}'`,
+    `bash -lic '${secret}'`,
+    `bash -euc '${secret}'`,
+    `bash -cx '${secret}'`,
+    `bash -xc '${secret}'`,
+    `bash -o pipefail -c '${secret}'`,
+    `bash --login -c '${secret}'`,
+    `zsh -lc '${secret}'`,
+    `sh -lc '${secret}'`,
+  ];
+  for (const command of bundled) {
+    const seen = runGuard(policies.local, bashPayload(command));
+    assert.equal(seen?.permissionDecision, "deny", command);
+    assert.match(seen.permissionDecisionReason, /protected-path-in-command/u, command);
+  }
+
+  // The same bundled forms must route a supply-chain payload to the npm gate…
+  const supply = runGuard(policies.npm, bashPayload("bash -lc 'npm install lodash'"));
+  assert.equal(supply?.permissionDecision, "deny", "bash -lc npm install");
+  assert.match(supply.permissionDecisionReason, /dependency-state-change/u);
+
+  // …and a push payload to the git gate as an ask.
+  const push = runGuard(policies.git, bashPayload("bash -euc 'git push --force origin main'"));
+  assert.equal(push?.permissionDecision, "ask", "bash -euc git push");
+  assert.match(push.permissionDecisionReason, /force-push/u);
+
+  // A cluster with no lowercase `c` is not a command flag: `ls -la` inside a
+  // pipeline word, `grep -l`, etc. must not be misread as a wrapper opener.
+  assert.equal(runGuard(policies.local, bashPayload("bash -l -i")), null);
+});
+
+test("keeps quoted heredoc program text out of shell-wrapper inspection", () => {
+  const data =
+    "node - <<'NODE'\n" +
+    "const label = `value ${name}`;\n" +
+    "console.log(label);\n" +
+    "NODE";
+  assert.equal(runGuard(policies.shell, bashPayload(data)), null);
+
+  const expanded = "node - <<NODE\n$(git push origin main)\nNODE";
+  assert.match(
+    runGuard(policies.git, bashPayload(expanded)).permissionDecisionReason,
+    /git-push/u,
+  );
+});
+
 test("reads commands out of a payload that carries them inside source", () => {
   // Codex's exec tool takes a JS program, so the command is a literal in code
   // rather than a field. Read as "not a shell call", it ran unguarded.
@@ -203,6 +299,14 @@ test("reads commands out of a payload that carries them inside source", () => {
   const gated = exec('const r = await tools.exec_command({ cmd: "git push origin main" });');
   assert.equal(gated.permissionDecision, "ask");
   assert.match(gated.permissionDecisionReason, /git-push/u);
+
+  const jsonStyle = exec('await tools.exec_command({"cmd":"gh auth setup-git"});');
+  assert.equal(jsonStyle.permissionDecision, "deny");
+  assert.match(jsonStyle.permissionDecisionReason, /gh-auth-setup-git/u);
+  assert.match(
+    exec("await tools.exec_command({'cmd':'gh auth setup-git'});").permissionDecisionReason,
+    /gh-auth-setup-git/u,
+  );
 
   assert.equal(exec('await tools.exec_command({ cmd: "git status --short" });'), null);
 
@@ -229,10 +333,49 @@ test("reads commands out of a payload that carries them inside source", () => {
   assert.equal(plain.permissionDecision, "deny");
 });
 
+test("decodes escaped quotes before policies inspect an embedded command", () => {
+  const source =
+    'const r = await tools.exec_command({cmd:"tmpdir=$(mktemp -d /tmp/review.XXXXXX); ' +
+    '[ -n \\"$tmpdir\\" ]; \\"$tmpdir/venv/bin/python\\" -m pip install ExamplePkg"});';
+  const result = runGuard(policies.shell, { tool_name: "exec", input: source });
+  assert.equal(result.permissionDecision, "deny");
+  assert.match(result.permissionDecisionReason, /install-runs-package-code/u);
+});
+
+test("judges an embedded command relative to its own workdir", (context) => {
+  const session = fs.mkdtempSync(path.join(os.tmpdir(), "guard-session-"));
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "guard-command-"));
+  context.after(() => fs.rmSync(session, { recursive: true, force: true }));
+  context.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+
+  const literal = JSON.stringify(workspace);
+  const source = `await tools.exec_command({cmd:"rm -rf build",workdir:${literal}});`;
+  assert.equal(
+    runGuard(policies.shell, { tool_name: "exec", input: source, cwd: session }),
+    null,
+  );
+
+  const constantSource =
+    `const cwd = ${literal};\n` +
+    'await tools.exec_command({cmd:"rm -rf build",workdir:cwd});';
+  assert.equal(
+    runGuard(policies.shell, { tool_name: "exec", input: constantSource, cwd: session }),
+    null,
+  );
+
+  const dynamic = runGuard(policies.shell, {
+    tool_name: "exec",
+    input: 'await tools.exec_command({cmd:"rm -rf build",workdir:targetDir});',
+    cwd: session,
+  }, ["--host", "codex"]);
+  assert.equal(dynamic.permissionDecision, "deny");
+  assert.match(dynamic.permissionDecisionReason, /unreadable-embedded-command/u);
+});
+
 test("does not read TypeScript patch templates as Bash wrappers", () => {
   const backtick = String.fromCharCode(96);
   const patch =
-    "*** Begin Patch\n+const label = " +
+    "*** Begin Patch\n*** Update File: src/example.ts\n@@\n+const label = " +
     backtick +
     "text ${value}" +
     backtick +
@@ -251,13 +394,40 @@ test("does not read TypeScript patch templates as Bash wrappers", () => {
   );
 });
 
+test("checks patch targets without scanning patch contents as commands or paths", () => {
+  const inside = {
+    tool_name: "apply_patch",
+    tool_input: {
+      command:
+        "*** Begin Patch\n*** Update File: src/config.ts\n@@\n+const sample = '.env';\n*** End Patch",
+    },
+  };
+  assert.equal(runGuard(policies.shell, inside), null);
+  assert.equal(runGuard(policies.local, inside), null);
+
+  const outside = {
+    ...inside,
+    tool_input: {
+      command:
+        "*** Begin Patch\n*** Update File: ../other/config.ts\n@@\n+const value = true;\n*** End Patch",
+    },
+  };
+  assert.equal(runGuard(policies.shell, outside).permissionDecision, "ask");
+
+  const protectedTarget = {
+    ...inside,
+    tool_input: {
+      command: "*** Begin Patch\n*** Update File: .env\n@@\n+TOKEN=example\n*** End Patch",
+    },
+  };
+  assert.equal(runGuard(policies.local, protectedTarget).permissionDecision, "deny");
+});
+
 test("a spelling the extraction did not anticipate must not read as approval", () => {
   // Each of these runs `gh auth setup-git`. Guessing which field carries the
   // command is what let one through, so an execution-named tool whose command
   // cannot be read is treated as unread, not as harmless.
   const payloads = [
-    { tool_name: "exec", input: 'await tools.exec_command({ "cmd": "gh auth setup-git" });' },
-    { tool_name: "exec", input: "await tools.exec_command({ 'cmd': 'gh auth setup-git' });" },
     { tool_name: "exec", input: 'await tools.exec_command({ cmd: "gh auth " + "setup-git" });' },
     { tool_name: "exec", input: 'await tools.exec_command({ cmd: ["gh","auth","setup-git"] });' },
     { tool_name: "exec", input: 'await tools.exec_command({ script: "gh auth setup-git" });' },

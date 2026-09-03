@@ -269,12 +269,29 @@ function stripInvocationPrefixes(tokens) {
     index += 1;
   }
   if (
-    tokens[index] === "corepack" &&
+    path.basename(tokens[index] ?? "").split("@")[0].toLowerCase() === "corepack" &&
     PACKAGE_MANAGERS.has((tokens[index + 1] ?? "").split("@")[0].toLowerCase())
   ) {
     index += 1;
   }
   return tokens.slice(index);
+}
+
+function scriptsDisabledByEnvironment(tokens) {
+  for (const token of tokens) {
+    const match = token.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
+    if (!match) continue;
+    const key = match[1].toUpperCase();
+    const value = match[2].toLowerCase();
+    if (key === "YARN_ENABLE_SCRIPTS" && ["0", "false"].includes(value)) return true;
+    if (
+      ["NPM_CONFIG_IGNORE_SCRIPTS", "PNPM_CONFIG_IGNORE_SCRIPTS"].includes(key) &&
+      ["1", "true"].includes(value)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function findSubcommand(manager, args) {
@@ -297,6 +314,24 @@ function findSubcommand(manager, args) {
 
 function hasAll(args, required) {
   return required.every((flag) => args.includes(flag));
+}
+
+function nonOptionArguments(args) {
+  const values = [];
+  let skipRedirectTarget = false;
+  for (const value of args) {
+    if (skipRedirectTarget) {
+      skipRedirectTarget = false;
+      continue;
+    }
+    if (/^\d*(?:>>?|<<?)$/u.test(value)) {
+      skipRedirectTarget = true;
+      continue;
+    }
+    if (/^\d*(?:>>?|<<?).+/u.test(value)) continue;
+    if (!value.startsWith("-")) values.push(value);
+  }
+  return values;
 }
 
 // `npx tsc` in a repo that already depends on typescript runs node_modules/.bin/tsc
@@ -339,7 +374,12 @@ function cdTarget(segment, cwd) {
   return path.resolve(cwd || process.cwd(), expanded);
 }
 
-function evaluateManager(manager, args) {
+function evaluateManager(manager, args, options = {}) {
+  // A help or self-report flag suppresses the operation even when another
+  // positional word resembles a mutating subcommand (`yarn install --help`).
+  if (args.some((value) => ["--help", "-h", "--version", "-v"].includes(value))) {
+    return allow("routine-package-manager-command");
+  }
   const subcommand = findSubcommand(manager, args);
 
   if (manager === "yarn" && subcommand === "npm") {
@@ -410,6 +450,7 @@ function evaluateManager(manager, args) {
     const lockfileOnly =
       args.includes("--package-lock-only") || args.includes("--lockfile-only");
     const scriptsDisabled =
+      options.scriptsDisabled ||
       args.includes("--ignore-scripts") ||
       (manager === "yarn" && args.includes("--mode=skip-build"));
     if (lockfileOnly && scriptsDisabled) {
@@ -468,7 +509,7 @@ function evaluateManager(manager, args) {
   if (
     subcommand === "pack" &&
     args.includes("--dry-run") &&
-    args.filter((value) => !value.startsWith("-")).length <= 1
+    nonOptionArguments(args).length <= 1
   ) {
     return allow("registry-write-dry-run");
   }
@@ -476,7 +517,7 @@ function evaluateManager(manager, args) {
     // Downloading a tarball with scripts off installs nothing and runs nothing;
     // it is how you read a package before trusting it. Charging an approval for
     // that taxes the review the rest of this gate is asking for.
-    if (hasAll(args, ["--ignore-scripts"])) {
+    if (options.scriptsDisabled || hasAll(args, ["--ignore-scripts"])) {
       return allow("artifact-acquisition-for-review");
     }
     return deny(
@@ -541,12 +582,20 @@ function evaluateSegment(segment, cwd) {
     // stays quiet instead of stacking the same paragraph into the prompt.
     return allow("ambiguity-deferred-to-shell-gate");
   }
+  const environmentDisablesScripts = scriptsDisabledByEnvironment(rawTokens);
   const tokens = stripInvocationPrefixes(rawTokens);
   if (tokens.length === 0) return allow();
 
   // pnpm@8.6.0-style invocations resolve to the bare manager name.
   const executable = tokens[0].split("/").at(-1).toLowerCase().split("@")[0];
   if (RUNNERS.has(executable)) {
+    const runnerArgs = tokens.slice(1);
+    if (
+      runnerArgs.length === 0 ||
+      runnerArgs.every((value) => ["--help", "-h", "--version", "-v"].includes(value))
+    ) {
+      return allow("runner-self-report");
+    }
     const local = locallyInstalledBinary(tokens.slice(1), cwd);
     if (local) return allow("installed-binary-runner");
     if (executable === "npx") {
@@ -594,7 +643,9 @@ function evaluateSegment(segment, cwd) {
     );
   }
   if (!PACKAGE_MANAGERS.has(executable)) return allow();
-  return evaluateManager(executable, tokens.slice(1));
+  return evaluateManager(executable, tokens.slice(1), {
+    scriptsDisabled: environmentDisablesScripts,
+  });
 }
 
 export function evaluateCommand(command, cwd) {

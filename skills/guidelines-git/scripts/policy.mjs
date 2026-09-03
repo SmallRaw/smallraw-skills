@@ -328,6 +328,43 @@ function isReadOnlyConfig(args) {
   return positionals.length <= 1;
 }
 
+const CONFIG_OPTIONS_WITH_VALUES = new Set([
+  "--comment",
+  "--default",
+  "--file",
+  "--type",
+]);
+
+function configMutationKey(args) {
+  const positionals = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (CONFIG_OPTIONS_WITH_VALUES.has(value)) {
+      index += 1;
+      continue;
+    }
+    if (value.startsWith("--file=") || value.startsWith("--type=")) continue;
+    if (value.startsWith("-")) continue;
+    positionals.push(value.toLowerCase());
+  }
+  if (
+    ["add", "remove-section", "rename-section", "replace-all", "set", "unset", "unset-all"].includes(
+      positionals[0] ?? "",
+    )
+  ) {
+    return positionals[1] ?? "";
+  }
+  return positionals[0] ?? "";
+}
+
+function isIdentityOrExecutionConfig(key) {
+  return (
+    /^(?:alias|credential|gpg|http|https|include|includeif|protocol|remote|url|user)\./u.test(key) ||
+    /^(?:commit|tag)\.gpgsign$/u.test(key) ||
+    /^(?:core\.hookspath|core\.sshcommand)$/u.test(key)
+  );
+}
+
 function isBroadStageToken(value) {
   return (
     [".", "./", ":", ":/", "--pathspec-from-file"].includes(value) ||
@@ -502,17 +539,30 @@ function evaluateGit(args) {
     return allow("normal-commit");
   }
   if (subcommand === "config") {
-    if (args.includes("--global") || args.includes("--system")) {
+    const key = configMutationKey(rest);
+    if (args.includes("--system")) {
       return deny(
-        "global-git-config-write",
-        "会修改全局 Git 配置，影响其他仓库。",
-        "只改仓库级配置。",
+        "system-git-config-write",
+        "会修改整台机器的 Git 配置。",
+        "只改用户级或仓库级配置。",
       );
     }
-    return confirm(
-      "repository-git-config-write",
-      `会把本仓库的 ${naming(args.slice(1, 2), "一项 git 配置")} 改掉。`,
-    );
+    if (
+      args.includes("--global") ||
+      args.some((value) => value === "--file" || value.startsWith("--file="))
+    ) {
+      return confirm(
+        "global-git-config-write",
+        `会修改当前仓库之外的 ${key || "Git 配置"}，可能影响其他仓库。`,
+      );
+    }
+    if (isIdentityOrExecutionConfig(key)) {
+      return confirm(
+        "repository-git-identity-config-write",
+        `会修改本仓库的 ${key || "身份、传输或执行配置"}。`,
+      );
+    }
+    return allow("recoverable-git-config-write");
   }
   if (subcommand === "push") {
     const joined = rest.join(" ");
@@ -675,7 +725,11 @@ function evaluateGit(args) {
   ) {
     return confirm("worktree-discard", "deinit --force 会丢掉子模块里未提交的改动。");
   }
-  if (["branch", "tag", "remote", "worktree", "submodule", "init"].includes(subcommand)) {
+  if (
+    ["branch", "tag", "remote", "sparse-checkout", "worktree", "submodule", "init"].includes(
+      subcommand,
+    )
+  ) {
     return allow("recoverable-structure-change");
   }
 

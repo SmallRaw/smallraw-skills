@@ -21,9 +21,11 @@ and packaging a new plugin is the wrong move when a user-level registration alre
 6. Strictly validate policy output. Errors, timeouts, unknown decisions, and malformed
    blocks must use the host's explicit blocking path where possible; report unavoidable
    fail-open behavior.
-7. Use native confirmation when available. Otherwise treat `confirm` as `deny` and report
-   the semantic gap unless the caller explicitly requests a session-scoped, single-use
-   approval bound to the normalized operation. Never weaken `confirm` or `deny` to `allow`.
+7. Use native confirmation when available. A synchronous local user-presence prompt bound to
+   the live hook invocation is also valid when it persists no approval token; the bundled
+   macOS Codex adapter is the reference. Otherwise treat `confirm` as `deny` and report the
+   semantic gap unless the caller explicitly requests a session-scoped, single-use approval
+   bound to the normalized operation. Never weaken `confirm` or `deny` to `allow`.
 8. Verify once with harmless allow and block cases, then report the files, scope, active
    events, trust state, and residual coverage gaps.
 

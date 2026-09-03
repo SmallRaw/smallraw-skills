@@ -37,7 +37,9 @@ owns the host table, registration paths, matchers, and the idempotency marker:
    editing a hook invalidates prior trust. A session restart is required either way.
 6. `node scripts/install-or-update.mjs --verify` — self-tests the guard pipeline, then run
    the printed in-session checks. Only a real blocked command carrying a `[rule-id]` prefix
-   proves the host fires the hooks; a block without one came from another layer.
+   proves the host fires the hooks; a block without one came from another layer. On macOS,
+   a Codex `confirm` check must show the `Codex 安全确认` dialog; approve or reject it there,
+   never by changing or bypassing the command.
 
 Installable hosts are the ones whose blocking semantics were verified: Claude Code, Codex,
 and Cursor. Every other host is scanned for an existing install but never written blindly —
@@ -65,7 +67,9 @@ another Agent.
   append a duplicate hook.
 - Open Plugins standardizes packaging and events more than decision and failure semantics;
   test the actual host behavior.
-- Retrying an unsupported `confirm` is not approval; without a native prompt or one-use
-  grant it repeats the same block.
+- Codex `PreToolUse` cannot emit a native `ask`. On macOS this adapter substitutes a
+  synchronous, single-invocation system dialog and saves no approval token. Rejecting it,
+  letting it time out, missing Codex's invocation IDs, or running without that UI denies.
+  Other hosts without a verified prompt still treat `confirm` as a block.
 - A hook cannot enforce calls the host does not expose. Keep native permissions or sandbox
   controls when they cover paths the hook cannot see.

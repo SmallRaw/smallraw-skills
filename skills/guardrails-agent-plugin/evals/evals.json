@@ -9,7 +9,7 @@
       "expectations": [
         "The dependency-security skill remains the source of policy logic; the host adapters do not copy its blacklist or classifier.",
         "Claude Code and Codex share one Claude-compatible hook implementation instead of separate policy forks.",
-        "Confirmation remains ask on Claude Code; Codex preserves an existing PermissionRequest prompt or explicitly denies and reports the gap when no native approval or requested one-use grant exists.",
+        "Confirmation remains ask on Claude Code; on macOS, Codex uses a synchronous per-invocation system dialog because PreToolUse ask is unsupported, and rejects safely when that dialog or invocation identity is unavailable.",
         "The hook targets package-manager execution narrowly and does not run the full scanner for unrelated tools.",
         "The solution does not require a fixed check/install command vocabulary."
       ]
