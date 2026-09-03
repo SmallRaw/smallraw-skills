@@ -5,18 +5,21 @@
 set -euo pipefail
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-CACHE_FILE="$HOME/.claude/hud-usage-cache.json"
-LAST_FETCH_FILE="$HOME/.claude/hud-usage-last-fetch"
-LOCK_FILE="$HOME/.claude/hud-usage-fetch.lock"
+# All HUD state lives under $CLAUDE_HUD_DIR (default ~/.claude/hud); only the
+# user-edited config stays at ~/.claude/hud-config.json.
+HUD_DIR="${CLAUDE_HUD_DIR:-$HOME/.claude/hud}"
+CACHE_FILE="$HUD_DIR/usage-cache.json"
+LAST_FETCH_FILE="$HUD_DIR/usage-last-fetch"
+LOCK_FILE="$HUD_DIR/usage-fetch.lock"
 CONFIG_FILE="$HOME/.claude/hud-config.json"
-KEYCHAIN_BACKOFF_FILE="$HOME/.claude/hud-keychain-backoff"
+KEYCHAIN_BACKOFF_FILE="$HUD_DIR/keychain-backoff"
 
 # Claude config dir (respect CLAUDE_CONFIG_DIR env var)
 CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CREDS_FILE="$CLAUDE_CONFIG_DIR/.credentials.json"
 LEGACY_SERVICE="Claude Code-credentials"
 
-mkdir -p "$HOME/.claude"
+mkdir -p "$HUD_DIR"
 
 # ── Skip if custom API endpoint ──────────────────────────────────────────────
 base_url="${ANTHROPIC_BASE_URL:-${ANTHROPIC_API_BASE_URL:-}}"
@@ -231,7 +234,7 @@ write_error_cache() {
   # Preserve lastGoodData from existing cache if available
   local last_good=""
   if [[ -f "$CACHE_FILE" ]]; then
-    last_good=$(jq -r '.lastGoodData // empty' "$CACHE_FILE" 2>/dev/null || true)
+    last_good=$(jq -c '.lastGoodData // empty' "$CACHE_FILE" 2>/dev/null || true)
   fi
 
   if [[ -n "$last_good" && "$last_good" != "null" ]]; then

@@ -2,6 +2,10 @@
 # HUD statusline for Claude Code
 # Features: path, git, model, context (with autocompact + token breakdown),
 #           session duration, config counts, tools, agents, todos, usage
+#
+# All runtime state (session caches, usage cache, locks, timestamps) lives under
+# $CLAUDE_HUD_DIR (default ~/.claude/hud). Nothing is ever written into the
+# project directory the session runs in.
 
 input=$(cat)
 
@@ -26,6 +30,8 @@ effort=$(jq -r '.effortLevel // ""' "$HOME/.claude/settings.json" 2>/dev/null)
 
 # ── Config ──────────────────────────────────────────────────────────────────
 HUD_CONFIG="$HOME/.claude/hud-config.json"
+HUD_DIR="${CLAUDE_HUD_DIR:-$HOME/.claude/hud}"
+SESS_DIR="$HUD_DIR/sessions"
 cfg_showTools="false"
 cfg_showAgents="false"
 cfg_showTodos="false"
@@ -33,7 +39,7 @@ cfg_showUsage="false"
 cfg_showDuration="false"
 cfg_showConfigCounts="false"
 cfg_showSkills="false"
-cfg_transcriptRefresh=1
+cfg_transcriptRefresh=5
 cfg_usageRefresh=1800
 cfg_pathLevels=1
 
@@ -80,13 +86,24 @@ fi
 parts=()
 parts+=("${CYAN}${short_dir}${RESET}")
 
-# ── Git: branch +ins -del ────────────────────────────────────────────────────
+# ── Git: branch +ins -del (diff stat cached 3s per session; big repos are slow) ─
 if git_branch=$(GIT_OPTIONAL_LOCKS=0 git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null); then
   [ ${#git_branch} -gt 20 ] && git_branch="${git_branch:0:20}..."
 
-  diff_stat=$(GIT_OPTIONAL_LOCKS=0 git -C "$cwd" diff HEAD --numstat 2>/dev/null | awk '
-    { ins += $1; del += $2 } END { printf "%d %d", ins, del }
-  ')
+  diff_stat=""
+  git_cache="${session_id:+$SESS_DIR/$session_id.git}"
+  if [ -n "$git_cache" ] && [ -f "$git_cache" ]; then
+    cache_age=$(( $(date +%s) - $(stat -f %m "$git_cache" 2>/dev/null || echo 0) ))
+    [ "$cache_age" -lt 3 ] && diff_stat=$(cat "$git_cache" 2>/dev/null || true)
+  fi
+  if [ -z "$diff_stat" ]; then
+    diff_stat=$(GIT_OPTIONAL_LOCKS=0 git -C "$cwd" diff HEAD --numstat 2>/dev/null | awk '
+      { ins += $1; del += $2 } END { printf "%d %d", ins, del }
+    ')
+    if [ -n "$git_cache" ]; then
+      { mkdir -p "$SESS_DIR" && printf '%s' "$diff_stat" > "$git_cache"; } 2>/dev/null || true
+    fi
+  fi
   ins=$(echo "$diff_stat" | cut -d' ' -f1)
   del=$(echo "$diff_stat" | cut -d' ' -f2)
 
@@ -178,11 +195,12 @@ if [ -n "$used_pct" ] && [ -n "$remaining_pct" ]; then
   # ctx_part built but NOT added to line 1 — combined with usage on line 2
 fi
 
-# ── Extract current session data from hud-cache ─────────────────────────────
-HUD_CACHE="${cwd:+$cwd/.claude/hud-cache.json}"
+# ── Extract current session data from the per-session cache ─────────────────
+# Written by scan-transcript.sh; one file per session_id, so sessions never mix.
+HUD_CACHE="${session_id:+$SESS_DIR/$session_id.json}"
 HUD_SESSION=""
-if [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ] && [ -n "$session_id" ]; then
-  HUD_SESSION=$(jq -c --arg sid "$session_id" '.[$sid] // empty' "$HUD_CACHE" 2>/dev/null || true)
+if [ -n "$HUD_CACHE" ] && [ -f "$HUD_CACHE" ]; then
+  HUD_SESSION=$(jq -c 'select(type == "object")' "$HUD_CACHE" 2>/dev/null || true)
 fi
 
 # ── Session duration ─────────────────────────────────────────────────────────
@@ -353,7 +371,7 @@ if [ "$cfg_showTodos" = "true" ] && [ -n "$HUD_SESSION" ]; then
 fi
 
 # ── Usage line ──────────────────────────────────────────────────────────────
-USAGE_CACHE="$HOME/.claude/hud-usage-cache.json"
+USAGE_CACHE="$HUD_DIR/usage-cache.json"
 usage_line=""
 if [ "$cfg_showUsage" = "true" ] && [ -f "$USAGE_CACHE" ]; then
   usage_line=$(jq -r '
@@ -382,18 +400,22 @@ if [ "$cfg_showUsage" = "true" ] && [ -f "$USAGE_CACHE" ]; then
       $c + $bf + "\u001b[0m\u001b[2m" + $be + "\u001b[0m " + $c + "\(pct)%\u001b[0m" +
       (if $t != "" then "\u001b[2m" + $t + "\u001b[0m" else "" end);
 
-    # When rate-limited, fall back to lastGoodData if available
-    (if .error == "rate-limited" and .lastGoodData then .lastGoodData
+    # On any fetch error fall back to lastGoodData when available, and always
+    # leave a visible marker: ↻ for rate-limited, ✗ <error> for everything else.
+    # A silently blank line was indistinguishable from "usage disabled".
+    (if .error and .lastGoodData then .lastGoodData
      elif .error then null
      else . end) as $src |
+    (if (.error // null) == null then ""
+     elif .error == "rate-limited" then " \u001b[33m↻\u001b[0m"
+     else " \u001b[2m✗ \(.error)\u001b[0m" end) as $sync |
 
-    if $src == null then empty
+    if $src == null then
+      (if .error then "\u001b[2musage ✗ \(.error)\u001b[0m" else empty end)
     elif ($src.fiveHour // null) == null then empty
     else
-      ($src.planName // .planName // "Plan") as $name |
       ($src.fiveHour // 0) as $p5 | ($src.fiveHourResetAt // null) as $r5 |
       ($src.sevenDay // null) as $p7 | ($src.sevenDayResetAt // null) as $r7 |
-      (if .error == "rate-limited" then " \u001b[33m↻\u001b[0m" else "" end) as $sync |
 
       # Check for limit reached
       (if $p5 >= 100 or ($p7 != null and $p7 >= 100) then true else false end) as $limit |
@@ -432,20 +454,22 @@ fi
 # ── Trigger background scans (after all output) ────────────────────────────
 now_ts=$(date +%s)
 
-# Transcript scan (also needed for skills line)
-if [ -n "$transcript_path" ] && [ -n "$cwd" ] && [ -n "$session_id" ]; then
+# Transcript scan (also needed for skills line). Keyed by session_id, state in $SESS_DIR.
+if [ -n "$transcript_path" ] && [ -n "$session_id" ]; then
   last_scan=0
-  scan_ts_file="$cwd/.claude/hud-last-scan"
+  scan_ts_file="$SESS_DIR/$session_id.scan-ts"
   [ -f "$scan_ts_file" ] && last_scan=$(cat "$scan_ts_file" 2>/dev/null || echo 0)
+  [[ "$last_scan" =~ ^[0-9]+$ ]] || last_scan=0
   if [ $(( now_ts - last_scan )) -ge "$cfg_transcriptRefresh" ]; then
-    /bin/bash "$SCRIPT_DIR/scan-transcript.sh" "$transcript_path" "$cwd" &>/dev/null & disown
+    /bin/bash "$SCRIPT_DIR/scan-transcript.sh" "$transcript_path" "$session_id" &>/dev/null & disown
   fi
 fi
 
 # Usage fetch
 if [ "$cfg_showUsage" = "true" ]; then
   last_fetch=0
-  [ -f "$HOME/.claude/hud-usage-last-fetch" ] && last_fetch=$(cat "$HOME/.claude/hud-usage-last-fetch" 2>/dev/null || echo 0)
+  [ -f "$HUD_DIR/usage-last-fetch" ] && last_fetch=$(cat "$HUD_DIR/usage-last-fetch" 2>/dev/null || echo 0)
+  [[ "$last_fetch" =~ ^[0-9]+$ ]] || last_fetch=0
   if [ $(( now_ts - last_fetch )) -ge "$cfg_usageRefresh" ]; then
     /bin/bash "$SCRIPT_DIR/usage-fetch.sh" &>/dev/null & disown
   fi

@@ -24,9 +24,9 @@ disable-model-invocation: true
 
 显示当前 session 已加载的 skill 列表。**不需要 hook**，从 transcript 解析 Skill tool_use 记录。
 
-**数据来源**：`scan-transcript.sh` 提取所有 Skill 调用的 skill 名称（去重、按调用顺序），写入 `hud-cache.json` 的 `skills` 字段
+**数据来源**：`scan-transcript.sh` 提取所有 Skill 调用的 skill 名称（去重、按调用顺序），写入 `~/.claude/hud/sessions/<session_id>.json` 的 `skills` 字段
 
-**防新旧 session 串数据**：`hud-cache.json` 中记录 `sessionId`，statusline 对比 stdin 中的 `session_id`，不匹配则不显示
+**防新旧 session 串数据**：缓存按 statusline stdin 里的 `session_id` 一个 session 一个文件，天然不会串；超过 2 天未更新的文件由 `scan-transcript.sh` 自动清理
 
 **显示**：独立一行，格式 `⚡ skill-a | ⚡ skill-b`。无 skill 加载时不显示该行，始终开启无需配置
 
@@ -47,14 +47,27 @@ disable-model-invocation: true
 | 工具活动 | `display.showTools` | 关 | 显示正在运行和已完成的工具调用 |
 | Agent 追踪 | `display.showAgents` | 关 | 显示子 Agent 状态和耗时 |
 | Todo 进度 | `display.showTodos` | 关 | 显示当前任务和完成进度 |
-| Usage 限额 | `display.showUsage` | 关 | 显示 Pro/Max/Team 用量百分比（每半小时刷新，UTC+8 9-23 点） |
+| Usage 限额 | `display.showUsage` | 关 | 显示 Pro/Max/Team 用量百分比（每半小时刷新，UTC+8 9-23 点）；抓取失败时显示上次数据并带灰色 `✗ <原因>` 标记，限流时带 `↻` |
 | 会话时长 | `display.showDuration` | 关 | 显示当前会话已持续时间（如 `12m`、`1h 30m`） |
 | 配置概览 | `display.showConfigCounts` | 关 | 显示生效的 CLAUDE.md、rules、MCP、hooks 数量，快速排查配置来源 |
 | Skill 追踪 | `display.showSkills` | 关 | 显示当前 session 已加载的 skill 列表（从 transcript 解析） |
 
 **检测 HUD 子选项**：读取 `~/.claude/hud-config.json`，显示各项当前状态
 
-**配置文件结构**：完整配置参考 `docs/superpowers/specs/2026-03-19-cc-setup-hud-design.md`
+**配置文件结构**（`~/.claude/hud-config.json`，所有字段可省略）：
+
+```json
+{
+  "pathLevels": 1,
+  "display": { "showTools": false, "showAgents": false, "showTodos": false, "showUsage": false,
+               "showSkills": false, "showDuration": false, "showConfigCounts": false },
+  "refresh": { "transcriptRefreshSeconds": 5, "usageRefreshSeconds": 1800, "usageActiveHoursUTC8": [9, 23] }
+}
+```
+
+**运行时状态目录**：脚本产生的一切状态都在 `~/.claude/hud/` 下（可用环境变量 `CLAUDE_HUD_DIR` 覆盖）：
+`sessions/<session_id>.json` 会话缓存、`sessions/<session_id>.scan-ts` 扫描时间戳、`sessions/<session_id>.git` git 统计缓存（3 秒）、
+`usage-cache.json` / `usage-last-fetch` / `keychain-backoff` 用量抓取状态。**脚本绝不能往项目目录写任何文件**。
 
 ## Gotchas
 
@@ -63,6 +76,8 @@ disable-model-invocation: true
 3. **hook 修改后需要重启 session 或打开 `/hooks` 才生效**。完成后提醒用户
 4. **合并 hooks 数组时注意去重**。同一个 event+matcher 不要重复添加
 5. **statusLine script 路径必须是绝对路径**。不能用相对路径或 `~`
+6. **transcript 是边写边读的**。扫描时最后一行经常不完整，`scan-transcript.sh` 用 `fromjson?` 逐行容错，并且无论成败都写扫描时间戳，否则失败会变成每次刷新都重试
+7. **用量接口是未公开接口**。`usage-fetch.sh` 用钥匙串里的 OAuth token 调 `api.anthropic.com/api/oauth/usage`，Anthropic 随时可能改；失败时状态栏会显示 `✗ <原因>`，看到它先查这里
 
 ## 交互流程
 

@@ -1,31 +1,45 @@
 #!/usr/bin/env bash
-# scan-transcript.sh — Parse a Claude Code transcript JSONL and write HUD cache.
-# Usage: scan-transcript.sh <transcript.jsonl> <project-dir>
+# scan-transcript.sh — Parse a Claude Code transcript JSONL and write the HUD session cache.
+# Usage: scan-transcript.sh <transcript.jsonl> [session_id]
+# Output: $CLAUDE_HUD_DIR/sessions/<session_id>.json (default ~/.claude/hud/sessions/).
+# Never writes into the project directory the session runs in.
 # Reference: jarrodwatts/claude-hud transcript.ts
 set -euo pipefail
 
 TRANSCRIPT="${1:-}"
-PROJECT_DIR="${2:-}"
+SESSION_ID="${2:-}"
 
 # ── Validate inputs ───────────────────────────────────────────────────────────
-if [[ -z "$TRANSCRIPT" || -z "$PROJECT_DIR" ]]; then
+if [[ -z "$TRANSCRIPT" || ! -f "$TRANSCRIPT" ]]; then
   exit 0
 fi
 
-if [[ ! -f "$TRANSCRIPT" ]]; then
+# Session ID defaults to the transcript filename ({session_id}.jsonl)
+if [[ -z "$SESSION_ID" ]]; then
+  SESSION_ID=$(basename "$TRANSCRIPT" .jsonl)
+fi
+# Session IDs are UUID-like; refuse anything that could escape the cache dir
+if [[ ! "$SESSION_ID" =~ ^[0-9A-Za-z_-]+$ ]]; then
   exit 0
 fi
-
-# ── Session ID from transcript filename ({session_id}.jsonl) ─────────────────
-SESSION_ID=$(basename "$TRANSCRIPT" .jsonl)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-CACHE_DIR="${PROJECT_DIR}/.claude"
-CACHE_FILE="${CACHE_DIR}/hud-cache.json"
-LOCK_FILE="${CACHE_DIR}/hud-scan.lock"
-SCAN_TS_FILE="${CACHE_DIR}/hud-last-scan"
+HUD_DIR="${CLAUDE_HUD_DIR:-$HOME/.claude/hud}"
+SESS_DIR="$HUD_DIR/sessions"
+CACHE_FILE="$SESS_DIR/$SESSION_ID.json"
+LOCK_FILE="$SESS_DIR/$SESSION_ID.lock"
+SCAN_TS_FILE="$SESS_DIR/$SESSION_ID.scan-ts"
 
-mkdir -p "$CACHE_DIR"
+mkdir -p "$SESS_DIR"
+
+# ── Skip when the transcript has not changed since the last scan ─────────────
+transcript_mtime=$(stat -f %m "$TRANSCRIPT" 2>/dev/null || echo 0)
+last_scan=$(cat "$SCAN_TS_FILE" 2>/dev/null || echo 0)
+[[ "$last_scan" =~ ^[0-9]+$ ]] || last_scan=0
+if [[ -f "$CACHE_FILE" && "$transcript_mtime" -le "$last_scan" ]]; then
+  date +%s > "$SCAN_TS_FILE"
+  exit 0
+fi
 
 # ── Concurrency control ───────────────────────────────────────────────────────
 if [[ -f "$LOCK_FILE" ]]; then
@@ -38,16 +52,19 @@ if [[ -f "$LOCK_FILE" ]]; then
   rm -f "$LOCK_FILE"
 fi
 
-# Create lock and register cleanup
+# Create lock. The scan timestamp is written on EVERY exit, including a failed
+# parse, so a transient error can never turn into a retry on every refresh.
 echo $$ > "$LOCK_FILE"
-trap 'rm -f "$LOCK_FILE"' EXIT
+trap 'rm -f "$LOCK_FILE"; date +%s > "$SCAN_TS_FILE"' EXIT
 
 # ── Parse transcript with jq ──────────────────────────────────────────────────
-# Key fixes vs old version:
+# The transcript is appended while we read it, so the last line is often
+# truncated. `fromjson?` drops unparsable lines instead of failing the scan.
+# Notes:
 #   1. Filter content to arrays only (some entries have string content)
 #   2. Agent tool name is "Agent" (not "Task")
 #   3. Also skip "Agent" from tool list
-jq -s '
+jq -R 'fromjson? // empty' "$TRANSCRIPT" | jq -s '
   # ── Flatten content blocks, skip non-array content ─────────────────────────
   [
     .[] |
@@ -70,9 +87,6 @@ jq -s '
 
   # ── Session start ─────────────────────────────────────────────────────────
   ($blocks | map(._ts) | map(select(. != null)) | first) as $sessionStart |
-
-  # ── Session ID (from first entry) ──────────────────────────────────────────
-  ([.[] | .sessionId // empty] | first // null) as $sessionId |
 
   # ── Skills (deduplicated, in call order) ─────────────────────────────────
   (
@@ -189,22 +203,10 @@ jq -s '
     sessionStart: $sessionStart,
     updatedAt: now
   }
-' "$TRANSCRIPT" > "${CACHE_FILE}.session.tmp" || { rm -f "${CACHE_FILE}.session.tmp"; exit 1; }
+' > "${CACHE_FILE}.tmp" || { rm -f "${CACHE_FILE}.tmp"; exit 1; }
 
-# ── Merge into cache file under session key, prune entries older than 2 days ─
-SESSION_DATA=$(cat "${CACHE_FILE}.session.tmp")
-rm -f "${CACHE_FILE}.session.tmp"
+# Atomic replace: statusline.sh only ever sees a complete file.
+mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
 
-EXISTING="{}"
-if [ -f "$CACHE_FILE" ]; then
-  # Only keep existing if it's a keyed object (not old flat format)
-  is_keyed=$(jq -r 'if type == "object" and (keys | all(test("^[0-9a-f-]+$"))) then "yes" else "no" end' "$CACHE_FILE" 2>/dev/null || echo "no")
-  [ "$is_keyed" = "yes" ] && EXISTING=$(cat "$CACHE_FILE")
-fi
-
-echo "$EXISTING" | jq --arg sid "$SESSION_ID" --argjson data "$SESSION_DATA" \
-  '(.[$sid] = $data) | with_entries(select(.value.updatedAt > (now - 172800)))' \
-  > "${CACHE_FILE}.tmp" && mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
-
-# ── Write timestamp ───────────────────────────────────────────────────────────
-date +%s > "$SCAN_TS_FILE"
+# ── Prune session state untouched for 2 days ─────────────────────────────────
+find "$SESS_DIR" -type f -mtime +2 -delete 2>/dev/null || true
