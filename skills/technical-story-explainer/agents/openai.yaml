@@ -1,0 +1,4 @@
+interface:
+  display_name: "技术故事解释器"
+  short_description: "把复杂技术写成小白能读完的完整故事"
+  default_prompt: "使用 $technical-story-explainer，查明事实，用一个不硬套产品化身的连贯故事讲清底层原理，并通过正文机制、正文与账本理解测试和综合审稿闸门后只给我完整成稿。"

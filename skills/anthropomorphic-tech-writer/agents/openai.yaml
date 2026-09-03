@@ -1,0 +1,4 @@
+interface:
+  display_name: "技术拟人叙事写手"
+  short_description: "把技术约束写成原创角色、冲突和可验证的中文故事"
+  default_prompt: "使用 $anthropomorphic-tech-writer，把这个技术主题写成一篇原创中文科普故事：先回答 Why，再让机制通过行动和后果显形，并说明真实术语、简化和类比边界。"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "技术故事润色器"
+  short_description: "把逻辑正确但干的技术科普底稿润色成沉浸中文故事"
+  default_prompt: "使用 $technical-story-explainer-polisher，润色这篇技术科普底稿；不要新增事实，先审稿定位问题，再改成更沉浸、更有戏、更少说明书腔的中文成稿。"

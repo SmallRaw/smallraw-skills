@@ -1,0 +1,34 @@
+[
+  {
+    "query": "让数据库索引用第一人称讲自己的工作，用一次慢查询事故把 B+ 树为什么减少扫描写成原创技术故事。",
+    "should_trigger": true
+  },
+  {
+    "query": "把这段缓存击穿说明重新设计成一个全新的技术寓言，要有角色、事故和三种方案的取舍。",
+    "should_trigger": true
+  },
+  {
+    "query": "不要先说设计模式名称，从日志库的扩展需求一步步写成设计复盘故事，最后再揭示抽象。",
+    "should_trigger": true
+  },
+  {
+    "query": "给一个已经事实核对完成的 TLS 1.3 主题写威胁逐层升级的技术故事，明确版本与边界。",
+    "should_trigger": true
+  },
+  {
+    "query": "比较 ChatGPT、Claude 和 Gemini 当前所有 Agent 能力，先让研究员查官方资料，再让两个 reviewer 独立审稿，最后写成故事。",
+    "should_trigger": false
+  },
+  {
+    "query": "这篇技术故事的角色、事实卡和戏码都定了，不要改情节，只把语言润得更沉浸、更像可发布长文。",
+    "should_trigger": false
+  },
+  {
+    "query": "把支付接口的 API 文档改得准确、克制，保留字段名、错误码和 curl 示例。",
+    "should_trigger": false
+  },
+  {
+    "query": "写一个发生在火星上的纯科幻短篇，主角是一名失去记忆的宇航员，不需要解释技术。",
+    "should_trigger": false
+  }
+]
