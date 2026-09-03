@@ -32,18 +32,34 @@ test("denies deleting system roots or the home directory itself", () => {
   assert.equal(evaluateCommand("chmod -R 777 /etc", cwd).ruleId, "critical-root-permission-change");
 });
 
-test("allows workspace-internal cleanup but confirms outside or unknown scopes", () => {
+test("allows exact workspace cleanup but denies permanent deletion outside or at unknown scope", () => {
   assert.equal(evaluateCommand("rm -rf node_modules dist", cwd).ruleId, "workspace-deletion");
   assert.equal(evaluateCommand("rm build/output.log", cwd).decision, "allow");
-  assert.equal(evaluateCommand("rm -rf /tmp/scratch-dir", cwd).decision, "allow");
+  assert.equal(evaluateCommand("rm -rf /tmp/scratch-dir", cwd).decision, "deny");
   assert.equal(evaluateCommand("chmod +x scripts/run.sh", cwd).decision, "allow");
   assert.equal(evaluateCommand("rmdir emptydir", cwd).decision, "allow");
   assert.equal(
-    evaluateCommand("rm -rf ../other-project/dist", cwd).ruleId,
-    "outside-workspace-deletion",
+    evaluateCommand("rm -rf ../other-project/dist", cwd).decision,
+    "deny",
   );
-  assert.equal(evaluateCommand("find . -name '*.tmp' | xargs rm -f", cwd).ruleId, "unknown-scope-deletion");
+  assert.equal(evaluateCommand("rm -rf .", cwd).ruleId, "workspace-root-deletion");
+  assert.equal(evaluateCommand("rm -rf build/*", cwd).ruleId, "unknown-scope-deletion");
+  assert.equal(evaluateCommand("find . -name '*.tmp' | xargs rm -f", cwd).decision, "deny");
   assert.equal(evaluateCommand("chown admin ~/Library/LaunchAgents", cwd).decision, "confirm");
+});
+
+test("allows recoverable trash moves without confirmation", () => {
+  for (const command of [
+    "/usr/bin/trash -- ../other-project/old-build",
+    "trash -v /tmp/scratch-dir",
+    "trash-put ~/Desktop/old.txt",
+    "gio trash /Users/someone/archive.zip",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).ruleId, "recoverable-trash", command);
+  }
+  assert.equal(evaluateCommand("trash /", cwd).ruleId, "critical-trash-target");
+  assert.equal(evaluateCommand("trash .", cwd).ruleId, "critical-trash-target");
+  assert.equal(evaluateCommand("gio trash --empty", cwd).ruleId, "trash-emptying");
 });
 
 test("asks before an installer from another ecosystem fetches code", () => {
@@ -277,7 +293,7 @@ test("follows cd so relative paths are judged where the shell stands", () => {
   // A path parked in a literal variable is still a readable path.
   assert.equal(
     evaluateCommand("S=/private/tmp/scratch; cd $S/work && rm -f ../out.zip", cwd).decision,
-    "allow",
+    "deny",
   );
   assert.equal(evaluateCommand("cd $UNKNOWN && rm -rf build", cwd).ruleId, "unknown-scope-deletion");
 });
@@ -288,7 +304,10 @@ test("sees deletion through find and through an unexpanded target", () => {
     evaluateCommand("find ~/Library -name x -exec rm -f {} +", cwd).ruleId,
     "outside-workspace-deletion",
   );
-  assert.equal(evaluateCommand("find . -name '*.tmp' -delete", cwd).decision, "allow");
+  assert.equal(
+    evaluateCommand("find . -name '*.tmp' -delete", cwd).ruleId,
+    "set-based-permanent-deletion",
+  );
   assert.equal(evaluateCommand("find . -name '*.ts' -exec cat {} +", cwd).decision, "allow");
   assert.equal(evaluateCommand("rm -rf $(cat targets.txt)", cwd).ruleId, "unknown-scope-deletion");
 });

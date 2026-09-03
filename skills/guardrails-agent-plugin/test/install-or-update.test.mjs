@@ -280,6 +280,8 @@ test("verify self-tests the guard pipeline", (context) => {
   const result = run(env, ["--verify"]);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /pipeline: ok/u);
+  assert.match(result.stdout, /trash -- \.\.\/old-build/u);
+  assert.match(result.stdout, /rm -rf \.\.\/old-build/u);
   assert.match(result.stdout, /rule-id/u, "must explain how to tell our blocks apart");
 });
 

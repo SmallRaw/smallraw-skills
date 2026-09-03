@@ -27,8 +27,8 @@ const decide = async (which, command) =>
 test("guidelines-security-shell: the spellings it calls free are free", async () => {
   for (const command of [
     "rm -rf node_modules dist",
-    "rm -rf /tmp/scratch-dir",
-    "find . -name '*.tmp' -delete",
+    "/usr/bin/trash -- /tmp/scratch-dir",
+    "/usr/bin/trash -- ../other-repo/old-build",
     "pkill -f run_server.py",
     'pkill -f "vite --port 6399"',
     "pkill -f Headless",
@@ -50,10 +50,17 @@ test("guidelines-security-shell: the lines it draws are still drawn", async () =
     "pkill -f chrome",
     "docker volume rm pgdata",
     "docker system prune -a",
-    "cd ../other-repo && rm -rf build",
     "chmod -R 777 /Users/someone/tree",
   ]) {
     assert.equal(await decide("shell", command), "confirm", command);
+  }
+  for (const command of [
+    "cd ../other-repo && rm -rf build",
+    "rm -rf /tmp/scratch-dir",
+    "rm -rf build/*",
+    "find . -name '*.tmp' -delete",
+  ]) {
+    assert.equal(await decide("shell", command), "deny", command);
   }
 });
 

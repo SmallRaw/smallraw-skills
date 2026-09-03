@@ -45,7 +45,8 @@ const AUTOMATION_MARKERS = [
   "remote-debugging-port",
   "chrome for testing",
 ];
-const DELETERS = new Set(["rm", "unlink"]);
+const DELETERS = new Set(["rm", "rmdir", "unlink"]);
+const TRASHERS = new Set(["trash", "trash-put"]);
 const OWNERSHIP_COMMANDS = new Set(["chmod", "chown", "chgrp"]);
 // Deleting or re-permissioning these roots takes out the system or the user's
 // whole world; no interactive confirmation makes that reasonable.
@@ -541,15 +542,24 @@ function isCriticalRoot(resolved) {
   });
 }
 
-// Returns { scope: "critical" | "outside" | "inside" | "unknown", path, why }.
+// Returns { scope: "critical" | "workspace-root" | "outside" | "inside" | "unknown", path, why }.
 // Paths resolve against wherever the shell currently stands, but inside/outside
 // is judged against the workspace the tool call started in.
-function classifyTargets(targets, context) {
+function classifyTargets(targets, context, options = {}) {
+  const {
+    protectWorkspaceRoot = false,
+    rejectPatterns = false,
+    strictWorkspaceBoundary = false,
+  } = options;
   if (targets.length === 0) return { scope: "unknown", why: "no-path" };
   let outside = null;
   let unknown = null;
   for (const raw of targets) {
     if (raw === "/*" || raw === "/**") return { scope: "critical", path: raw };
+    if (rejectPatterns && /[*?\[]/u.test(raw)) {
+      unknown ??= { why: "pattern", path: raw };
+      continue;
+    }
     // A target still carrying a substitution names whatever the shell resolves
     // it to, which is not something this gate gets to see.
     const resolvedVars = expandVariables(raw, context.vars);
@@ -564,7 +574,13 @@ function classifyTargets(targets, context) {
     }
     const resolved = resolveWithoutReading(expanded, context.cwd ?? process.cwd());
     if (isCriticalRoot(resolved)) return { scope: "critical", path: resolved };
-    if (!isWithin(resolved, context.workspace) && !isTempPath(resolved) && !isAgentStore(resolved)) {
+    if (protectWorkspaceRoot && resolved === context.workspace) {
+      return { scope: "workspace-root", path: resolved };
+    }
+    if (
+      !isWithin(resolved, context.workspace) &&
+      (strictWorkspaceBoundary || (!isTempPath(resolved) && !isAgentStore(resolved)))
+    ) {
       outside ??= { scope: "outside", path: resolved };
     }
   }
@@ -606,7 +622,11 @@ function pathTargets(args) {
 }
 
 function evaluateDeletion(executable, args, context) {
-  const found = classifyTargets(pathTargets(args), context);
+  const found = classifyTargets(pathTargets(args), context, {
+    protectWorkspaceRoot: true,
+    rejectPatterns: true,
+    strictWorkspaceBoundary: true,
+  });
   if (found.scope === "critical") {
     return deny(
       "critical-root-deletion",
@@ -614,17 +634,58 @@ function evaluateDeletion(executable, args, context) {
       "只删属于自己的确切路径。",
     );
   }
+  if (found.scope === "workspace-root") {
+    return deny(
+      "workspace-root-deletion",
+      `${executable} 会永久删除当前工作区根目录 ${found.path}。`,
+      "改成经过检查的工作区内确切子路径；确实要移走整棵工作区时使用 Trash。",
+    );
+  }
   if (found.scope === "inside") return allow("workspace-deletion");
   if (found.scope === "outside") {
-    return confirm("outside-workspace-deletion", `会删掉工作区之外的 ${found.path}。`);
+    return deny(
+      "outside-workspace-deletion",
+      `不允许永久删除工作区之外的 ${found.path}。`,
+      `改用 trash -- ${found.path}，保留恢复能力。`,
+    );
   }
   if (found.why === "substitution") {
-    return confirm("unknown-scope-deletion", `${executable} 要删的 ${found.path} 展开后才知道是什么。`);
+    return deny(
+      "unknown-scope-deletion",
+      `${executable} 要永久删除的 ${found.path} 展开后才知道是什么。`,
+      "先把目标展开并检查；工作区外的目标改用 Trash。",
+    );
   }
   if (found.why === "cwd") {
-    return confirm("unknown-scope-deletion", `${found.path} 是相对路径，而前面 cd 去了哪读不出来。`);
+    return deny(
+      "unknown-scope-deletion",
+      `${found.path} 是相对路径，而前面 cd 去了哪读不出来，不能永久删除。`,
+      "先解析成工作区内的确切路径；否则改用 Trash。",
+    );
   }
-  return confirm("unknown-scope-deletion", `${executable} 没写明删哪里，范围要到运行时才定。`);
+  return deny(
+    "unknown-scope-deletion",
+    found.why === "pattern"
+      ? `${executable} 的 ${found.path} 会在运行时匹配一组文件，未先看清结果。`
+      : `${executable} 没写明永久删除哪里，范围要到运行时才定。`,
+    "先用只读命令列出结果，再删除经过检查的工作区内确切路径；其他目标使用 Trash。",
+  );
+}
+
+function evaluateTrash(executable, args, context) {
+  const targets = executable === "gio" ? pathTargets(args.slice(1)) : pathTargets(args);
+  const found = classifyTargets(targets, context, {
+    protectWorkspaceRoot: true,
+    strictWorkspaceBoundary: true,
+  });
+  if (found.scope === "critical" || found.scope === "workspace-root") {
+    return deny(
+      "critical-trash-target",
+      `不能把 ${found.path} 整体移进回收站。`,
+      "只指定真正要移走的确切子路径。",
+    );
+  }
+  return allow("recoverable-trash");
 }
 
 function evaluateOwnership(executable, args, context) {
@@ -881,6 +942,17 @@ function evaluateSegment(segment, context) {
       `${executable} 会下载 ${naming}，这里没有 npm 那套审查流程。`,
     );
   }
+  if (TRASHERS.has(executable)) return evaluateTrash(executable, args, context);
+  if (executable === "gio" && (args[0] ?? "").toLowerCase() === "trash") {
+    if (args.includes("--empty")) {
+      return deny(
+        "trash-emptying",
+        "清空回收站会永久销毁其中所有内容。",
+        "保留回收站内容，让用户自行决定何时清空。",
+      );
+    }
+    return evaluateTrash(executable, args, context);
+  }
   if (DELETERS.has(executable)) return evaluateDeletion(executable, args, context);
   if (OWNERSHIP_COMMANDS.has(executable)) return evaluateOwnership(executable, args, context);
   // find walks a tree and can delete every match, which is a deletion whose
@@ -896,7 +968,15 @@ function evaluateSegment(segment, context) {
     if (!deletes) return allow();
     const firstPredicate = args.findIndex((value) => value.startsWith("-"));
     const roots = firstPredicate === -1 ? args : args.slice(0, firstPredicate);
-    return evaluateDeletion("find", roots.length > 0 ? roots : ["."], context);
+    const deletion = evaluateDeletion("find", roots.length > 0 ? roots : ["."], context);
+    if (deletion.decision !== "allow" && deletion.ruleId !== "workspace-root-deletion") {
+      return deletion;
+    }
+    return deny(
+      "set-based-permanent-deletion",
+      "find 会按条件永久删除一组工作区文件，hook 无法证明匹配结果已经检查过。",
+      "先用 -print 查看结果，再把确认过的确切路径交给 trash 或 rm。",
+    );
   }
   if (PROCESS_SWEEPERS.has(executable)) {
     const patterns = args.filter(

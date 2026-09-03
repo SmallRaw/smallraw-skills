@@ -463,6 +463,16 @@ const VECTORS = [
   { policy: "guidelines-security-npm", command: "npm test", expect: "allow" },
   { policy: "guidelines-security-npm", command: "npx cowsay hi", expect: "deny" },
   { policy: "guidelines-security-shell", command: "ls -la", expect: "allow" },
+  {
+    policy: "guidelines-security-shell",
+    command: "/usr/bin/trash -- ../old-build",
+    expect: "allow",
+  },
+  {
+    policy: "guidelines-security-shell",
+    command: "rm -rf ../old-build",
+    expect: "deny",
+  },
   { policy: "guidelines-security-shell", command: "sudo id", expect: "deny" },
   { policy: "guidelines-security-local", command: "cat README.md", expect: "allow" },
   { policy: "guidelines-security-local", command: "cat .env", expect: "deny" },
