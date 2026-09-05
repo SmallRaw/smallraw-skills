@@ -23,21 +23,24 @@ test("denies privilege escalation, disk destruction, and data shredding", () => 
   assert.equal(evaluateCommand("diskutil eraseDisk APFS Blank /dev/disk2", cwd).decision, "deny");
 });
 
-test("denies deleting system roots or the home directory itself", () => {
+test("denies deleting system trees or the home directory itself", () => {
   assert.equal(evaluateCommand("rm -rf /", cwd).ruleId, "critical-root-deletion");
   assert.equal(evaluateCommand("rm -rf /*", cwd).decision, "deny");
   assert.equal(evaluateCommand("rm -rf ~", cwd).decision, "deny");
   assert.equal(evaluateCommand("rm -rf $HOME", cwd).decision, "deny");
   assert.equal(evaluateCommand("rm -rf /usr", cwd).decision, "deny");
+  assert.equal(evaluateCommand("rm hosts", "/etc").ruleId, "system-path-deletion");
+  assert.equal(evaluateCommand("rm -rf Library/Fonts", "/System").ruleId, "system-path-deletion");
   assert.equal(evaluateCommand("chmod -R 777 /etc", cwd).ruleId, "critical-root-permission-change");
 });
 
-test("allows exact workspace cleanup but denies permanent deletion outside or at unknown scope", () => {
-  assert.equal(evaluateCommand("rm -rf node_modules dist", cwd).ruleId, "workspace-deletion");
-  assert.equal(evaluateCommand("rm build/output.log", cwd).decision, "allow");
+test("allows small Git deletions but routes larger or unversioned targets to Trash", () => {
+  assert.equal(evaluateCommand("rm README.md", cwd).ruleId, "small-git-deletion");
+  assert.equal(evaluateCommand("rmdir skills/guidelines-security-shell/test", cwd).decision, "allow");
+  assert.equal(evaluateCommand("rm -rf skills", cwd).ruleId, "large-permanent-deletion");
+  assert.equal(evaluateCommand("rm scratch.txt", os.tmpdir()).ruleId, "unversioned-permanent-deletion");
   assert.equal(evaluateCommand("rm -rf /tmp/scratch-dir", cwd).decision, "deny");
   assert.equal(evaluateCommand("chmod +x scripts/run.sh", cwd).decision, "allow");
-  assert.equal(evaluateCommand("rmdir emptydir", cwd).decision, "allow");
   assert.equal(
     evaluateCommand("rm -rf ../other-project/dist", cwd).decision,
     "deny",
@@ -48,9 +51,31 @@ test("allows exact workspace cleanup but denies permanent deletion outside or at
   assert.equal(evaluateCommand("chown admin ~/Library/LaunchAgents", cwd).decision, "confirm");
 });
 
+test("applies the same small-delete limit to alternate spellings", () => {
+  for (const command of [
+    "rimraf README.md",
+    "./node_modules/.bin/rimraf README.md",
+    "npx rimraf README.md",
+    "pnpm rimraf README.md",
+    "pnpm exec rimraf README.md",
+    "npm exec -- rimraf README.md",
+    "yarn rimraf README.md",
+    "yarn dlx rimraf README.md",
+    "bunx rimraf README.md",
+    "git rm README.md",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).decision, "allow", command);
+  }
+  assert.equal(evaluateCommand("rimraf skills", cwd).ruleId, "large-permanent-deletion");
+  assert.equal(evaluateCommand("git clean -fd", cwd).decision, "deny");
+  assert.equal(evaluateCommand("git rm --cached generated.ts", cwd).decision, "allow");
+  assert.equal(evaluateCommand("git clean -nd", cwd).decision, "allow");
+  assert.equal(evaluateCommand("git clean --dry-run", cwd).decision, "allow");
+});
+
 test("allows recoverable trash moves without confirmation", () => {
   for (const command of [
-    "/usr/bin/trash -- ../other-project/old-build",
+    "/usr/bin/trash ../other-project/old-build",
     "trash -v /tmp/scratch-dir",
     "trash-put ~/Desktop/old.txt",
     "gio trash /Users/someone/archive.zip",
@@ -148,7 +173,7 @@ test("normalizes hook payloads and fails closed on malformed input", () => {
   assert.equal(
     evaluatePolicy({
       tool_name: "Bash",
-      tool_input: { command: "rm -rf node_modules" },
+      tool_input: { command: "rm README.md" },
       cwd,
     }).decision,
     "allow",
@@ -198,10 +223,9 @@ test("allows sweeping a process the pattern actually identifies", () => {
   assert.equal(evaluateCommand("killall Dock", cwd).decision, "confirm");
 });
 
-test("sees a write landing outside the workspace, not only a deletion", () => {
-  // Overwriting destroys the contents as completely as removing the file, and
-  // leaves the file there so nothing looks missing.
-  const other = "/Users/someone/other-repo";
+test("allows ordinary writes elsewhere in a repository without asking", () => {
+  const nestedWorkspace = path.join(cwd, "skills", "guidelines-security-shell");
+  const other = path.join(cwd, "skills", "guidelines-security-local");
   for (const command of [
     `echo broken > ${other}/package.json`,
     `echo x >> ${other}/.gitignore`,
@@ -212,11 +236,10 @@ test("sees a write landing outside the workspace, not only a deletion", () => {
     `tar xzf pkg.tgz -C ${other}`,
     `rsync -a ./src/ ${other}/src/`,
     `cat > ${other}/package.json`,
-    "echo x > ~/.zshrc",
   ]) {
-    assert.equal(evaluateCommand(command, cwd).ruleId, "outside-workspace-write", command);
+    assert.equal(evaluateCommand(command, nestedWorkspace).decision, "allow", command);
   }
-  // Writing where the work is, and reading anywhere, stay out of the way.
+  assert.equal(evaluateCommand("echo x > ~/.zshrc", nestedWorkspace).decision, "confirm");
   for (const command of [
     "echo x > build/out.log",
     "echo x > /tmp/scratch.txt",
@@ -224,20 +247,22 @@ test("sees a write landing outside the workspace, not only a deletion", () => {
     "node build.js 2>/dev/null",
     "node build.js > /dev/null 2>&1",
     "ls -la 2>&1 | head",
-    `cat ${other}/package.json`,
-    `grep -rn TODO ${other}/src`,
+    `cat ${other}/SKILL.md`,
+    `grep -rn TODO ${other}/scripts`,
     "sed -n '1,5p' package.json",
   ]) {
-    assert.equal(evaluateCommand(command, cwd).decision, "allow", command);
+    assert.equal(evaluateCommand(command, nestedWorkspace).decision, "allow", command);
   }
 });
 
-test("checks file-edit tool targets with the same workspace rule", () => {
+test("lets file-edit tools write across repositories and delete small Git targets", () => {
+  const nestedWorkspace = path.join(cwd, "skills", "guidelines-security-shell");
+  const other = path.join(cwd, "skills", "guidelines-security-local", "index.ts");
   assert.equal(
     evaluatePolicy({
       tool_name: "apply_patch",
       tool_input: { command: "*** Begin Patch\n*** Update File: src/index.ts\n*** End Patch" },
-      cwd,
+      cwd: nestedWorkspace,
     }).decision,
     "allow",
   );
@@ -245,19 +270,45 @@ test("checks file-edit tool targets with the same workspace rule", () => {
     evaluatePolicy({
       tool_name: "apply_patch",
       tool_input: {
-        command: "*** Begin Patch\n*** Update File: /Users/someone/other-repo/index.ts\n*** End Patch",
+        command: `*** Begin Patch\n*** Update File: ${other}\n*** End Patch`,
       },
-      cwd,
-    }).ruleId,
-    "outside-workspace-write",
+      cwd: nestedWorkspace,
+    }).decision,
+    "allow",
   );
   assert.equal(
     evaluatePolicy({
       tool_name: "Write",
-      tool_input: { file_path: "/Users/someone/other-repo/index.ts" },
+      tool_input: { file_path: other },
+      cwd: nestedWorkspace,
+    }).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "apply_patch",
+      tool_input: {
+        command: `*** Begin Patch\n*** Update File: ${other}\n*** Update File: ${path.join(cwd, "skills", "guidelines-security-local", "second.ts")}\n*** End Patch`,
+      },
+      cwd: nestedWorkspace,
+    }).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "apply_patch",
+      tool_input: { command: "*** Begin Patch\n*** Delete File: SKILL.md\n*** End Patch" },
+      cwd: nestedWorkspace,
+    }).decision,
+    "allow",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "apply_patch",
+      tool_input: { command: `*** Begin Patch\n*** Delete File: ${path.join(cwd, "skills")}\n*** End Patch` },
       cwd,
     }).ruleId,
-    "outside-workspace-write",
+    "large-permanent-deletion",
   );
 });
 

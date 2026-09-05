@@ -465,7 +465,7 @@ const VECTORS = [
   { policy: "guidelines-security-shell", command: "ls -la", expect: "allow" },
   {
     policy: "guidelines-security-shell",
-    command: "/usr/bin/trash -- ../old-build",
+    command: "/usr/bin/trash ../old-build",
     expect: "allow",
   },
   {

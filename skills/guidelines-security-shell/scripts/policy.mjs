@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,9 +45,10 @@ const AUTOMATION_MARKERS = [
   "remote-debugging-port",
   "chrome for testing",
 ];
-const DELETERS = new Set(["rm", "rmdir", "unlink"]);
+const DELETERS = new Set(["rm", "rmdir", "unlink", "rimraf"]);
 const TRASHERS = new Set(["trash", "trash-put"]);
 const OWNERSHIP_COMMANDS = new Set(["chmod", "chown", "chgrp"]);
+const MAX_GIT_DELETION_ENTRIES = 20;
 // Deleting or re-permissioning these roots takes out the system or the user's
 // whole world; no interactive confirmation makes that reasonable.
 const CRITICAL_ROOTS = new Set([
@@ -466,6 +467,64 @@ function isWithin(candidate, root) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+function repositoryRootFor(resolved) {
+  let current = resolved;
+  if (!existsSync(path.join(current, ".git"))) current = path.dirname(current);
+
+  while (true) {
+    if (existsSync(path.join(current, ".git"))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function resolvedExactTargets(targets, context) {
+  const resolved = [];
+  for (const raw of targets) {
+    const expanded = expandHome(expandVariables(raw, context.vars));
+    if (/[$`*?\[]/u.test(expanded)) continue;
+    resolved.push(resolveWithoutReading(expanded, context.cwd ?? process.cwd()));
+  }
+  return resolved;
+}
+
+function countTreeEntries(target, remaining) {
+  let stat;
+  try {
+    stat = lstatSync(target);
+  } catch (error) {
+    return error?.code === "ENOENT" ? 0 : null;
+  }
+  if (!stat.isDirectory() || stat.isSymbolicLink()) return 1;
+
+  let total = 1;
+  let entries;
+  try {
+    entries = readdirSync(target);
+  } catch {
+    return null;
+  }
+  for (const entry of entries) {
+    const count = countTreeEntries(path.join(target, entry), remaining - total);
+    if (count === null) return null;
+    total += count;
+    if (total > remaining) return total;
+  }
+  return total;
+}
+
+function deletionEntryCount(targets) {
+  let total = 0;
+  for (const target of targets) {
+    const count = countTreeEntries(target, MAX_GIT_DELETION_ENTRIES - total);
+    if (count === null) return null;
+    total += count;
+    if (total > MAX_GIT_DELETION_ENTRIES) return total;
+  }
+  return total;
+}
+
 function isTempPath(resolved) {
   const roots = [os.tmpdir(), "/tmp", "/private/tmp", "/private/var/folders", "/var/folders"];
   return roots.some((root) => {
@@ -497,6 +556,7 @@ const SYSTEM_ROOTS = [
 
 function isSystemPath(resolved) {
   if (typeof resolved !== "string") return false;
+  if (isTempPath(resolved)) return false;
   const lowered = resolved.toLowerCase().replace(/\/+$/u, "");
   return SYSTEM_ROOTS.some((root) => lowered === root || lowered.startsWith(`${root}/`));
 }
@@ -622,7 +682,8 @@ function pathTargets(args) {
 }
 
 function evaluateDeletion(executable, args, context) {
-  const found = classifyTargets(pathTargets(args), context, {
+  const targets = pathTargets(args);
+  const found = classifyTargets(targets, context, {
     protectWorkspaceRoot: true,
     rejectPatterns: true,
     strictWorkspaceBoundary: true,
@@ -631,36 +692,69 @@ function evaluateDeletion(executable, args, context) {
     return deny(
       "critical-root-deletion",
       `${executable} 的目标是 ${found.path} 本身，那是系统根目录或你的主目录。`,
-      "只删属于自己的确切路径。",
+      "只指定属于自己的确切目标，并使用 Trash。",
     );
   }
   if (found.scope === "workspace-root") {
     return deny(
       "workspace-root-deletion",
       `${executable} 会永久删除当前工作区根目录 ${found.path}。`,
-      "改成经过检查的工作区内确切子路径；确实要移走整棵工作区时使用 Trash。",
+      "只指定真正要移走的确切目标，并使用 Trash。",
     );
   }
-  if (found.scope === "inside") return allow("workspace-deletion");
+  const resolvedTargets = resolvedExactTargets(targets, context);
+  const systemTarget = resolvedTargets.find((target) => isSystemPath(target));
+  if (systemTarget) {
+    return deny(
+      "system-path-deletion",
+      `${executable} 会永久删除系统目录中的 ${systemTarget}。`,
+      "系统路径不由 Agent 删除；说明目标后停下。",
+    );
+  }
+  if (found.scope === "inside") {
+    if (resolvedTargets.length !== targets.length || resolvedTargets.some((target) => repositoryRootFor(target) === null)) {
+      return deny(
+        "unversioned-permanent-deletion",
+        `${executable} 的目标不在可确认的 Git 仓库里，永久删除后没有可靠恢复点。`,
+        "把经过检查的确切目标交给 trash，保留恢复能力。",
+      );
+    }
+    const entryCount = deletionEntryCount(resolvedTargets);
+    if (entryCount === null) {
+      return deny(
+        "uninspectable-permanent-deletion",
+        `${executable} 的目标规模无法只靠文件系统元数据确认。`,
+        "把经过检查的确切目标交给 trash，保留恢复能力。",
+      );
+    }
+    if (entryCount > MAX_GIT_DELETION_ENTRIES) {
+      return deny(
+        "large-permanent-deletion",
+        `${executable} 会永久删除超过 ${MAX_GIT_DELETION_ENTRIES} 个文件系统条目。`,
+        "大量清理改用 trash，保留恢复能力。",
+      );
+    }
+    return allow("small-git-deletion");
+  }
   if (found.scope === "outside") {
     return deny(
       "outside-workspace-deletion",
       `不允许永久删除工作区之外的 ${found.path}。`,
-      `改用 trash -- ${found.path}，保留恢复能力。`,
+      `改用 trash ${found.path}，保留恢复能力。`,
     );
   }
   if (found.why === "substitution") {
     return deny(
       "unknown-scope-deletion",
       `${executable} 要永久删除的 ${found.path} 展开后才知道是什么。`,
-      "先把目标展开并检查；工作区外的目标改用 Trash。",
+      "先把目标展开并检查，再把确切目标交给 Trash。",
     );
   }
   if (found.why === "cwd") {
     return deny(
       "unknown-scope-deletion",
       `${found.path} 是相对路径，而前面 cd 去了哪读不出来，不能永久删除。`,
-      "先解析成工作区内的确切路径；否则改用 Trash。",
+      "先解析成确切路径，再把目标交给 Trash。",
     );
   }
   return deny(
@@ -668,7 +762,7 @@ function evaluateDeletion(executable, args, context) {
     found.why === "pattern"
       ? `${executable} 的 ${found.path} 会在运行时匹配一组文件，未先看清结果。`
       : `${executable} 没写明永久删除哪里，范围要到运行时才定。`,
-    "先用只读命令列出结果，再删除经过检查的工作区内确切路径；其他目标使用 Trash。",
+    "先用只读命令列出结果，再把经过检查的确切目标交给 Trash。",
   );
 }
 
@@ -773,18 +867,45 @@ function writeTargets(executable, args) {
 }
 
 function evaluateWrite(targets, context) {
-  const found = classifyTargets(targets, context);
-  if (found.scope === "critical") {
-    return deny(
-      "critical-root-write",
-      `会写进 ${found.path} 本身，那是系统根目录或你的主目录。`,
-      "只写属于自己的确切路径。",
-    );
-  }
-  if (found.scope === "outside") {
-    return confirm("outside-workspace-write", `会覆盖工作区之外的 ${found.path}。`);
+  for (const target of targets) {
+    const found = classifyTargets([target], context);
+    if (found.scope === "critical") {
+      return deny(
+        "critical-root-write",
+        `会写进 ${found.path} 本身，那是系统根目录或你的主目录。`,
+        "只写属于自己的确切路径。",
+      );
+    }
+    if (found.scope === "outside" && repositoryRootFor(found.path) === null) {
+      return confirm("outside-workspace-write", `会覆盖工作区和其他仓库之外的 ${found.path}。`);
+    }
   }
   return null;
+}
+
+function packageRunnerPayload(tokens) {
+  const executable = tokens[0]?.split("/").at(-1).toLowerCase();
+  if (executable === "npx" || executable === "bunx") {
+    const index = tokens.findIndex((value, cursor) => cursor > 0 && !value.startsWith("-"));
+    return index < 0 ? [] : tokens.slice(index);
+  }
+  if (!["npm", "pnpm", "yarn"].includes(executable)) return [];
+  if (["pnpm", "yarn"].includes(executable)) {
+    const commandIndex = tokens.findIndex(
+      (value, cursor) => cursor > 0 && value !== "--" && !value.startsWith("-"),
+    );
+    if (commandIndex >= 0 && DELETERS.has(tokens[commandIndex].split("/").at(-1).toLowerCase())) {
+      return tokens.slice(commandIndex);
+    }
+  }
+  const runnerIndex = tokens.findIndex(
+    (value, cursor) => cursor > 0 && ["exec", "x", "dlx"].includes(value),
+  );
+  if (runnerIndex < 0) return [];
+  const commandIndex = tokens.findIndex(
+    (value, cursor) => cursor > runnerIndex && value !== "--" && !value.startsWith("-"),
+  );
+  return commandIndex < 0 ? [] : tokens.slice(commandIndex);
 }
 
 function xargsReplacementToken(tokens) {
@@ -858,6 +979,12 @@ function evaluateSegment(segment, context) {
   const executable = tokens[0].split("/").at(-1).toLowerCase();
   const args = tokens.slice(1);
 
+  const delegated = packageRunnerPayload(tokens);
+  const delegatedExecutable = delegated[0]?.split("/").at(-1).toLowerCase();
+  if (DELETERS.has(delegatedExecutable)) {
+    return evaluateDeletion(delegatedExecutable, delegated.slice(1), context);
+  }
+
   if (PRIVILEGE_ESCALATION.has(executable)) {
     return deny(
       "privilege-escalation",
@@ -869,7 +996,7 @@ function evaluateSegment(segment, context) {
     return deny(
       "data-destruction",
       "shred 会不可恢复地销毁文件内容。",
-      "要删就用普通 rm 删确切路径。",
+      "把确切目标交给 trash，保留恢复能力。",
     );
   }
   if (executable === "mkfs" || executable.startsWith("mkfs.")) {
@@ -955,6 +1082,19 @@ function evaluateSegment(segment, context) {
   }
   if (DELETERS.has(executable)) return evaluateDeletion(executable, args, context);
   if (OWNERSHIP_COMMANDS.has(executable)) return evaluateOwnership(executable, args, context);
+  const gitCleanDryRun = args.some(
+    (value) => value === "--dry-run" || (/^-[^-]*n/u.test(value) && value !== "--"),
+  );
+  if (executable === "git" && args[0] === "clean" && !gitCleanDryRun) {
+    return deny(
+      "set-based-permanent-deletion",
+      "git clean 会绕过系统回收站永久删除未跟踪文件。",
+      "先用 git clean -n 查看目标，再把确认过的确切路径交给 trash。",
+    );
+  }
+  if (executable === "git" && args[0] === "rm" && !args.includes("--cached")) {
+    return evaluateDeletion("git rm", args.slice(1), context);
+  }
   // find walks a tree and can delete every match, which is a deletion whose
   // scope is the roots it was pointed at.
   if (executable === "find") {
@@ -969,13 +1109,17 @@ function evaluateSegment(segment, context) {
     const firstPredicate = args.findIndex((value) => value.startsWith("-"));
     const roots = firstPredicate === -1 ? args : args.slice(0, firstPredicate);
     const deletion = evaluateDeletion("find", roots.length > 0 ? roots : ["."], context);
-    if (deletion.decision !== "allow" && deletion.ruleId !== "workspace-root-deletion") {
+    if (
+      !["small-git-deletion", "large-permanent-deletion", "workspace-root-deletion"].includes(
+        deletion.ruleId,
+      )
+    ) {
       return deletion;
     }
     return deny(
       "set-based-permanent-deletion",
       "find 会按条件永久删除一组工作区文件，hook 无法证明匹配结果已经检查过。",
-      "先用 -print 查看结果，再把确认过的确切路径交给 trash 或 rm。",
+      "先用 -print 查看结果，再把确认过的确切路径交给 trash。",
     );
   }
   if (PROCESS_SWEEPERS.has(executable)) {

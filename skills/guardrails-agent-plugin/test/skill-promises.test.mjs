@@ -26,9 +26,10 @@ const decide = async (which, command) =>
 
 test("guidelines-security-shell: the spellings it calls free are free", async () => {
   for (const command of [
-    "rm -rf node_modules dist",
-    "/usr/bin/trash -- /tmp/scratch-dir",
-    "/usr/bin/trash -- ../other-repo/old-build",
+    "rm README.md",
+    "rimraf README.md",
+    "/usr/bin/trash /tmp/scratch-dir",
+    "/usr/bin/trash ../other-repo/old-build",
     "pkill -f run_server.py",
     'pkill -f "vite --port 6399"',
     "pkill -f Headless",
@@ -55,6 +56,9 @@ test("guidelines-security-shell: the lines it draws are still drawn", async () =
     assert.equal(await decide("shell", command), "confirm", command);
   }
   for (const command of [
+    "rm -rf skills",
+    "rimraf skills",
+    "git clean -fd",
     "cd ../other-repo && rm -rf build",
     "rm -rf /tmp/scratch-dir",
     "rm -rf build/*",

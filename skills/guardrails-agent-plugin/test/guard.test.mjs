@@ -350,18 +350,20 @@ test("judges an embedded command relative to its own workdir", (context) => {
 
   const literal = JSON.stringify(workspace);
   const source = `await tools.exec_command({cmd:"rm -rf build",workdir:${literal}});`;
-  assert.equal(
-    runGuard(policies.shell, { tool_name: "exec", input: source, cwd: session }),
-    null,
-  );
+  const literalResult = runGuard(policies.shell, { tool_name: "exec", input: source, cwd: session });
+  assert.equal(literalResult.permissionDecision, "deny");
+  assert.match(literalResult.permissionDecisionReason, /permanent-deletion/u);
 
   const constantSource =
     `const cwd = ${literal};\n` +
     'await tools.exec_command({cmd:"rm -rf build",workdir:cwd});';
-  assert.equal(
-    runGuard(policies.shell, { tool_name: "exec", input: constantSource, cwd: session }),
-    null,
-  );
+  const constantResult = runGuard(policies.shell, {
+    tool_name: "exec",
+    input: constantSource,
+    cwd: session,
+  });
+  assert.equal(constantResult.permissionDecision, "deny");
+  assert.match(constantResult.permissionDecisionReason, /permanent-deletion/u);
 
   const dynamic = runGuard(policies.shell, {
     tool_name: "exec",
@@ -369,7 +371,7 @@ test("judges an embedded command relative to its own workdir", (context) => {
     cwd: session,
   }, ["--host", "codex"]);
   assert.equal(dynamic.permissionDecision, "deny");
-  assert.match(dynamic.permissionDecisionReason, /unreadable-embedded-command/u);
+  assert.match(dynamic.permissionDecisionReason, /permanent-deletion/u);
 });
 
 test("does not read TypeScript patch templates as Bash wrappers", () => {
