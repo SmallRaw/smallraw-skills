@@ -585,7 +585,11 @@ const AGENT_RULE_SURFACE = [
 
 function isAgentStore(resolved) {
   if (!AGENT_HOME.test(resolved)) return false;
-  return !AGENT_RULE_SURFACE.some((pattern) => pattern.test(resolved));
+  return !isAgentRuleSurface(resolved);
+}
+
+function isAgentRuleSurface(resolved) {
+  return AGENT_HOME.test(resolved) && AGENT_RULE_SURFACE.some((pattern) => pattern.test(resolved));
 }
 
 function isCriticalRoot(resolved) {
@@ -866,6 +870,12 @@ function writeTargets(executable, args) {
   return [];
 }
 
+function lexicalTarget(target, context) {
+  const expanded = expandHome(expandVariables(target, context.vars));
+  if (/\$|`/u.test(expanded)) return null;
+  return path.resolve(context.cwd ?? process.cwd(), expanded);
+}
+
 function evaluateWrite(targets, context) {
   for (const target of targets) {
     const found = classifyTargets([target], context);
@@ -876,8 +886,15 @@ function evaluateWrite(targets, context) {
         "只写属于自己的确切路径。",
       );
     }
-    if (found.scope === "outside" && repositoryRootFor(found.path) === null) {
-      return confirm("outside-workspace-write", `会覆盖工作区和其他仓库之外的 ${found.path}。`);
+    const lexical = lexicalTarget(target, context);
+    const agentRuleSurface = [lexical, found.path].find(
+      (candidate) => typeof candidate === "string" && isAgentRuleSurface(candidate),
+    );
+    if (agentRuleSurface) {
+      return confirm("agent-rule-surface-write", `会覆盖 Agent 自己的策略或配置 ${agentRuleSurface}。`);
+    }
+    if (isSystemPath(found.path)) {
+      return confirm("system-path-write", `会覆盖操作系统目录里的 ${found.path}。`);
     }
   }
   return null;

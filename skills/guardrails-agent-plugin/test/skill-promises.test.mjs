@@ -40,6 +40,7 @@ test("guidelines-security-shell: the spellings it calls free are free", async ()
     "dd if=disk.img | hexdump -C",
     "dd if=/dev/zero of=out.img bs=1m count=4",
     "chmod +x scripts/run.sh",
+    "echo notes > ~/Documents/notes.txt",
   ]) {
     assert.equal(await decide("shell", command), "allow", command);
   }
@@ -52,6 +53,7 @@ test("guidelines-security-shell: the lines it draws are still drawn", async () =
     "docker volume rm pgdata",
     "docker system prune -a",
     "chmod -R 777 /Users/someone/tree",
+    "echo x > /etc/guardrails.conf",
   ]) {
     assert.equal(await decide("shell", command), "confirm", command);
   }

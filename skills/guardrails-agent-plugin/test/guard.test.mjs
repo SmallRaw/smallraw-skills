@@ -414,7 +414,18 @@ test("checks patch targets without scanning patch contents as commands or paths"
         "*** Begin Patch\n*** Update File: ../other/config.ts\n@@\n+const value = true;\n*** End Patch",
     },
   };
-  assert.equal(runGuard(policies.shell, outside).permissionDecision, "ask");
+  assert.equal(runGuard(policies.shell, outside), null);
+
+  const systemTarget = {
+    ...inside,
+    tool_input: {
+      command:
+        "*** Begin Patch\n*** Update File: /etc/guardrails.conf\n@@\n+enabled=true;\n*** End Patch",
+    },
+  };
+  const systemResult = runGuard(policies.shell, systemTarget);
+  assert.equal(systemResult.permissionDecision, "ask");
+  assert.match(systemResult.permissionDecisionReason, /^\[system-path-write\]/u);
 
   const protectedTarget = {
     ...inside,

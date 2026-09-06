@@ -223,7 +223,7 @@ test("allows sweeping a process the pattern actually identifies", () => {
   assert.equal(evaluateCommand("killall Dock", cwd).decision, "confirm");
 });
 
-test("allows ordinary writes elsewhere in a repository without asking", () => {
+test("allows ordinary writes across directories without asking", () => {
   const nestedWorkspace = path.join(cwd, "skills", "guidelines-security-shell");
   const other = path.join(cwd, "skills", "guidelines-security-local");
   for (const command of [
@@ -239,10 +239,11 @@ test("allows ordinary writes elsewhere in a repository without asking", () => {
   ]) {
     assert.equal(evaluateCommand(command, nestedWorkspace).decision, "allow", command);
   }
-  assert.equal(evaluateCommand("echo x > ~/.zshrc", nestedWorkspace).decision, "confirm");
   for (const command of [
     "echo x > build/out.log",
     "echo x > /tmp/scratch.txt",
+    "echo x > ~/Documents/notes.txt",
+    "echo x > ~/.zshrc",
     "cp a.ts b.ts",
     "node build.js 2>/dev/null",
     "node build.js > /dev/null 2>&1",
@@ -253,11 +254,16 @@ test("allows ordinary writes elsewhere in a repository without asking", () => {
   ]) {
     assert.equal(evaluateCommand(command, nestedWorkspace).decision, "allow", command);
   }
+  assert.equal(
+    evaluateCommand("echo x > /etc/guardrails.conf", nestedWorkspace).ruleId,
+    "system-path-write",
+  );
 });
 
-test("lets file-edit tools write across repositories and delete small Git targets", () => {
+test("lets file-edit tools write across directories and delete small Git targets", () => {
   const nestedWorkspace = path.join(cwd, "skills", "guidelines-security-shell");
   const other = path.join(cwd, "skills", "guidelines-security-local", "index.ts");
+  const external = path.join(os.homedir(), "Documents", "guardrails-note.md");
   assert.equal(
     evaluatePolicy({
       tool_name: "apply_patch",
@@ -279,7 +285,7 @@ test("lets file-edit tools write across repositories and delete small Git target
   assert.equal(
     evaluatePolicy({
       tool_name: "Write",
-      tool_input: { file_path: other },
+      tool_input: { file_path: external },
       cwd: nestedWorkspace,
     }).decision,
     "allow",
@@ -288,11 +294,21 @@ test("lets file-edit tools write across repositories and delete small Git target
     evaluatePolicy({
       tool_name: "apply_patch",
       tool_input: {
-        command: `*** Begin Patch\n*** Update File: ${other}\n*** Update File: ${path.join(cwd, "skills", "guidelines-security-local", "second.ts")}\n*** End Patch`,
+        command: `*** Begin Patch\n*** Update File: ${other}\n*** Update File: ${external}\n*** End Patch`,
       },
       cwd: nestedWorkspace,
     }).decision,
     "allow",
+  );
+  assert.equal(
+    evaluatePolicy({
+      tool_name: "apply_patch",
+      tool_input: {
+        command: "*** Begin Patch\n*** Update File: /etc/guardrails.conf\n*** End Patch",
+      },
+      cwd: nestedWorkspace,
+    }).ruleId,
+    "system-path-write",
   );
   assert.equal(
     evaluatePolicy({
