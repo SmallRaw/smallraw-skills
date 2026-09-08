@@ -1,0 +1,6 @@
+interface:
+  display_name: "Show me Code"
+  short_description: "用简洁图示讲清代码逻辑、调用关系、组件结构与实现前后差异"
+  default_prompt: "使用 $show-me-code，用简洁图示解释当前讨论的代码。"
+policy:
+  allow_implicit_invocation: true
