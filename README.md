@@ -90,6 +90,7 @@ cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 | [app-analyzer](skills/app-analyzer/) | 分析和逆向 macOS `.app` 的技术栈、Bundle、资源与二进制 | Manual |
 | [cc-setup](skills/cc-setup/) | 交互式配置 Claude Code 的 Skill 日志、HUD statusLine 等功能 | Manual |
 | [codex-delegate-worker](skills/codex-delegate-worker/) | 通过配置好的自定义模型节点运行一次性 Codex worker | Marketplace |
+| [computer-use](skills/computer-use/) | 通过 Orca 操作本机可见窗口的 GUI，优先使用可完成任务的 CLI/API | Manual |
 | [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | Marketplace |
 | [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | Marketplace |
 | [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | Marketplace |
@@ -101,6 +102,7 @@ cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 | [guidelines-security-shell](skills/guidelines-security-shell/) | 破坏性 Shell 门禁 - 拦截提权、越界删除、磁盘操作与 Shell 间接层，工作区内清理零打扰 | Marketplace |
 | [mcp-lazy-cli](skills/mcp-lazy-cli/) | MCP Skill System — 按需调用 MCP servers，不预加载，节省上下文 | Marketplace |
 | [openclaw-tmux-agent](skills/openclaw-tmux-agent/) | 通过 tmux 调度多个 AI CLI 工具实例，实现持久化的多 Agent 协作 | Marketplace |
+| [orca-cli](skills/orca-cli/) | 通过 Orca CLI 管理工作树、终端、自动化、分享及内置浏览器 | Manual |
 | [rule-gardener](skills/rule-gardener/) | 项目规则园丁 - 培育项目规范有机生长 | Marketplace |
 | [skill-writing-guide](skills/skill-writing-guide/) | 配合 skill-creator 使用的 Skill 编写约束与最佳实践 | Manual |
 | [artifact-design](skills/artifact-design/) | 将技术稿、截图、调研、事件与流程设计成长文档、对比画板、时间线、Deck、原型和动效等视觉产物 | Manual |
