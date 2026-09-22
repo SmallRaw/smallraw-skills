@@ -16,6 +16,36 @@ const policyScript = fileURLToPath(new URL("../scripts/policy.mjs", import.meta.
 const decideCommand = (command) =>
   evaluatePolicy({ tool_name: "Bash", tool_input: { command } });
 
+test("treats Java imports in literal source heredocs as declarations", () => {
+  const body = [
+    "import java.security.KeyStore;",
+    "import android.security.keystore.KeyGenParameterSpec;",
+    'KeyStore.getInstance("AndroidKeyStore");',
+    'getSharedPreferences("model_settings", MODE_PRIVATE);',
+  ].join("\n");
+  for (const header of [
+    "cat > ModelSettingsActivity.java <<'JAVA'",
+    'cat <<"JAVA" > ModelSettingsActivity.java',
+  ]) {
+    const command = `${header}\n${body}\nJAVA\n`;
+    assert.equal(decideCommand(command).decision, "allow", command);
+    assert.equal(evaluatePolicy({
+      tool_name: "exec_command", tool_input: { cmd: command },
+    }).decision, "allow");
+    assert.equal(decideCommand(`${command}cat client.key`).decision, "deny");
+  }
+  for (const command of [
+    "cat java.security.KeyStore",
+    "cat > client.key <<'JAVA'\nimport java.security.KeyStore;\nJAVA",
+    "sh <<'JAVA'\ncat client.key\nJAVA",
+    "cat > Example.java <<JAVA\n$(cat client.key )\nJAVA",
+    "cat > Example.java <<'JAVA'\n~/.ssh/id_rsa\nJAVA",
+    "cat > Example.java <<'JAVA'\nimport java.security.KeyStore;\nJAVA\ncat java.security.KeyStore",
+  ]) {
+    assert.equal(decideCommand(command).decision, "deny", command);
+  }
+});
+
 test("blocks env files but allows secret-free template conventions", () => {
   assert.equal(evaluatePath("/workspace/.env").decision, "deny");
   assert.equal(evaluatePath("/workspace/.env.production").decision, "deny");

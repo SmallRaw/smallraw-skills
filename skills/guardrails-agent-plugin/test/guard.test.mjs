@@ -41,6 +41,23 @@ function bashPayload(command, cwd) {
   return payload;
 }
 
+test("checks Java source writes through functions.exec without import false positives", () => {
+  const check = (cmd) => runGuard(policies.local, {
+    hook_event_name: "PreToolUse",
+    tool_name: "exec",
+    input: `await tools.exec_command(${JSON.stringify({ cmd })});`,
+  });
+  const source = "cat > ModelSettingsActivity.java <<'JAVA'\nimport java.security.KeyStore;\nJAVA\n";
+  assert.equal(check(source), null);
+  for (const command of [
+    `${source}cat client.key`,
+    "cat > Example.java <<JAVA\n$(cat client.key)\nJAVA",
+    "sh <<'JAVA'\ncat client.key\nJAVA",
+  ]) {
+    assert.equal(check(command)?.permissionDecision, "deny", command);
+  }
+});
+
 test("stays silent on allow so native permissions remain authoritative", () => {
   assert.equal(runGuard(policies.git, bashPayload("git status --short")), null);
   assert.equal(runGuard(policies.local, bashPayload("ls -la src/")), null);

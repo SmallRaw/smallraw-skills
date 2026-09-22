@@ -716,6 +716,30 @@ function commandMentionsHeuristicName(command, cwd) {
   return false;
 }
 
+// Recognize only a literal cat-to-Java-file heredoc at the start of the command.
+// In that context an import is source data, not a file operand ending in
+// .KeyStore. Do not generalize this to interpreter stdin, expandable heredocs,
+// or arbitrary quoted arguments, which may execute or reference local files.
+function javaImportsBlanked(command) {
+  const lines = command.split("\n");
+  const target = "[A-Za-z0-9_./-]+\\.java";
+  const delimiter = "(['\"])([A-Za-z_][A-Za-z0-9_]*)\\1";
+  const header = lines[0].match(new RegExp(
+    `^\\s*cat\\s+>\\s*${target}\\s+<<${delimiter}\\s*$`, "u",
+  )) ?? lines[0].match(new RegExp(
+    `^\\s*cat\\s+<<${delimiter}\\s+>\\s*${target}\\s*$`, "u",
+  ));
+  if (!header) return command;
+  const end = lines.indexOf(header[2], 1);
+  if (end < 0) return command;
+  for (let index = 1; index < end; index += 1) {
+    if (/^\s*import\s+(?:static\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+(?:\.\*)?\s*;\s*$/u.test(lines[index])) {
+      lines[index] = "";
+    }
+  }
+  return lines.join("\n");
+}
+
 function evaluateCommand(command, cwd) {
   if (typeof command !== "string") {
     return blocked("invalid-command-input", "Shell 命令缺失。");
@@ -768,7 +792,7 @@ function evaluateCommand(command, cwd) {
   }
 
   let strongest = allow();
-  for (const segment of commandSegments(command)) {
+  for (const segment of commandSegments(javaImportsBlanked(command))) {
     const tokens = shellTokens(segment);
     const ignoredFindPatterns = safeFindPatternIndexes(command, tokens);
     const ignoredJqFilter = jqFilterIndex(tokens);
