@@ -277,21 +277,22 @@ function stripInvocationPrefixes(tokens) {
   return tokens.slice(index);
 }
 
-function scriptsDisabledByEnvironment(tokens) {
+function scriptsDisabledByEnvironment(tokens, manager) {
+  const settings = new Map();
   for (const token of tokens) {
+    if (["command", "env"].includes(token)) continue;
     const match = token.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
-    if (!match) continue;
-    const key = match[1].toUpperCase();
-    const value = match[2].toLowerCase();
-    if (key === "YARN_ENABLE_SCRIPTS" && ["0", "false"].includes(value)) return true;
-    if (
-      ["NPM_CONFIG_IGNORE_SCRIPTS", "PNPM_CONFIG_IGNORE_SCRIPTS"].includes(key) &&
-      ["1", "true"].includes(value)
-    ) {
-      return true;
-    }
+    // Package arguments are not shell environment assignments. Unknown env
+    // options stay conservative instead of guessing their effective values.
+    if (!match) break;
+    settings.set(match[1], match[2].toLowerCase());
   }
-  return false;
+  if (manager === "yarn") return ["0", "false"].includes(settings.get("YARN_ENABLE_SCRIPTS"));
+  const names = manager === "npm" ? ["NPM_CONFIG_IGNORE_SCRIPTS", "npm_config_ignore_scripts"] :
+    manager === "pnpm" ? ["NPM_CONFIG_IGNORE_SCRIPTS", "npm_config_ignore_scripts",
+      "PNPM_CONFIG_IGNORE_SCRIPTS", "pnpm_config_ignore_scripts"] : [];
+  if (names.some((name) => ["0", "false"].includes(settings.get(name)))) return false;
+  return names.some((name) => ["1", "true"].includes(settings.get(name)));
 }
 
 function findSubcommand(manager, args) {
@@ -312,8 +313,15 @@ function findSubcommand(manager, args) {
   return manager === "yarn" ? "install" : "";
 }
 
-function hasAll(args, required) {
-  return required.every((flag) => args.includes(flag));
+function installationScriptsDisabled(manager, args, environmentDisabled) {
+  // Conflicting flags must never turn an acquisition-only allow into execution.
+  if (args.some((value, index) =>
+    value === "--no-ignore-scripts" || /^--ignore-scripts=(?:false|0)$/iu.test(value) ||
+    (value === "--ignore-scripts" && /^(?:false|0)$/iu.test(args[index + 1] ?? "")) ||
+    /^--enable-scripts(?:=(?:true|1))?$/iu.test(value))) return false;
+  return environmentDisabled || args.includes("--ignore-scripts") ||
+    args.some((value) => /^--ignore-scripts=(?:true|1)$/iu.test(value)) ||
+    (manager === "yarn" && args.includes("--mode=skip-build"));
 }
 
 function nonOptionArguments(args) {
@@ -427,18 +435,7 @@ function evaluateManager(manager, args, options = {}) {
   }
   if (
     manager === "npm" &&
-    subcommand === "pkg" &&
-    args.some((value) => ["set", "delete", "fix"].includes(value))
-  ) {
-    return deny(
-      "dependency-manifest-change",
-      "会改写 package.json，影响依赖解析。",
-      "走依赖审查流程。",
-    );
-  }
-  if (
-    manager === "npm" &&
-    ["set-script", "shrinkwrap"].includes(subcommand)
+    subcommand === "shrinkwrap"
   ) {
     return deny(
       "dependency-manifest-change",
@@ -447,18 +444,15 @@ function evaluateManager(manager, args, options = {}) {
     );
   }
   if (MUTATING_COMMANDS[manager]?.has(subcommand)) {
+    if (manager === "npm" && ["it", "sit", "cit", "install-test", "install-ci-test"].includes(subcommand)) {
+      return deny("install-and-execute", "该命令获取依赖后会立即运行测试，禁用安装脚本不能阻止测试执行。",
+        "拆成禁用脚本的依赖获取，再按任务信任范围运行测试。");
+    }
     const lockfileOnly =
       args.includes("--package-lock-only") || args.includes("--lockfile-only");
-    const scriptsDisabled =
-      options.scriptsDisabled ||
-      args.includes("--ignore-scripts") ||
-      (manager === "yarn" && args.includes("--mode=skip-build"));
+    const scriptsDisabled = installationScriptsDisabled(manager, args, options.scriptsDisabled);
     if (lockfileOnly && scriptsDisabled) {
-      return confirm(
-        "isolated-lockfile-resolution",
-        "不执行脚本，但会按未审查的元数据改 lockfile。",
-        "仅限隔离工作区，改完跑 lockfile 预检。",
-      );
+      return allow("isolated-lockfile-resolution");
     }
     // An immutable install cannot choose anything: `npm ci` and yarn's
     // --immutable/--frozen-lockfile fail rather than resolve a new version, so
@@ -479,29 +473,14 @@ function evaluateManager(manager, args, options = {}) {
       return allow("lockfile-immutable-install");
     }
     if (scriptsDisabled) {
-      // This ask is the only moment a person sees which package is arriving —
-      // afterwards it is just a directory. Saying only that an install is
-      // happening gives them nothing to judge, so name what the command names.
-      const named = args.filter(
-        (value) =>
-          !value.startsWith("-") &&
-          value !== subcommand &&
-          !["install", "add", "ci", "i"].includes(value.toLowerCase()),
-      );
-      return confirm(
-        "scripts-disabled-install",
-        named.length > 0
-          ? `会把 ${named.slice(0, 4).join("、")} 装进依赖树（安装脚本已禁用）。`
-          : `${manager} ${subcommand || "install"} 会按 package.json 重新解析依赖，可能落地 lockfile 里还没有的版本。`,
-        named.length > 0
-          ? "确认这些包名没写错，也不是仿冒的。"
-          : "只想还原已提交的 lockfile 就加 --immutable（或用 npm ci）。",
-      );
+      // Acquisition without lifecycle scripts is ordinary task work. This
+      // does not approve executing the acquired tree or establish package safety.
+      return allow("scripts-disabled-install");
     }
     return deny(
       "dependency-state-change",
       `${manager} ${subcommand || "install"} 会改变或落地依赖图。`,
-      "加 --ignore-scripts 重发才可审批。",
+      "加 --ignore-scripts 获取依赖；未知代码的执行需要文件和网络隔离。",
     );
   }
   // Dry-run packing the local workspace only lists would-be contents; naming a
@@ -517,7 +496,7 @@ function evaluateManager(manager, args, options = {}) {
     // Downloading a tarball with scripts off installs nothing and runs nothing;
     // it is how you read a package before trusting it. Charging an approval for
     // that taxes the review the rest of this gate is asking for.
-    if (options.scriptsDisabled || hasAll(args, ["--ignore-scripts"])) {
+    if (installationScriptsDisabled(manager, args, options.scriptsDisabled)) {
       return allow("artifact-acquisition-for-review");
     }
     return deny(
@@ -547,14 +526,11 @@ function evaluateManager(manager, args, options = {}) {
   if (
     manager === "npm" &&
     subcommand === "pkg" &&
-    !args.some((value) => ["get"].includes(value))
+    args.some((value) => ["get", "set", "delete", "fix"].includes(value))
   ) {
-    return confirm(
-      "unclassified-npm-command",
-      "不确定该 npm pkg 操作是否只读。",
-      "确认后再执行。",
-    );
+    return allow("routine-manifest-edit");
   }
+  if (manager === "npm" && subcommand === "set-script") return allow("routine-manifest-edit");
   if (
     manager === "npm" &&
     ((subcommand === "pkg" && args.includes("get")) ||
@@ -582,7 +558,6 @@ function evaluateSegment(segment, cwd) {
     // stays quiet instead of stacking the same paragraph into the prompt.
     return allow("ambiguity-deferred-to-shell-gate");
   }
-  const environmentDisablesScripts = scriptsDisabledByEnvironment(rawTokens);
   const tokens = stripInvocationPrefixes(rawTokens);
   if (tokens.length === 0) return allow();
 
@@ -644,7 +619,7 @@ function evaluateSegment(segment, cwd) {
   }
   if (!PACKAGE_MANAGERS.has(executable)) return allow();
   return evaluateManager(executable, tokens.slice(1), {
-    scriptsDisabled: environmentDisablesScripts,
+    scriptsDisabled: scriptsDisabledByEnvironment(rawTokens, executable),
   });
 }
 

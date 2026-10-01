@@ -85,7 +85,7 @@ test("guidelines-git: ordinary work passes and the one unrecoverable loss does n
   assert.equal(await decide("git", "git checkout -- src/app.ts"), "confirm");
 });
 
-test("guidelines-security-npm: restoring a lockfile is free, re-resolving is not", async () => {
+test("guidelines-security-npm: scripts-disabled acquisition needs no separate approval", async () => {
   for (const command of [
     "npm ci --ignore-scripts",
     "yarn install --immutable --ignore-scripts",
@@ -94,7 +94,7 @@ test("guidelines-security-npm: restoring a lockfile is free, re-resolving is not
   ]) {
     assert.equal(await decide("npm", command), "allow", command);
   }
-  assert.equal(await decide("npm", "yarn install --ignore-scripts"), "confirm");
+  assert.equal(await decide("npm", "yarn install --ignore-scripts"), "allow");
   assert.equal(await decide("npm", "yarn install"), "deny");
 });
 

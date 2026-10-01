@@ -105,13 +105,24 @@ test("confirms cache-only npx runs but blocks flags that still download", () => 
   assert.equal(evaluateCommand("npx prettier --offline").decision, "deny");
 });
 
-test("confirms scripts-disabled installs while blocking script-enabled ones", () => {
-  // A plain install still resolves package.json, so it can land a version the
-  // committed lockfile never named.
+test("allows scripts-disabled acquisition while blocking script-enabled installs", () => {
   const result = evaluateCommand("yarn install --ignore-scripts");
-  assert.equal(result.decision, "confirm");
+  assert.equal(result.decision, "allow");
   assert.equal(result.ruleId, "scripts-disabled-install");
-  assert.equal(evaluateCommand("pnpm install --ignore-scripts").decision, "confirm");
+  assert.equal(evaluateCommand("pnpm install --ignore-scripts").decision, "allow");
+  assert.equal(evaluateCommand("npm install --ignore-scripts --save-exact lodash@4.17.21").decision, "allow");
+  assert.equal(evaluateCommand("npm install --ignore-scripts --ignore-scripts=false").decision, "deny");
+  assert.equal(evaluateCommand("npm pack --ignore-scripts --no-ignore-scripts package@1.0.0").decision, "deny");
+  assert.equal(evaluateCommand("NPM_CONFIG_IGNORE_SCRIPTS=true npm install --ignore-scripts=false").decision, "deny");
+  for (const verb of ["it", "sit", "cit", "install-test", "install-ci-test"]) {
+    assert.equal(evaluateCommand(`npm ${verb} --ignore-scripts`).decision, "deny", verb);
+  }
+  for (const command of [
+    "NPM_CONFIG_IGNORE_SCRIPTS=true NPM_CONFIG_IGNORE_SCRIPTS=false npm install",
+    "npm install NPM_CONFIG_IGNORE_SCRIPTS=true",
+    "YARN_ENABLE_SCRIPTS=false npm install",
+    "yarn_enable_scripts=false yarn install",
+  ]) assert.equal(evaluateCommand(command).decision, "deny", command);
   assert.equal(evaluateCommand("npm ci").decision, "deny");
   assert.equal(evaluateCommand("npm install --immutable").decision, "deny");
 });
@@ -133,7 +144,7 @@ test("allows an install that provably cannot change the dependency graph", () =>
     evaluateCommand("yarn install --immutable --no-immutable --ignore-scripts").ruleId,
     "scripts-disabled-install",
   );
-  // Resolving into the lockfile is the thing being guarded, immutable or not.
+  // Lockfile resolution is allowed when installation scripts are disabled.
   assert.equal(
     evaluateCommand("npm install --package-lock-only --ignore-scripts").ruleId,
     "isolated-lockfile-resolution",
@@ -175,11 +186,11 @@ test("finds guarded commands inside ordinary shell chains", () => {
   assert.equal(evaluateCommand("echo ready; corepack pnpm install").decision, "deny");
 });
 
-test("requires confirmation for isolated lockfile-only resolution", () => {
+test("allows scripts-disabled lockfile-only resolution without confirmation", () => {
   const result = evaluateCommand(
     "npm install --package-lock-only --ignore-scripts --save-exact left-pad@1.3.0",
   );
-  assert.equal(result.decision, "confirm");
+  assert.equal(result.decision, "allow");
   assert.equal(result.ruleId, "isolated-lockfile-resolution");
 });
 
@@ -197,7 +208,7 @@ test("requires exact approval for registry writes and config changes", () => {
   assert.equal(evaluateCommand("npm set registry=https://registry.example").decision, "confirm");
   assert.equal(
     evaluateCommand("npm pkg set dependencies.lodash=4.17.21").decision,
-    "deny",
+    "allow",
   );
   assert.equal(evaluateCommand("npm unknown-command").decision, "confirm");
 });

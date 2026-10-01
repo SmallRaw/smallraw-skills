@@ -16,12 +16,14 @@ const policyScript = fileURLToPath(new URL("../scripts/policy.mjs", import.meta.
 const decideCommand = (command) =>
   evaluatePolicy({ tool_name: "Bash", tool_input: { command } });
 
-test("treats Java imports in literal source heredocs as declarations", () => {
+test("treats quoted file heredoc bodies as literal data, while checking targets and following commands", () => {
   const body = [
     "import java.security.KeyStore;",
     "import android.security.keystore.KeyGenParameterSpec;",
     'KeyStore.getInstance("AndroidKeyStore");',
     'getSharedPreferences("model_settings", MODE_PRIVATE);',
+    "~/.ssh/id_rsa",
+    "https://user@agents.md/example",
   ].join("\n");
   for (const header of [
     "cat > ModelSettingsActivity.java <<'JAVA'",
@@ -39,11 +41,32 @@ test("treats Java imports in literal source heredocs as declarations", () => {
     "cat > client.key <<'JAVA'\nimport java.security.KeyStore;\nJAVA",
     "sh <<'JAVA'\ncat client.key\nJAVA",
     "cat > Example.java <<JAVA\n$(cat client.key )\nJAVA",
-    "cat > Example.java <<'JAVA'\n~/.ssh/id_rsa\nJAVA",
     "cat > Example.java <<'JAVA'\nimport java.security.KeyStore;\nJAVA\ncat java.security.KeyStore",
   ]) {
     assert.equal(decideCommand(command).decision, "deny", command);
   }
+});
+
+test("distinguishes source search patterns from protected file operands", () => {
+  for (const command of [
+    "rg -n 'error.message|errorMessage|error.key' src --glob '*.tsx'",
+    "rg -e 'client.key' src",
+    "rg --regexp='https://user@agents.md/example' src",
+    "grep -n '~/.ssh/id_rsa' README.md",
+  ]) assert.equal(decideCommand(command).decision, "allow", command);
+  for (const command of [
+    "rg --regexp=foo .env",
+    "rg -- -e .env",
+    "rg -e foo .env",
+    "rg foo --ignore-file .env",
+    "rg --files .env",
+    "rg --hidden -g .env API_KEY .",
+    "rg --hidden --glob='*.key' value .",
+    'rg -e "$(cat .ssh/id_rsa)" src',
+    "rg >.env foo src",
+    "rg > .env foo src",
+    "curl https://user@agents.md/example",
+  ]) assert.equal(decideCommand(command).decision, "deny", command);
 });
 
 test("blocks env files but allows secret-free template conventions", () => {
@@ -60,9 +83,10 @@ test("blocks protected targets reached through a symlink", (context) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "local-policy-"));
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, "secrets"));
+  fs.mkdirSync(path.join(root, "workspace"));
   fs.symlinkSync(path.join(root, "secrets"), path.join(root, "current"));
 
-  assert.equal(evaluatePath(path.join(root, "current", "value.txt")).decision, "deny");
+  assert.equal(evaluatePath(path.join(root, "current", "value.txt"), path.join(root, "workspace")).decision, "deny");
 });
 
 test("blocks established credential stores by their conventional names", () => {

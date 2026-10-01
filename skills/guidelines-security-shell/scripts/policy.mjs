@@ -1068,22 +1068,35 @@ function evaluateSegment(segment, context) {
     const naming = named.slice(0, 3).join("、") || "第三方";
     // pip has the same lever npm has. A wheel is data that gets unpacked; only a
     // source distribution runs its setup.py while installing, which is the
-    // moment the package gets to look around the machine. Name the spelling
-    // that closes it instead of asking for a judgement a package name cannot
-    // support. cargo, gem, and brew have no equivalent, so they keep the ask.
+    // moment the package gets to look around the machine. Wheel-only acquisition
+    // needs no package-name approval; unfamiliar code needs isolated execution.
     const isPip =
       ["pip", "pip3"].includes(executable) ||
       (["python", "python3", "uv"].includes(executable) && args.includes("pip"));
-    if (isPip && !args.some((value) => /^--only-binary(?:=|$)/u.test(value))) {
+    const binaryValues = args.flatMap((value, index) =>
+      value === "--only-binary" ? [args[index + 1]] :
+        value.startsWith("--only-binary=") ? [value.slice("--only-binary=".length)] : []);
+    const wheelOnly = binaryValues.length > 0 && binaryValues.every((value) => value === ":all:");
+    const directSource = isPip && args.some((value) => {
+      if (/^(?:-[erc](?:.+)?|--(?:editable|requirement|constraint)(?:=|$))/u.test(value)) return true;
+      if (/\.whl$/iu.test(value)) return false;
+      return /^(?:\.{1,2}\/|~\/|\/|file:|git\+|hg\+|svn\+|bzr\+)/u.test(value) ||
+        /\.(?:zip|tgz|tar(?:\.[A-Za-z0-9]+)?)$/iu.test(value) ||
+        value.includes("://") || value === "@" ||
+        (!value.startsWith("-") && existsSync(path.resolve(context.cwd, value)));
+    });
+    if (isPip && (!wheelOnly || directSource || args.some((value) => /^--no-binary(?:=|$)/u.test(value)))) {
       return deny(
         "install-runs-package-code",
-        `安装 ${naming} 时会执行它自带的 setup.py，那段代码能读到这台机器上的东西。`,
-        "加 --only-binary=:all: 重发；只装 wheel 就不会执行安装脚本。",
+        `安装 ${naming} 可能执行源码构建代码，并读取本机信息。`,
+        "使用 --only-binary=:all: 和 registry 包名或明确 wheel；直接源码、editable 和 requirements 需单独检查。",
       );
     }
+    if (isPip) return allow("wheel-only-package-install");
     return confirm(
       "foreign-package-install",
-      `${executable} 会下载 ${naming}，这里没有 npm 那套审查流程。`,
+      `${executable} 安装 ${naming} 可能运行第三方代码或修改系统。`,
+      "确认具体安装范围；未知代码的执行需要文件和网络隔离。",
     );
   }
   if (TRASHERS.has(executable)) return evaluateTrash(executable, args, context);

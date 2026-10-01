@@ -82,15 +82,19 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 **Cluster the steps that stop for the user at the edges, not through the middle.**
 
-Some operations wait for a human — pushes, dependency installs, anything reaching outside
-the workspace. A request for the exact operation is its authorization; do not ask twice.
+Some operations wait for a human — publication, destructive changes, or expansion of
+file/network permissions. Ordinary cross-repository edits and script-disabled dependency
+acquisition are not gated merely by their location or package manager. A request for the
+exact operation is its authorization; do not ask twice.
 Broad instructions such as “finish the task” do not pre-authorize unrelated publication,
 destruction, or external writes, so where gated steps sit still determines whether a long
 run flows or stalls halfway.
 
-- Put prerequisites first, while the user is still around: installs, setup, scaffolding.
+- Identify true prerequisites early. Perform authorized setup without another question;
+  if a required permission is missing, continue independent work before collecting it.
 - Keep the middle to work that needs no approval — edits, tests, commits, local cleanup.
-- Save outputs for the end and raise them together: push, pull request, cleanup elsewhere.
+- Save reviewable outputs for the end and collect remaining permission needs together.
+  Pause only dependent steps; do not repeatedly ask or wait on optional replies.
 - Commit as each coherent unit lands. Commits need no approval, so they are the cheap
   checkpoint in a long run — frequency follows the work, not a quota.
 

@@ -97,8 +97,7 @@ test("translates confirm to ask with the policy reason and next action", () => {
   assert.match(push.permissionDecisionReason, /origin HEAD/u);
 
   const install = runGuard(policies.npm, bashPayload("yarn install --ignore-scripts"));
-  assert.equal(install.permissionDecision, "ask");
-  assert.match(install.permissionDecisionReason, /^\[scripts-disabled-install\]/u);
+  assert.equal(install, null);
 });
 
 test("lets Codex perform a normal push after conversational authorization", () => {
@@ -364,6 +363,13 @@ test("judges an embedded command relative to its own workdir", (context) => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "guard-command-"));
   context.after(() => fs.rmSync(session, { recursive: true, force: true }));
   context.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  // Keep deletion unsafe even if TMPDIR happens to be inside a Git repository.
+  for (const directory of [session, workspace]) {
+    fs.mkdirSync(path.join(directory, "build"));
+    for (let index = 0; index < 21; index += 1) {
+      fs.writeFileSync(path.join(directory, "build", `${index}.txt`), "fixture");
+    }
+  }
 
   const literal = JSON.stringify(workspace);
   const source = `await tools.exec_command({cmd:"rm -rf build",workdir:${literal}});`;

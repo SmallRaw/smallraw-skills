@@ -118,8 +118,9 @@ test("the gh search prefix has to be the whole path", async () => {
   assert.equal(await decide("git", "gh api search/code -f q=thing"), "allow");
 });
 
-test("an immutable install cannot be forced past its own check", async () => {
-  assert.ok(await stops("npm", "npm ci --ignore-scripts --force"));
+test("scripts-disabled acquisition stays separate from script execution", async () => {
+  assert.equal(await decide("npm", "npm ci --ignore-scripts --force"), "allow");
+  assert.ok(await stops("npm", "npm ci --ignore-scripts --ignore-scripts=false"));
   assert.ok(await stops("npm", "yarn install --immutable"));
   assert.equal(await decide("npm", "npm ci --ignore-scripts"), "allow");
 });

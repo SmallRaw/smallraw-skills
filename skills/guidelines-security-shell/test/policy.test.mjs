@@ -38,7 +38,7 @@ test("allows small Git deletions but routes larger or unversioned targets to Tra
   assert.equal(evaluateCommand("rm README.md", cwd).ruleId, "small-git-deletion");
   assert.equal(evaluateCommand("rmdir skills/guidelines-security-shell/test", cwd).decision, "allow");
   assert.equal(evaluateCommand("rm -rf skills", cwd).ruleId, "large-permanent-deletion");
-  assert.equal(evaluateCommand("rm scratch.txt", os.tmpdir()).ruleId, "unversioned-permanent-deletion");
+  assert.equal(evaluateCommand("rm scratch.txt", "/").ruleId, "unversioned-permanent-deletion");
   assert.equal(evaluateCommand("rm -rf /tmp/scratch-dir", cwd).decision, "deny");
   assert.equal(evaluateCommand("chmod +x scripts/run.sh", cwd).decision, "allow");
   assert.equal(
@@ -87,7 +87,7 @@ test("allows recoverable trash moves without confirmation", () => {
   assert.equal(evaluateCommand("gio trash --empty", cwd).ruleId, "trash-emptying");
 });
 
-test("asks before an installer from another ecosystem fetches code", () => {
+test("gates code-running installers but allows wheel-only acquisition", () => {
   for (const command of [
     "cargo install cargo-xwin",
     "go install golang.org/x/tools/cmd/goimports@latest",
@@ -108,10 +108,23 @@ test("asks before an installer from another ecosystem fetches code", () => {
   ]) {
     assert.equal(evaluateCommand(command, cwd).ruleId, "install-runs-package-code", command);
   }
-  assert.equal(
-    evaluateCommand("pip install --only-binary=:all: requests", cwd).ruleId,
-    "foreign-package-install",
-  );
+  for (const command of [
+    "pip install --only-binary=:all: requests",
+    "uv pip install --only-binary :all: ruff",
+  ]) {
+    assert.equal(evaluateCommand(command, cwd).ruleId, "wheel-only-package-install", command);
+    assert.equal(evaluateCommand(command, cwd).decision, "allow", command);
+  }
+  for (const command of [
+    "pip install --only-binary=requests requests",
+    "pip install --only-binary=:all: --no-binary=requests requests",
+    "pip install --only-binary=:all: --only-binary=:none: requests",
+    "pip install --only-binary=:all: ./some-source-project",
+    "pip install --only-binary=:all: archive.tar.gz",
+    "pip install --only-binary=:all: -r requirements.txt",
+    "pip install --only-binary=:all: --requirement=requirements.txt",
+    "uv pip install --only-binary=:all: -e package",
+  ]) assert.equal(evaluateCommand(command, cwd).decision, "deny", command);
 
   // Reading or listing is not fetching.
   for (const command of ["pip list", "brew --prefix lld", "cargo build", "go build ./...", "brew list"]) {

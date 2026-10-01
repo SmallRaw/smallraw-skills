@@ -637,6 +637,60 @@ function jqFilterIndex(tokens) {
   return index < tokens.length ? index : -1;
 }
 
+// Recognize the query positions of common source-search spellings. Unknown
+// options remain conservative; options which read files are never query data.
+function searchPatternIndexes(tokens) {
+  const ignored = new Set();
+  const executable = path.basename(tokens[0] ?? "").toLowerCase();
+  if (!["rg", "ripgrep", "grep"].includes(executable)) return ignored;
+  // Tokenization does not retain enough quoting information to exempt shell
+  // substitutions. Keep those visible to the existing access checks.
+  if (tokens.some((token) => /\$\(|`|[<>]\(/u.test(token))) return ignored;
+  const safeGlob = (value) => {
+    if (value.startsWith("!")) return true;
+    const extension = /\.([A-Za-z0-9]+)$/u.exec(value);
+    return extension && SOURCE_CODE_EXTENSIONS.has(`.${extension[1].toLowerCase()}`);
+  };
+  let explicit = false;
+  let listing = false;
+  let options = true;
+  const positional = [];
+  for (let index = 1; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (/^\d*[<>]/u.test(token)) {
+      // Redirections are access targets, never the search expression.
+      if (/^\d*(?:>>?|<<?)$/u.test(token)) index += 1;
+      continue;
+    }
+    if (!options) {
+      positional.push(index);
+      continue;
+    }
+    if (["-e", "--regexp", "-g", "--glob", "--iglob"].includes(token)) {
+      if (["-e", "--regexp"].includes(token)) explicit = true;
+      if (index + 1 < tokens.length) {
+        index += 1;
+        if (["-e", "--regexp"].includes(token) || safeGlob(tokens[index])) ignored.add(index);
+      }
+      continue;
+    }
+    if (/^--(?:regexp|glob|iglob)=/u.test(token)) {
+      if (token.startsWith("--regexp=")) explicit = true;
+      if (token.startsWith("--regexp=") || safeGlob(token.slice(token.indexOf("=") + 1))) ignored.add(index);
+      continue;
+    }
+    if (token === "--") { options = false; continue; }
+    if (token === "--files") listing = true;
+    if (/^-[nirlvEFowqHsSU]+$/u.test(token) ||
+      ["--hidden", "--line-number", "--ignore-case", "--fixed-strings", "--files",
+        "--files-with-matches", "--multiline"].includes(token)) continue;
+    if (token.startsWith("-")) return ignored;
+    positional.push(index);
+  }
+  if (!explicit && !listing && positional.length) ignored.add(positional[0]);
+  return ignored;
+}
+
 function sourceOnlySearch(tokens) {
   if (!["rg", "ripgrep"].includes(path.basename(tokens[0] ?? "").toLowerCase())) return false;
   const positiveGlobs = [];
@@ -663,7 +717,9 @@ function sourceOnlySearch(tokens) {
 function commandMentionsUnconstrainedHeuristicName(command, cwd) {
   return commandSegments(command).some((segment) => {
     const tokens = shellTokens(segment);
-    return !sourceOnlySearch(tokens) && commandMentionsHeuristicName(segment, cwd);
+    const patterns = searchPatternIndexes(tokens);
+    const operands = tokens.filter((_, index) => !patterns.has(index)).join(" ");
+    return !sourceOnlySearch(tokens) && commandMentionsHeuristicName(operands, cwd);
   });
 }
 
@@ -716,13 +772,12 @@ function commandMentionsHeuristicName(command, cwd) {
   return false;
 }
 
-// Recognize only a literal cat-to-Java-file heredoc at the start of the command.
-// In that context an import is source data, not a file operand ending in
-// .KeyStore. Do not generalize this to interpreter stdin, expandable heredocs,
-// or arbitrary quoted arguments, which may execute or reference local files.
-function javaImportsBlanked(command) {
+// A quoted cat-to-file heredoc writes literal data, not executable shell input.
+// Keep the destination and every command after it checked. Interpreter stdin
+// and unquoted heredocs are deliberately not exempted.
+function literalFileBodyBlanked(command) {
   const lines = command.split("\n");
-  const target = "[A-Za-z0-9_./-]+\\.java";
+  const target = "[A-Za-z0-9_./-]+";
   const delimiter = "(['\"])([A-Za-z_][A-Za-z0-9_]*)\\1";
   const header = lines[0].match(new RegExp(
     `^\\s*cat\\s+>\\s*${target}\\s+<<${delimiter}\\s*$`, "u",
@@ -733,9 +788,7 @@ function javaImportsBlanked(command) {
   const end = lines.indexOf(header[2], 1);
   if (end < 0) return command;
   for (let index = 1; index < end; index += 1) {
-    if (/^\s*import\s+(?:static\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+(?:\.\*)?\s*;\s*$/u.test(lines[index])) {
-      lines[index] = "";
-    }
+    lines[index] = "";
   }
   return lines.join("\n");
 }
@@ -744,6 +797,7 @@ function evaluateCommand(command, cwd) {
   if (typeof command !== "string") {
     return blocked("invalid-command-input", "Shell 命令缺失。");
   }
+  command = literalFileBodyBlanked(command);
 
   if (readsClipboard(command)) {
     return blocked(
@@ -792,13 +846,20 @@ function evaluateCommand(command, cwd) {
   }
 
   let strongest = allow();
-  for (const segment of commandSegments(javaImportsBlanked(command))) {
+  const networkSegments = [];
+  for (const segment of commandSegments(command)) {
     const tokens = shellTokens(segment);
+    if (["rg", "ripgrep", "grep"].includes(path.basename(tokens[0] ?? "").toLowerCase()) &&
+      tokens.some((token) => /\$\(|`|[<>]\(/u.test(token))) {
+      return blocked("dynamic-search-input", "搜索参数含命令或进程替换，不能按纯文字查询免检；使用静态查询参数。");
+    }
     const ignoredFindPatterns = safeFindPatternIndexes(command, tokens);
     const ignoredJqFilter = jqFilterIndex(tokens);
+    const ignoredSearchPatterns = searchPatternIndexes(tokens);
+    networkSegments.push(tokens.filter((_, index) => !ignoredSearchPatterns.has(index)).join(" "));
     const sourceConstrained = sourceOnlySearch(tokens);
     for (const [index, token] of tokens.entries()) {
-      if (ignoredFindPatterns.has(index) || index === ignoredJqFilter) continue;
+      if (ignoredFindPatterns.has(index) || index === ignoredJqFilter || ignoredSearchPatterns.has(index)) continue;
       const candidate = pathCandidateFromToken(token);
       if (!candidate) continue;
       const pathDecision = evaluatePath(candidate, cwd);
@@ -834,7 +895,7 @@ function evaluateCommand(command, cwd) {
   // Stop at a backslash, pipe, or shell separator: in `grep -iE "http://|cdn\."`
   // those are regex syntax, and swallowing them turned a search into a bad-URL
   // denial.
-  for (const match of command.matchAll(/https?:\/\/[^\s'"`\\|;&<>()]+/giu)) {
+  for (const match of networkSegments.join("\n").matchAll(/https?:\/\/[^\s'"`\\|;&<>()]+/giu)) {
     let target = match[0];
     let parseable = true;
     try {
