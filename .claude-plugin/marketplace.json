@@ -19,7 +19,7 @@
     },
     {
       "name": "fractal-docs",
-      "description": "分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块",
+      "description": "模块知识维护 - 保存非显然的运行约束、设计原因与验证依据，复用普通 Markdown",
       "source": "./",
       "strict": false,
       "skills": [

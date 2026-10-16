@@ -1,73 +1,25 @@
-# /fractal-docs - 分形文档协议
+# /fractal-docs — 模块知识维护
 
-三层自描述文档体系，让 AI Agent 快速理解任意模块。
+保存修改模块前需要知道、又不容易从代码看出的原因和取舍。沿用现有 README，必要时新增 MODULE.md；不要求每个目录建文档或每个文件补三行头注释。
 
-`/fractal-docs` 是维护层，负责创建、更新、检查协议文档。只读导航和代码理解辅助使用 companion CLI：`fractal-context`。
-
-## Quick Start
-
-```bash
-# 初始化：为项目建立完整文档体系
-/fractal-docs init
-
-# 更新：文件变更后级联更新文档
-/fractal-docs update
-
-# 检查：验证文档一致性
-/fractal-docs check
+```text
+/fractal-docs init                    # 为需要说明的模块建立最少文档和入口
+/fractal-docs update --base <提交>    # 核对本次任务已提交和未提交的变更
+/fractal-docs check                   # 核对已有知识与依据
 ```
 
-## 只读上下文导航
+项目共用指令留在 AGENTS.md / CLAUDE.md，模块说明放普通 Markdown，源码和测试表达具体行为。模块文档只保留当前有效的认识，详细变更历史由 Git 保存。
 
-项目已经建立分形文档后，可以用 `fractal-context` 让 agent 先按文档理解代码，再决定读取哪些源码：
+现有分形文档和头注释继续兼容；不会自动清理用户指令、批量迁移文件或新建协议文件。模块知识可以覆盖多个目录，入口链接到同一份说明。
+
+## 工具可选
+
+普通文件读取、`rg`、Git 和项目测试就能使用与维护这些文档。可选只读 CLI `fractal-context` 支持模块导航、Markdown 正文读取和内容搜索，不创建或修改项目文件：
 
 ```bash
-fractal-context status
 fractal-context list src --depth 2
-fractal-context read src/wallet.ts
-fractal-context search wallet
+fractal-context read src/parser/MODULE.md
+fractal-context search parser
 ```
 
-`fractal-context` 只读取 `FRACTAL-DOCS.md`、目录 `AGENTS.md` 和源码 INPUT/OUTPUT/POS 头注释，不会修改项目文件。
-
-### 安装 CLI
-
-仓库内开发或未发布 npm 时：
-
-```bash
-cd packages/fractal-context-cli
-npm install
-npm run build
-node dist/index.js status --root /path/to/project
-```
-
-发布 npm 后：
-
-```bash
-npx fractal-context-cli status --root /path/to/project
-```
-
-如果只在本机/本仓库使用，不需要发布；如果希望其他 agent 或其他机器直接 `npx fractal-context-cli` 使用，需要发布 npm 包。
-
-## 三层结构
-
-```
-Layer 1  源码文件       // INPUT: / OUTPUT: / POS:  三行头注释
-Layer 2  目录 AGENTS.md  # 模块名 > 地位 > 逻辑 > 约束 > 业务域清单
-Layer 3  级联规则        新增/删除/修改 → 自动向上传播
-```
-
-## 效果
-
-Agent 进入任意目录，3 秒内理解：
-- 这个文件依赖什么、对外暴露什么、在系统中的角色
-- 这个目录的模块职责、内部分工、技术约束
-- 整个项目的模块拓扑
-
-## 安装
-
-```bash
-# Claude Code
-mkdir -p ~/.claude/skills
-cp -r skills/fractal-docs ~/.claude/skills/
-```
+CLI 的本地构建和用法见 [fractal-context-cli](../../packages/fractal-context-cli/README.md)。文档本身不依赖安装它。

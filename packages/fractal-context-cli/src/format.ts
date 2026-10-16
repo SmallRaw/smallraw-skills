@@ -31,6 +31,7 @@ function formatStatus(result: StatusResult): string {
     `FRACTAL-DOCS.md: ${result.hasProtocol ? "yes" : "no"}`,
     `Root AGENTS.md: ${result.hasRootAgents ? "yes" : "no"}`,
     `AGENTS.md files: ${result.agentsCount}`,
+    `Markdown documents: ${result.documentCount}`,
     `Files with headers: ${result.headerCount}`,
     `Scanned files: ${result.scannedFiles}`,
     ""
@@ -41,16 +42,18 @@ function formatStatus(result: StatusResult): string {
 }
 
 function formatList(result: ListResult): string {
+  const document = result.document ?? result.agents;
   const lines = [
     `# Fractal List: ${result.path}`,
     ""
   ];
-  if (result.agents?.summary) {
-    lines.push("## Summary", "", result.agents.summary, "");
+  if (document) lines.push(`Documentation: ${document.path}`, "");
+  if (document?.summary) {
+    lines.push("## Summary", "", document.summary, "");
   }
-  if (result.agents?.businessRows.length) {
+  if (document?.businessRows.length) {
     lines.push("## Business Domains");
-    for (const row of result.agents.businessRows.slice(0, 12)) {
+    for (const row of document.businessRows.slice(0, 12)) {
       lines.push(`- ${row.path}: ${row.domain}${row.notes ? ` - ${row.notes}` : ""}`);
     }
     lines.push("");
@@ -71,19 +74,21 @@ function formatList(result: ListResult): string {
 }
 
 function formatRead(result: ReadResult): string {
+  const document = result.document ?? result.agents;
   const lines = [
     `# Fractal Read: ${result.path}`,
     "",
     `Kind: ${result.kind}`,
     ""
   ];
-  if (result.agents) {
-    if (result.agents.summary) {
-      lines.push("## Summary", "", result.agents.summary, "");
+  if (document) {
+    lines.push(`Documentation: ${document.path}`, "");
+    if (document.summary) {
+      lines.push("## Summary", "", document.summary, "");
     }
-    if (result.agents.sections.length) {
+    if (document.sections.length) {
       lines.push("## Sections");
-      for (const section of result.agents.sections) {
+      for (const section of document.sections) {
         lines.push(`### ${section.title}`);
         if (section.body) lines.push(section.body);
         lines.push("");
@@ -96,8 +101,8 @@ function formatRead(result: ReadResult): string {
   if (result.content) {
     lines.push("## Content", "", "```text", result.content.trimEnd(), "```", "");
   }
-  if (!result.agents && !result.header && !result.content) {
-    lines.push("No fractal documentation found for this path.", "");
+  if (!document && !result.header && !result.content) {
+    lines.push("No documentation or source headers found. Use --mode full to read the file.", "");
   }
   if (result.truncated) lines.push("Truncated: yes", "");
   appendSignals(lines, result.staleSignals);

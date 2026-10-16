@@ -92,7 +92,7 @@ cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 | [codex-delegate-worker](skills/codex-delegate-worker/) | 通过配置好的自定义模型节点运行一次性 Codex worker | Marketplace |
 | [computer-use](skills/computer-use/) | 通过 Orca 操作本机可见窗口的 GUI，优先使用可完成任务的 CLI/API | Manual |
 | [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | Marketplace |
-| [fractal-docs](skills/fractal-docs/) | 分形文档协议 - 三层自描述文档体系，让 AI Agent 快速理解任意模块 | Marketplace |
+| [fractal-docs](skills/fractal-docs/) | 模块知识维护 - 保存非显然的运行约束、设计原因与验证依据，复用普通 Markdown | Marketplace |
 | [github-kb](skills/github-kb/) | GitHub 知识库 — 搜索仓库/Issue/PR/代码，生成仓库蓝图（架构分析+设计亮点+线稿图） | Marketplace |
 | [guardrails-agent-plugin](skills/guardrails-agent-plugin/) | 跨 Agent Hook 实现层 - 将领域 Skill 的规则、预检和阻断要求转换为原生 Hook | Marketplace |
 | [guidelines-coding](skills/guidelines-coding/) | 编码行为准则 - 分阶段控制验证范围与频率 | Marketplace |
@@ -139,23 +139,23 @@ Features:
 
 ### /fractal-docs
 
-**分形文档协议** - 三层自描述文档体系，让 AI Agent 快速理解任意模块。
+**模块知识维护** - 保存修改模块前需要知道、又不容易从代码看出的原因和取舍。
 
-核心理念：**代码即文档，文档即协议。每一级目录自包含地描述自身。**
+优先复用模块 README，必要时新增 MODULE.md；项目共用指令保留在 AGENTS.md / CLAUDE.md。
 
-`/fractal-docs` 是维护层：创建、更新、检查协议文档。只读导航请使用 `fractal-context` CLI。
+`/fractal-docs` 创建、更新和检查这些知识。普通文件读取、搜索、Git 和测试即可使用，`fractal-context` 是可选的只读导航工具。
 
 Features:
-- 三行头部注释：每个源码文件的 INPUT/OUTPUT/POS
-- 目录级 AGENTS.md：模块职责、逻辑、约束、业务域清单
-- 级联更新：文件变更自动向上传播文档更新
+- 按模块记录必要流程、非显然的约束及其原因，并链接测试和历史依据
+- 一次核对任务中的已提交与未提交变更，事实未变就不改文档
+- 兼容旧分形文档；不要求每目录建文档、每文件补头注释或维护完整文件清单
 
 ```bash
-/fractal-docs init     # 为项目建立完整文档体系
-/fractal-docs update   # 文件变更后级联更新文档
-/fractal-docs check    # 验证文档一致性
+/fractal-docs init     # 为需要说明的模块建立最少文档和入口
+/fractal-docs update   # 核对相关模块的知识是否变化，可指定 --base
+/fractal-docs check    # 检查已有说明与依据
 
-# 只读上下文导航
+# 可选的只读上下文导航
 cd packages/fractal-context-cli
 npm install
 npm run build

@@ -1,6 +1,6 @@
 ---
 name: fractal-docs
-description: 当用户请求初始化、更新或检查项目的分形文档体系（三行头注释 + 目录 AGENTS.md + 级联规则）时触发
+description: 当用户请求初始化、更新或检查项目的模块知识文档时使用；复用 README.md 或 MODULE.md，兼容已有分形文档。
 license: MIT
 metadata:
   homepage: https://github.com/smallraw/smallraw-skills
@@ -9,74 +9,50 @@ user-invocable: true
 disable-model-invocation: true
 ---
 
-# /fractal-docs - 分形文档协议维护工具
+# /fractal-docs — 模块知识维护
 
-本 skill 是分形文档协议的**维护工具**。协议本身定义在项目的 `FRACTAL-DOCS.md` 中，Agent 读项目时直接按协议导航即可。
+留下修改模块前需要知道、又不容易从代码看出的知识：必要的运行流程、非显然的约束、设计取舍及其原因。Git 保存变更历史，测试验证行为，模块文档保存当前仍有效的认识。
 
-## Companion CLI
+## 放在哪里
 
-`fractal-context` 是只读上下文导航 CLI，用来消费已有分形文档，不负责创建、更新或修复文档。需要让 agent 先按文档理解代码时使用它：
+- 优先复用模块已有 `README.md`；需要独立说明时使用 `MODULE.md`。一个模块只维护一份主要说明，不要求每个目录都有文档。
+- 横跨多个目录的模块，可以沿用项目的 `docs/` 组织方式；在说明中写明覆盖范围，从现有项目入口链接过去，不复制多份。
+- `AGENTS.md` / `CLAUDE.md` 留给项目指令。保留用户已有规则、引用和软链接；必要时只追加一条相关文档的阅读提示，不用模块介绍覆盖它们。
+- 源码注释和测试已表达清楚的内容不重复写。已有 INPUT/OUTPUT/POS 可继续维护，不要求全文件补齐。
+- 已有 `FRACTAL-DOCS.md` 和目录级 `AGENTS.md` 可继续使用；不默认创建协议文件，也不自动批量改名或删除旧文件。
+
+## 写什么
+
+用能帮助下次修改的最短表述，参考 [模块示例](starter/module.starter.md)，无需照搬所有章节：
+
+- 必要的范围、主流程和入口；复杂交互才画流程图，不展开逐函数调用清单。
+- 容易误改的行为或取舍、原因，以及什么条件改变后可以重新考虑。
+- 验证和历史依据：链接代码、测试、修复 commit / issue，或注明条件的性能测量。不要把每个 commit 再抄进文档。
+
+原因必须有依据，不能从当前实现反推一段虚构历史。无法确认但会影响修改判断的内容，明确标为待核实，并带着已查到的证据询问用户；普通文件职责可据代码直接整理。
+
+## 维护方式
+
+按本次请求读取对应说明即可：
+
+| 请求 | 说明 |
+|---|---|
+| `init`：选择需要记录的模块，建立最少入口 | [prompts/init.md](prompts/init.md) |
+| `update [路径] [--base 提交或分支]`：核对一次任务范围内的变更 | [prompts/update.md](prompts/update.md) |
+| `check [路径]`：检查已有知识是否仍有依据 | [prompts/check.md](prompts/check.md) |
+
+内部重构、配置变化、性能优化也可能使说明失效；判断依据是文档中的事实是否改变，不是接口是否改变。一次任务结束后核对相关模块，事实未变就不改文档，不逐 commit 追加记录。
+
+## 工具可选
+
+普通文件读取、`rg`、Git 和项目测试即可完成全部维护。文档必须通过普通路径和链接独立使用，不依赖 CLI、索引数据库或专用加载协议。
+
+如已安装 `fractal-context`，可用它辅助只读导航：
 
 ```bash
-fractal-context status
 fractal-context list src --depth 2
-fractal-context read src/wallet.ts
-fractal-context search wallet
+fractal-context read src/parser/MODULE.md
+fractal-context search parser
 ```
 
-仓库内开发或未发布到 npm 时，用本地构建：
-
-```bash
-cd packages/fractal-context-cli
-npm install
-npm run build
-node dist/index.js status --root /path/to/project
-```
-
-发布到 npm 后才可使用：
-
-```bash
-npx fractal-context-cli status --root /path/to/project
-```
-
-是否发布：如果只在本仓库或本机使用，不需要发布；如果希望 Codex、Claude Code、Pi worker 或其他机器直接 `npx fractal-context-cli` 调用，就需要发布 npm 包。
-
-## 核心规则
-
-1. **先读 SOP 再动手** -- 每个命令有独立 SOP（`prompts/*.md`），执行前必须读完对应 SOP，不要凭记忆操作
-2. **协议与工具分离** -- 协议定义在项目根 `FRACTAL-DOCS.md`，本 skill 只做创建/维护，不要把协议内容写进 SKILL.md 或 AGENTS.md
-3. **不碰用户 CLAUDE.md** -- 如果项目已有 `CLAUDE.md` 且包含用户自定义约束，保持原样不动。只有仅包含 AGENTS.md 引用/软链接的 CLAUDE.md 才可删除
-4. **init 自底向上** -- 创建目录级 AGENTS.md 时，先处理叶子目录，再处理父目录，确保父级引用子级时子级已存在
-5. **只放项目实际用到的语言** -- `FRACTAL-DOCS.md` 中的头部注释示例只包含检测到的语言，不要放全量语言列表
-6. **最小变更原则** -- update 时只更新确实需要变更的文档；纯内部重构不触发目录级文档更新
-7. **业务理解走交互** -- check 发现需要填写职责描述的问题时，先读代码形成理解，再带着理解向用户确认，不要猜测
-
-## Gotchas
-
-1. **幽灵条目** -- 文件已删除但 AGENTS.md 业务域清单未同步，导致 Agent 导航到不存在的文件。update/check 时必须比对清单与实际文件
-2. **级联断链** -- 子目录有 AGENTS.md 但父目录清单中未登记该子目录，Agent 从上往下导航时会漏掉整个子树
-3. **头注释放错位置** -- 每种语言的放置规则不同（Rust 放 `#![...]` 之前，Python 放 shebang 之后，C 头文件放 `#ifndef` 之前）。必须查 `knowledge/header-patterns.md`，不要凭直觉
-4. **覆盖用户 CLAUDE.md** -- 用户手写的项目约束被误删/覆盖是最严重的破坏。区分标准：仅含 AGENTS.md 引用 = 可删，含自定义内容 = 不动
-5. **init 时包含无关语言** -- 把全部 14 种语言示例都塞进 FRACTAL-DOCS.md，浪费 context。必须先检测项目技术栈再挑选
-6. **三行注释靠猜** -- INPUT/OUTPUT/POS 必须基于实际代码内容，不能靠文件名推测。写注释前至少读文件前 50 行 + 公开 API
-7. **修改文件时过度更新** -- 仅改内部实现时不应更新目录级 AGENTS.md，只有接口/职责变化才需要级联
-8. **check 时直接修复语义问题** -- 幽灵条目、级联断链可自动修复，但缺少 AGENTS.md、遗漏条目的职责描述必须走交互式确认
-
-## 命令速查
-
-| 命令 | 用途 | 详细 SOP |
-|------|------|----------|
-| `/fractal-docs init` | 为项目初始化三层文档体系 | 读 `prompts/init.md` |
-| `/fractal-docs update` | 文件变更后级联更新文档 | 读 `prompts/update.md` |
-| `/fractal-docs check` | 验证文档一致性，交互式修复 | 读 `prompts/check.md` |
-
-执行任何命令前，先读取对应的 SOP 文件获取完整步骤。
-
-## 知识库索引（按需加载）
-
-| 文件 | 何时读取 |
-|------|----------|
-| `knowledge/header-patterns.md` | init/update 添加头部注释时，查各语言注释格式和放置位置 |
-| `starter/fractal-protocol.starter.md` | init 创建根 FRACTAL-DOCS.md 时 |
-| `starter/root-agents.starter.md` | init 创建根 AGENTS.md 时 |
-| `starter/dir-agents.starter.md` | init/update 创建目录级 AGENTS.md 时 |
+仅在维护已有三行头注释时查 [语言格式参考](knowledge/header-patterns.md)。需要在现有根指令里补入口时参考 [阅读提示](starter/root-agents.starter.md)。只有明确需要独立维护约定时才参考 [可选约定](starter/fractal-protocol.starter.md)。

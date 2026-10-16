@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-// src/args.ts
+// packages/fractal-context-cli/src/args.ts
 var USAGE = `Usage:
   fractal-context status [--root <path>] [--json]
   fractal-context list [path] [--depth <1-3>] [--max <n>] [--root <path>] [--json]
@@ -82,7 +82,7 @@ function parsePositiveInt(value, option) {
   return parsed;
 }
 
-// src/core.ts
+// packages/fractal-context-cli/src/core.ts
 var import_fs = require("fs");
 var import_path = require("path");
 var DEFAULT_MAX_ENTRIES = 80;
@@ -91,6 +91,7 @@ var FULL_READ_BYTES = 64 * 1024;
 var HEADER_SCAN_BYTES = 16 * 1024;
 var STATUS_SCAN_LIMIT = 2e3;
 var SEARCH_SCAN_LIMIT = 3e3;
+var DIRECTORY_DOC_NAMES = ["MODULE.md", "README.md", "AGENTS.md"];
 var IGNORED_NAMES = /* @__PURE__ */ new Set([
   ".git",
   ".hg",
@@ -196,6 +197,12 @@ function extensionOf(path) {
 function isSourceLike(absPath) {
   return SOURCE_EXTENSIONS.has(extensionOf(absPath));
 }
+function isMarkdown(absPath) {
+  return /\.(md|markdown)$/i.test(absPath);
+}
+function directoryDoc(dir) {
+  return DIRECTORY_DOC_NAMES.map((name) => (0, import_path.join)(dir, name)).find((path) => (0, import_fs.existsSync)(path) && (0, import_fs.statSync)(path).isFile());
+}
 function readText(absPath, maxBytes = FULL_READ_BYTES) {
   const buf = (0, import_fs.readFileSync)(absPath, { encoding: null });
   const truncated = buf.length > maxBytes;
@@ -220,47 +227,93 @@ function parseHeader(absPath) {
   }
   return found.input || found.output || found.pos ? found : void 0;
 }
-function parseAgents(root, agentsPath) {
-  if (!(0, import_fs.existsSync)(agentsPath)) return void 0;
-  const { text } = readText(agentsPath, FULL_READ_BYTES);
+function parseDocument(root, docPath) {
+  if (!(0, import_fs.existsSync)(docPath) || !(0, import_fs.statSync)(docPath).isFile() || isLikelyBinary(docPath)) return void 0;
+  const { text, truncated } = readText(docPath, FULL_READ_BYTES);
   const lines = text.split(/\r?\n/);
   const sections = [];
   let current;
+  let fence;
+  const proseLines = [];
+  const preamble = [];
   for (const line of lines) {
+    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (marker && (!fence || marker[1][0] === fence[0] && marker[1].length >= fence.length)) {
+      fence = fence ? void 0 : marker[1];
+      (current?.bodyLines ?? preamble).push(line);
+      continue;
+    }
+    if (fence) {
+      (current?.bodyLines ?? preamble).push(line);
+      continue;
+    }
+    proseLines.push(line);
     const match = line.match(/^#{1,3}\s+(.+?)\s*$/);
     if (match) {
       if (current) sections.push({ title: current.title, body: current.bodyLines.join("\n").trim() });
       current = { title: match[1].trim(), bodyLines: [] };
     } else if (current) {
       current.bodyLines.push(line);
+    } else {
+      preamble.push(line);
     }
   }
   if (current) sections.push({ title: current.title, body: current.bodyLines.join("\n").trim() });
-  const summary = sections.find((s) => /summary|overview|职责|概览|说明/i.test(s.title))?.body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 3).join(" ");
+  if (preamble.join("\n").trim()) sections.unshift({ title: (0, import_path.basename)(docPath), body: preamble.join("\n").trim() });
+  if (!sections.length && text.trim()) sections.push({ title: (0, import_path.basename)(docPath), body: text.trim() });
+  const summaryText = sections.find((s) => /summary|overview|职责|概览|说明/i.test(s.title))?.body ?? proseLines.filter((line) => !/^\s*(#|\|)/.test(line)).join("\n");
+  const summary = summaryText.split(/\r?\n/).map((line) => line.replace(/^\s*>\s?/, "").trim()).filter(Boolean).slice(0, 3).join(" ");
   const businessRows = [];
   const mentionedPaths = /* @__PURE__ */ new Set();
-  for (const line of lines) {
-    if (!line.trim().startsWith("|")) continue;
-    const cells = line.split("|").map((cell) => cell.trim()).filter(Boolean);
-    if (cells.length < 2 || cells.every((cell) => /^-+$/.test(cell.replace(/:/g, "")))) continue;
-    if (/^path$/i.test(cells[0]) || /^路径$/.test(cells[0])) continue;
-    const pathCell = cells[0];
-    if (!pathCell || pathCell.includes(" ")) continue;
+  let pathColumn = -1;
+  let tableWidth = 0;
+  for (let index = 0; index < proseLines.length; index++) {
+    const line = proseLines[index];
+    if (!line.trim().startsWith("|")) {
+      pathColumn = -1;
+      continue;
+    }
+    const cells = tableCells(line);
+    if (!cells) continue;
+    if (pathColumn < 0) {
+      const separator = tableCells(proseLines[index + 1] ?? "");
+      if (!separator || separator.length !== cells.length || !separator.every((cell) => /^:?-+:?$/.test(cell))) continue;
+      pathColumn = cells.findIndex((cell) => /^(path|files?|file\/directory|路径|文件名|文件(?:\/子目录|\/目录)?|文件路径)$/i.test(cell));
+      tableWidth = cells.length;
+      index++;
+      continue;
+    }
+    if (cells.length !== tableWidth) continue;
+    const pathCell = literalTablePath(cells[pathColumn]);
+    if (!pathCell) continue;
+    const rest = cells.filter((_, index2) => index2 !== pathColumn);
     businessRows.push({
       path: pathCell,
-      domain: cells[1] ?? "",
-      notes: cells.slice(2).join(" | "),
+      domain: rest[0] ?? "",
+      notes: rest.slice(1).join(" | "),
       raw: line.trim()
     });
     mentionedPaths.add(pathCell);
   }
   return {
-    path: toRel(root, agentsPath),
+    path: toRel(root, docPath),
     summary,
     sections,
     businessRows,
-    mentionedPaths: [...mentionedPaths]
+    mentionedPaths: [...mentionedPaths],
+    truncated
   };
+}
+function tableCells(line) {
+  if (!line.trim().startsWith("|") || line.includes("\\|")) return void 0;
+  return line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+}
+function literalTablePath(cell) {
+  const code = cell.match(/^`([^`]+)`$/);
+  const path = code?.[1] ?? cell;
+  if (!path || /^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(path) || /[*?{}]/.test(path)) return void 0;
+  if (!code && /[\s`\[\]()<>\\]/.test(path)) return void 0;
+  return path;
 }
 function walk(root, start, options = {}) {
   const maxFiles = options.maxFiles ?? STATUS_SCAN_LIMIT;
@@ -281,11 +334,11 @@ function walk(root, start, options = {}) {
   }
   return result.filter((p) => p === root || !isIgnored(p, root, rules));
 }
-function nearestAgents(path, root) {
+function nearestDocument(path, root) {
   let current = (0, import_fs.statSync)(path).isDirectory() ? path : (0, import_path.dirname)(path);
   while (true) {
-    const candidate = (0, import_path.join)(current, "AGENTS.md");
-    if ((0, import_fs.existsSync)(candidate)) return candidate;
+    const candidate = directoryDoc(current);
+    if (candidate) return candidate;
     if (current === root) return void 0;
     const next = (0, import_path.dirname)(current);
     if (next === current) return void 0;
@@ -294,47 +347,21 @@ function nearestAgents(path, root) {
 }
 function collectStaleSignals(root, files) {
   const signals = [];
-  if (!(0, import_fs.existsSync)((0, import_path.join)(root, "FRACTAL-DOCS.md"))) {
-    signals.push({ type: "missing-protocol", path: ".", detail: "FRACTAL-DOCS.md not found" });
-  }
-  if (!(0, import_fs.existsSync)((0, import_path.join)(root, "AGENTS.md"))) {
-    signals.push({ type: "missing-root-agents", path: ".", detail: "Root AGENTS.md not found" });
-  }
-  const agentsFiles = files.filter((file) => (0, import_path.basename)(file) === "AGENTS.md");
-  for (const agentsPath of agentsFiles) {
-    const parsed = parseAgents(root, agentsPath);
+  for (const docPath of files.filter(isMarkdown)) {
+    const parsed = parseDocument(root, docPath);
     if (!parsed) continue;
-    const base = (0, import_path.dirname)(agentsPath);
+    const base = (0, import_path.dirname)(docPath);
     for (const mentioned of parsed.mentionedPaths) {
-      if (mentioned.startsWith("http") || mentioned.startsWith("#")) continue;
-      const target = safeResolve(base, mentioned);
+      const target = (0, import_path.resolve)(base, mentioned);
+      const rel = (0, import_path.relative)(root, target);
+      if (rel === ".." || rel.startsWith(`..${import_path.sep}`) || (0, import_path.isAbsolute)(rel)) continue;
       if (!(0, import_fs.existsSync)(target)) {
         signals.push({
           type: "missing-mentioned-path",
-          path: toRel(root, agentsPath),
-          detail: `AGENTS.md mentions missing path: ${mentioned}`
+          path: toRel(root, docPath),
+          detail: `${toRel(root, docPath)} mentions missing path: ${mentioned}`
         });
       }
-    }
-  }
-  for (const file of files) {
-    if ((0, import_path.basename)(file) === "AGENTS.md" || (0, import_path.basename)(file) === "FRACTAL-DOCS.md") continue;
-    if (!isSourceLike(file) || isLikelyBinary(file)) continue;
-    const header = parseHeader(file);
-    if (!header) {
-      signals.push({
-        type: "missing-header",
-        path: toRel(root, file),
-        detail: `Missing header: ${toRel(root, file)}`
-      });
-    }
-    const agents = nearestAgents(file, root);
-    if (agents && (0, import_fs.statSync)(file).mtimeMs > (0, import_fs.statSync)(agents).mtimeMs + 1e3) {
-      signals.push({
-        type: "source-newer-than-agents",
-        path: toRel(root, file),
-        detail: `${toRel(root, file)} is newer than ${toRel(root, agents)}`
-      });
     }
   }
   return signals.slice(0, 50);
@@ -343,19 +370,27 @@ function getStatus(options = {}) {
   const root = resolveRoot(options.root);
   const files = walk(root, root, { maxFiles: STATUS_SCAN_LIMIT });
   const agentsCount = files.filter((file) => (0, import_path.basename)(file) === "AGENTS.md").length;
-  const headerCount = files.filter((file) => parseHeader(file)).length;
+  const headerCount = files.filter((file) => isSourceLike(file) && parseHeader(file)).length;
   const staleSignals = collectStaleSignals(root, files);
+  const docPath = directoryDoc(root);
   return {
     command: "status",
     root,
     hasProtocol: (0, import_fs.existsSync)((0, import_path.join)(root, "FRACTAL-DOCS.md")),
     hasRootAgents: (0, import_fs.existsSync)((0, import_path.join)(root, "AGENTS.md")),
     agentsCount,
+    documentCount: files.filter(isMarkdown).length,
     headerCount,
     scannedFiles: files.length,
     staleSignals,
-    next: (0, import_fs.existsSync)((0, import_path.join)(root, "AGENTS.md")) ? ["fractal-context list", "fractal-context read AGENTS.md"] : ["Use /fractal-docs init to create protocol docs"]
+    next: ["fractal-context list", ...docPath ? [`fractal-context read ${toRel(root, docPath)}`] : []]
   };
+}
+function nextReads(paths) {
+  return [...new Set(paths)].slice(0, 5).map((path) => `fractal-context read ${quoteArgument(path)}`);
+}
+function quoteArgument(value) {
+  return /^[\w./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
 function listContext(path = ".", options = {}) {
   const root = resolveRoot(options.root);
@@ -375,8 +410,9 @@ function listContext(path = ".", options = {}) {
       if (isIgnored(child, root, ignoreRules)) continue;
       const st = (0, import_fs.lstatSync)(child);
       if (st.isDirectory()) {
-        const agents = parseAgents(root, (0, import_path.join)(child, "AGENTS.md"));
-        entries.push({ path: toRel(root, child), kind: "directory", summary: agents?.summary });
+        const docPath2 = directoryDoc(child);
+        const document2 = docPath2 ? parseDocument(root, docPath2) : void 0;
+        entries.push({ path: toRel(root, child), kind: "directory", summary: document2?.summary });
         if (depth < requestedDepth) visit(child, depth + 1);
       } else {
         entries.push({ path: toRel(root, child), kind: "file", header: parseHeader(child) });
@@ -385,15 +421,18 @@ function listContext(path = ".", options = {}) {
   }
   visit(target, 1);
   const subtreeFiles = walk(root, target, { maxFiles: max * 10 });
+  const docPath = directoryDoc(target);
+  const document = docPath ? parseDocument(root, docPath) : void 0;
   return {
     command: "list",
     root,
     path: toRel(root, target),
-    agents: parseAgents(root, (0, import_path.join)(target, "AGENTS.md")),
+    document,
+    agents: docPath && (0, import_path.basename)(docPath) === "AGENTS.md" ? document : void 0,
     entries,
     truncated: entries.length >= max,
     staleSignals: collectStaleSignals(root, subtreeFiles),
-    next: entries.slice(0, 5).map((entry) => `fractal-context read ${entry.path}`)
+    next: nextReads([...docPath ? [toRel(root, docPath)] : [], ...entries.map((entry) => entry.path)])
   };
 }
 function readContext(path, options = {}) {
@@ -403,24 +442,29 @@ function readContext(path, options = {}) {
   const st = (0, import_fs.statSync)(target);
   const mode = options.mode ?? "auto";
   if (st.isDirectory()) {
-    const agents = parseAgents(root, (0, import_path.join)(target, "AGENTS.md"));
-    const entries = listContext(toRel(root, target), { root, depth: 1, max: 30 }).entries;
+    const docPath2 = directoryDoc(target);
+    const document2 = docPath2 ? parseDocument(root, docPath2) : void 0;
+    const listing = listContext(toRel(root, target), { root, depth: 1, max: 30 });
+    const entries = listing.entries;
     return {
       command: "read",
       root,
       path: toRel(root, target),
       kind: "directory",
       mode,
-      agents,
+      document: document2,
+      agents: docPath2 && (0, import_path.basename)(docPath2) === "AGENTS.md" ? document2 : void 0,
       content: entries.map((entry) => `${entry.kind}: ${entry.path}`).join("\n"),
-      truncated: false,
+      truncated: (document2?.truncated ?? false) || listing.truncated,
       staleSignals: collectStaleSignals(root, walk(root, target, { maxFiles: 300 })),
-      next: entries.slice(0, 5).map((entry) => `fractal-context read ${entry.path}`)
+      next: nextReads([...docPath2 ? [toRel(root, docPath2)] : [], ...entries.map((entry) => entry.path)])
     };
   }
   if (isLikelyBinary(target)) throw new Error(`Cannot read binary file: ${path}`);
   const header = parseHeader(target);
-  const shouldReadFull = mode === "full" || mode === "auto" && (0, import_path.basename)(target) === "AGENTS.md" || (0, import_path.basename)(target) === "FRACTAL-DOCS.md";
+  const docPath = nearestDocument(target, root);
+  const document = mode === "docs" && !isMarkdown(target) && docPath ? parseDocument(root, docPath) : void 0;
+  const shouldReadFull = mode === "full" || (mode === "auto" || mode === "docs") && isMarkdown(target);
   const full = shouldReadFull ? readText(target, FULL_READ_BYTES) : void 0;
   return {
     command: "read",
@@ -428,11 +472,13 @@ function readContext(path, options = {}) {
     path: toRel(root, target),
     kind: "file",
     mode,
+    document,
+    agents: document && (0, import_path.basename)(document.path) === "AGENTS.md" ? document : void 0,
     header,
     content: full?.text,
-    truncated: full?.truncated ?? false,
-    staleSignals: collectStaleSignals(root, [target, ...nearestAgents(target, root) ? [nearestAgents(target, root)] : []]),
-    next: [`fractal-context list ${toRel(root, (0, import_path.dirname)(target))}`, `fractal-context search ${(0, import_path.basename)(target).split(".")[0]}`]
+    truncated: (full?.truncated ?? false) || (document?.truncated ?? false),
+    staleSignals: collectStaleSignals(root, [.../* @__PURE__ */ new Set([target, ...docPath ? [docPath] : []])]),
+    next: [...docPath && docPath !== target ? nextReads([toRel(root, docPath)]) : [], `fractal-context list ${quoteArgument(toRel(root, (0, import_path.dirname)(target)))}`, `fractal-context search ${quoteArgument((0, import_path.basename)(target).split(".")[0])}`]
   };
 }
 function contains(text, query) {
@@ -444,23 +490,25 @@ function searchContext(query, options = {}) {
   const max = options.max ?? 20;
   const files = walk(root, root, { maxFiles: SEARCH_SCAN_LIMIT });
   const results = [];
+  let truncated = files.length >= SEARCH_SCAN_LIMIT;
   for (const file of files) {
     if (results.length >= max) break;
     const rel = toRel(root, file);
     const name = (0, import_path.basename)(file);
-    if (name === "AGENTS.md") {
-      const agents = parseAgents(root, file);
-      if (!agents) continue;
-      for (const row of agents.businessRows) {
+    if (scope !== "headers" && isMarkdown(file)) {
+      const document = parseDocument(root, file);
+      if (!document) continue;
+      truncated ||= document.truncated;
+      for (const row of document.businessRows) {
         if (contains(row.raw, query)) {
           results.push({ path: rel, type: "business-domain-row", excerpt: row.raw, score: 100 });
         }
       }
-      for (const section of agents.sections) {
+      for (const section of document.sections) {
         const text = `${section.title}
 ${section.body}`;
         if (contains(text, query)) {
-          results.push({ path: rel, type: "agents-section", excerpt: compactExcerpt(text, query), score: 90 });
+          results.push({ path: rel, type: name === "AGENTS.md" ? "agents-section" : "doc-section", excerpt: compactExcerpt(text, query), score: 90 });
         }
       }
     }
@@ -486,7 +534,8 @@ ${section.body}`;
     for (const file of files) {
       if (results.length >= max) break;
       if (!isSourceLike(file) || isLikelyBinary(file)) continue;
-      const { text } = readText(file, HEADER_SCAN_BYTES);
+      const { text, truncated: sourceTruncated } = readText(file, HEADER_SCAN_BYTES);
+      truncated ||= sourceTruncated;
       if (contains(text, query)) {
         results.push({ path: toRel(root, file), type: "source", excerpt: compactExcerpt(text, query), score: 10 });
       }
@@ -499,8 +548,8 @@ ${section.body}`;
     query,
     scope,
     results: results.slice(0, max),
-    truncated: results.length >= max,
-    next: results.slice(0, 5).map((item) => `fractal-context read ${item.path}`)
+    truncated: truncated || results.length >= max,
+    next: nextReads(results.map((item) => item.path))
   };
 }
 function compactExcerpt(text, query) {
@@ -512,7 +561,7 @@ function compactExcerpt(text, query) {
   return `${start > 0 ? "..." : ""}${normalized.slice(start, end)}${end < normalized.length ? "..." : ""}`;
 }
 
-// src/format.ts
+// packages/fractal-context-cli/src/format.ts
 function formatJson(result) {
   return `${JSON.stringify(result, null, 2)}
 `;
@@ -537,6 +586,7 @@ function formatStatus(result) {
     `FRACTAL-DOCS.md: ${result.hasProtocol ? "yes" : "no"}`,
     `Root AGENTS.md: ${result.hasRootAgents ? "yes" : "no"}`,
     `AGENTS.md files: ${result.agentsCount}`,
+    `Markdown documents: ${result.documentCount}`,
     `Files with headers: ${result.headerCount}`,
     `Scanned files: ${result.scannedFiles}`,
     ""
@@ -547,16 +597,18 @@ function formatStatus(result) {
 `;
 }
 function formatList(result) {
+  const document = result.document ?? result.agents;
   const lines = [
     `# Fractal List: ${result.path}`,
     ""
   ];
-  if (result.agents?.summary) {
-    lines.push("## Summary", "", result.agents.summary, "");
+  if (document) lines.push(`Documentation: ${document.path}`, "");
+  if (document?.summary) {
+    lines.push("## Summary", "", document.summary, "");
   }
-  if (result.agents?.businessRows.length) {
+  if (document?.businessRows.length) {
     lines.push("## Business Domains");
-    for (const row of result.agents.businessRows.slice(0, 12)) {
+    for (const row of document.businessRows.slice(0, 12)) {
       lines.push(`- ${row.path}: ${row.domain}${row.notes ? ` - ${row.notes}` : ""}`);
     }
     lines.push("");
@@ -577,19 +629,21 @@ function formatList(result) {
 `;
 }
 function formatRead(result) {
+  const document = result.document ?? result.agents;
   const lines = [
     `# Fractal Read: ${result.path}`,
     "",
     `Kind: ${result.kind}`,
     ""
   ];
-  if (result.agents) {
-    if (result.agents.summary) {
-      lines.push("## Summary", "", result.agents.summary, "");
+  if (document) {
+    lines.push(`Documentation: ${document.path}`, "");
+    if (document.summary) {
+      lines.push("## Summary", "", document.summary, "");
     }
-    if (result.agents.sections.length) {
+    if (document.sections.length) {
       lines.push("## Sections");
-      for (const section of result.agents.sections) {
+      for (const section of document.sections) {
         lines.push(`### ${section.title}`);
         if (section.body) lines.push(section.body);
         lines.push("");
@@ -602,8 +656,8 @@ function formatRead(result) {
   if (result.content) {
     lines.push("## Content", "", "```text", result.content.trimEnd(), "```", "");
   }
-  if (!result.agents && !result.header && !result.content) {
-    lines.push("No fractal documentation found for this path.", "");
+  if (!document && !result.header && !result.content) {
+    lines.push("No documentation or source headers found. Use --mode full to read the file.", "");
   }
   if (result.truncated) lines.push("Truncated: yes", "");
   appendSignals(lines, result.staleSignals);
@@ -653,7 +707,7 @@ function formatHeaderInline(header) {
   return parts.length ? ` - ${parts.join("; ")}` : "";
 }
 
-// src/index.ts
+// packages/fractal-context-cli/src/index.ts
 async function main() {
   const rawArgs = process.argv.slice(2);
   if (rawArgs.length === 0 || rawArgs.includes("--help") || rawArgs.includes("-h")) {

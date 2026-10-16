@@ -1,4 +1,4 @@
-// INPUT: Fractal docs files, AGENTS.md files, source paths, and CLI command options
+// INPUT: Markdown module knowledge, legacy AGENTS.md files, source paths, and CLI options
 // OUTPUT: Structured project context results for status/list/read/search commands
 // POS: Core read-only Fractal Context engine shared by CLI and future wrappers
 
@@ -17,13 +17,16 @@ export interface HeaderInfo {
   lines: string[];
 }
 
-export interface AgentsDoc {
+export interface ContextDoc {
   path: string;
   summary?: string;
   sections: Array<{ title: string; body: string }>;
   businessRows: Array<{ path: string; domain: string; notes: string; raw: string }>;
   mentionedPaths: string[];
+  truncated: boolean;
 }
+
+export type AgentsDoc = ContextDoc;
 
 export interface StaleSignal {
   type: "missing-protocol" | "missing-root-agents" | "missing-header" | "missing-mentioned-path" | "source-newer-than-agents";
@@ -37,6 +40,7 @@ export interface StatusResult {
   hasProtocol: boolean;
   hasRootAgents: boolean;
   agentsCount: number;
+  documentCount: number;
   headerCount: number;
   scannedFiles: number;
   staleSignals: StaleSignal[];
@@ -55,6 +59,7 @@ export interface ListResult {
   root: string;
   path: string;
   agents?: AgentsDoc;
+  document?: ContextDoc;
   entries: ListEntry[];
   truncated: boolean;
   staleSignals: StaleSignal[];
@@ -68,6 +73,7 @@ export interface ReadResult {
   kind: NodeKind;
   mode: ReadMode;
   agents?: AgentsDoc;
+  document?: ContextDoc;
   header?: HeaderInfo;
   content?: string;
   truncated: boolean;
@@ -77,7 +83,7 @@ export interface ReadResult {
 
 export interface SearchResultItem {
   path: string;
-  type: "agents-section" | "business-domain-row" | "header" | "filename" | "source";
+  type: "doc-section" | "agents-section" | "business-domain-row" | "header" | "filename" | "source";
   excerpt: string;
   score: number;
 }
@@ -108,6 +114,7 @@ const FULL_READ_BYTES = 64 * 1024;
 const HEADER_SCAN_BYTES = 16 * 1024;
 const STATUS_SCAN_LIMIT = 2000;
 const SEARCH_SCAN_LIMIT = 3000;
+const DIRECTORY_DOC_NAMES = ["MODULE.md", "README.md", "AGENTS.md"];
 
 const IGNORED_NAMES = new Set([
   ".git",
@@ -203,6 +210,15 @@ function isSourceLike(absPath: string): boolean {
   return SOURCE_EXTENSIONS.has(extensionOf(absPath));
 }
 
+function isMarkdown(absPath: string): boolean {
+  return /\.(md|markdown)$/i.test(absPath);
+}
+
+function directoryDoc(dir: string): string | undefined {
+  return DIRECTORY_DOC_NAMES.map((name) => join(dir, name))
+    .find((path) => existsSync(path) && statSync(path).isFile());
+}
+
 function readText(absPath: string, maxBytes = FULL_READ_BYTES): { text: string; truncated: boolean } {
   const buf = readFileSync(absPath, { encoding: null });
   const truncated = buf.length > maxBytes;
@@ -238,56 +254,110 @@ export function parseHeader(absPath: string): HeaderInfo | undefined {
   return found.input || found.output || found.pos ? found : undefined;
 }
 
-export function parseAgents(root: string, agentsPath: string): AgentsDoc | undefined {
-  if (!existsSync(agentsPath)) return undefined;
-  const { text } = readText(agentsPath, FULL_READ_BYTES);
+export function parseDocument(root: string, docPath: string): ContextDoc | undefined {
+  if (!existsSync(docPath) || !statSync(docPath).isFile() || isLikelyBinary(docPath)) return undefined;
+  const { text, truncated } = readText(docPath, FULL_READ_BYTES);
   const lines = text.split(/\r?\n/);
   const sections: Array<{ title: string; body: string }> = [];
   let current: { title: string; bodyLines: string[] } | undefined;
+  let fence: string | undefined;
+  const proseLines: string[] = [];
+  const preamble: string[] = [];
 
   for (const line of lines) {
+    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (marker && (!fence || (marker[1][0] === fence[0] && marker[1].length >= fence.length))) {
+      fence = fence ? undefined : marker[1];
+      (current?.bodyLines ?? preamble).push(line);
+      continue;
+    }
+    if (fence) {
+      (current?.bodyLines ?? preamble).push(line);
+      continue;
+    }
+    proseLines.push(line);
     const match = line.match(/^#{1,3}\s+(.+?)\s*$/);
     if (match) {
       if (current) sections.push({ title: current.title, body: current.bodyLines.join("\n").trim() });
       current = { title: match[1].trim(), bodyLines: [] };
     } else if (current) {
       current.bodyLines.push(line);
+    } else {
+      preamble.push(line);
     }
   }
   if (current) sections.push({ title: current.title, body: current.bodyLines.join("\n").trim() });
+  if (preamble.join("\n").trim()) sections.unshift({ title: basename(docPath), body: preamble.join("\n").trim() });
+  if (!sections.length && text.trim()) sections.push({ title: basename(docPath), body: text.trim() });
 
-  const summary = sections.find((s) => /summary|overview|职责|概览|说明/i.test(s.title))?.body
+  const summaryText = sections.find((s) => /summary|overview|职责|概览|说明/i.test(s.title))?.body
+    ?? proseLines.filter((line) => !/^\s*(#|\|)/.test(line)).join("\n");
+  const summary = summaryText
     .split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => line.replace(/^\s*>\s?/, "").trim())
     .filter(Boolean)
     .slice(0, 3)
     .join(" ");
 
-  const businessRows: AgentsDoc["businessRows"] = [];
+  const businessRows: ContextDoc["businessRows"] = [];
   const mentionedPaths = new Set<string>();
-  for (const line of lines) {
-    if (!line.trim().startsWith("|")) continue;
-    const cells = line.split("|").map((cell) => cell.trim()).filter(Boolean);
-    if (cells.length < 2 || cells.every((cell) => /^-+$/.test(cell.replace(/:/g, "")))) continue;
-    if (/^path$/i.test(cells[0]) || /^路径$/.test(cells[0])) continue;
-    const pathCell = cells[0];
-    if (!pathCell || pathCell.includes(" ")) continue;
+  let pathColumn = -1;
+  let tableWidth = 0;
+  for (let index = 0; index < proseLines.length; index++) {
+    const line = proseLines[index];
+    if (!line.trim().startsWith("|")) {
+      pathColumn = -1;
+      continue;
+    }
+    // Keep path-table compatibility, not a Markdown validator. Ambiguous rows
+    // remain available in the document body without guessed structured paths.
+    const cells = tableCells(line);
+    if (!cells) continue;
+    if (pathColumn < 0) {
+      const separator = tableCells(proseLines[index + 1] ?? "");
+      if (!separator || separator.length !== cells.length || !separator.every((cell) => /^:?-+:?$/.test(cell))) continue;
+      pathColumn = cells.findIndex((cell) => /^(path|files?|file\/directory|路径|文件名|文件(?:\/子目录|\/目录)?|文件路径)$/i.test(cell));
+      tableWidth = cells.length;
+      index++;
+      continue;
+    }
+    if (cells.length !== tableWidth) continue;
+    const pathCell = literalTablePath(cells[pathColumn]);
+    if (!pathCell) continue;
+    const rest = cells.filter((_, index) => index !== pathColumn);
     businessRows.push({
       path: pathCell,
-      domain: cells[1] ?? "",
-      notes: cells.slice(2).join(" | "),
+      domain: rest[0] ?? "",
+      notes: rest.slice(1).join(" | "),
       raw: line.trim()
     });
     mentionedPaths.add(pathCell);
   }
 
   return {
-    path: toRel(root, agentsPath),
+    path: toRel(root, docPath),
     summary,
     sections,
     businessRows,
-    mentionedPaths: [...mentionedPaths]
+    mentionedPaths: [...mentionedPaths],
+    truncated
   };
+}
+
+// Kept for callers consuming the original AGENTS-based API.
+export const parseAgents = parseDocument;
+
+function tableCells(line: string): string[] | undefined {
+  if (!line.trim().startsWith("|") || line.includes("\\|")) return undefined;
+  return line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+}
+
+function literalTablePath(cell: string): string | undefined {
+  const code = cell.match(/^`([^`]+)`$/);
+  const path = code?.[1] ?? cell;
+  if (!path || /^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(path) || /[*?{}]/.test(path)) return undefined;
+  if (!code && /[\s`\[\]()<>\\]/.test(path)) return undefined;
+  return path;
 }
 
 function walk(root: string, start: string, options: { maxFiles?: number; includeDirs?: boolean } = {}): string[] {
@@ -312,11 +382,11 @@ function walk(root: string, start: string, options: { maxFiles?: number; include
   return result.filter((p) => p === root || !isIgnored(p, root, rules));
 }
 
-function nearestAgents(path: string, root: string): string | undefined {
+function nearestDocument(path: string, root: string): string | undefined {
   let current = statSync(path).isDirectory() ? path : dirname(path);
   while (true) {
-    const candidate = join(current, "AGENTS.md");
-    if (existsSync(candidate)) return candidate;
+    const candidate = directoryDoc(current);
+    if (candidate) return candidate;
     if (current === root) return undefined;
     const next = dirname(current);
     if (next === current) return undefined;
@@ -326,49 +396,23 @@ function nearestAgents(path: string, root: string): string | undefined {
 
 function collectStaleSignals(root: string, files: string[]): StaleSignal[] {
   const signals: StaleSignal[] = [];
-  if (!existsSync(join(root, "FRACTAL-DOCS.md"))) {
-    signals.push({ type: "missing-protocol", path: ".", detail: "FRACTAL-DOCS.md not found" });
-  }
-  if (!existsSync(join(root, "AGENTS.md"))) {
-    signals.push({ type: "missing-root-agents", path: ".", detail: "Root AGENTS.md not found" });
-  }
 
-  const agentsFiles = files.filter((file) => basename(file) === "AGENTS.md");
-  for (const agentsPath of agentsFiles) {
-    const parsed = parseAgents(root, agentsPath);
+  for (const docPath of files.filter(isMarkdown)) {
+    const parsed = parseDocument(root, docPath);
     if (!parsed) continue;
-    const base = dirname(agentsPath);
+    const base = dirname(docPath);
     for (const mentioned of parsed.mentionedPaths) {
-      if (mentioned.startsWith("http") || mentioned.startsWith("#")) continue;
-      const target = safeResolve(base, mentioned);
+      const target = resolve(base, mentioned);
+      // Documentation may link outside the checkout; only check project-local paths.
+      const rel = relative(root, target);
+      if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue;
       if (!existsSync(target)) {
         signals.push({
           type: "missing-mentioned-path",
-          path: toRel(root, agentsPath),
-          detail: `AGENTS.md mentions missing path: ${mentioned}`
+          path: toRel(root, docPath),
+          detail: `${toRel(root, docPath)} mentions missing path: ${mentioned}`
         });
       }
-    }
-  }
-
-  for (const file of files) {
-    if (basename(file) === "AGENTS.md" || basename(file) === "FRACTAL-DOCS.md") continue;
-    if (!isSourceLike(file) || isLikelyBinary(file)) continue;
-    const header = parseHeader(file);
-    if (!header) {
-      signals.push({
-        type: "missing-header",
-        path: toRel(root, file),
-        detail: `Missing header: ${toRel(root, file)}`
-      });
-    }
-    const agents = nearestAgents(file, root);
-    if (agents && statSync(file).mtimeMs > statSync(agents).mtimeMs + 1000) {
-      signals.push({
-        type: "source-newer-than-agents",
-        path: toRel(root, file),
-        detail: `${toRel(root, file)} is newer than ${toRel(root, agents)}`
-      });
     }
   }
 
@@ -379,8 +423,9 @@ export function getStatus(options: BaseOptions = {}): StatusResult {
   const root = resolveRoot(options.root);
   const files = walk(root, root, { maxFiles: STATUS_SCAN_LIMIT });
   const agentsCount = files.filter((file) => basename(file) === "AGENTS.md").length;
-  const headerCount = files.filter((file) => parseHeader(file)).length;
+  const headerCount = files.filter((file) => isSourceLike(file) && parseHeader(file)).length;
   const staleSignals = collectStaleSignals(root, files);
+  const docPath = directoryDoc(root);
 
   return {
     command: "status",
@@ -388,13 +433,20 @@ export function getStatus(options: BaseOptions = {}): StatusResult {
     hasProtocol: existsSync(join(root, "FRACTAL-DOCS.md")),
     hasRootAgents: existsSync(join(root, "AGENTS.md")),
     agentsCount,
+    documentCount: files.filter(isMarkdown).length,
     headerCount,
     scannedFiles: files.length,
     staleSignals,
-    next: existsSync(join(root, "AGENTS.md"))
-      ? ["fractal-context list", "fractal-context read AGENTS.md"]
-      : ["Use /fractal-docs init to create protocol docs"]
+    next: ["fractal-context list", ...(docPath ? [`fractal-context read ${toRel(root, docPath)}`] : [])]
   };
+}
+
+function nextReads(paths: string[]): string[] {
+  return [...new Set(paths)].slice(0, 5).map((path) => `fractal-context read ${quoteArgument(path)}`);
+}
+
+function quoteArgument(value: string): string {
+  return /^[\w./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 export function listContext(path = ".", options: BaseOptions & { depth?: number } = {}): ListResult {
@@ -416,8 +468,9 @@ export function listContext(path = ".", options: BaseOptions & { depth?: number 
       if (isIgnored(child, root, ignoreRules)) continue;
       const st = lstatSync(child);
       if (st.isDirectory()) {
-        const agents = parseAgents(root, join(child, "AGENTS.md"));
-        entries.push({ path: toRel(root, child), kind: "directory", summary: agents?.summary });
+        const docPath = directoryDoc(child);
+        const document = docPath ? parseDocument(root, docPath) : undefined;
+        entries.push({ path: toRel(root, child), kind: "directory", summary: document?.summary });
         if (depth < requestedDepth) visit(child, depth + 1);
       } else {
         entries.push({ path: toRel(root, child), kind: "file", header: parseHeader(child) });
@@ -427,16 +480,19 @@ export function listContext(path = ".", options: BaseOptions & { depth?: number 
 
   visit(target, 1);
   const subtreeFiles = walk(root, target, { maxFiles: max * 10 });
+  const docPath = directoryDoc(target);
+  const document = docPath ? parseDocument(root, docPath) : undefined;
 
   return {
     command: "list",
     root,
     path: toRel(root, target),
-    agents: parseAgents(root, join(target, "AGENTS.md")),
+    document,
+    agents: docPath && basename(docPath) === "AGENTS.md" ? document : undefined,
     entries,
     truncated: entries.length >= max,
     staleSignals: collectStaleSignals(root, subtreeFiles),
-    next: entries.slice(0, 5).map((entry) => `fractal-context read ${entry.path}`)
+    next: nextReads([...(docPath ? [toRel(root, docPath)] : []), ...entries.map((entry) => entry.path)])
   };
 }
 
@@ -448,25 +504,30 @@ export function readContext(path: string, options: BaseOptions & { mode?: ReadMo
   const mode = options.mode ?? "auto";
 
   if (st.isDirectory()) {
-    const agents = parseAgents(root, join(target, "AGENTS.md"));
-    const entries = listContext(toRel(root, target), { root, depth: 1, max: 30 }).entries;
+    const docPath = directoryDoc(target);
+    const document = docPath ? parseDocument(root, docPath) : undefined;
+    const listing = listContext(toRel(root, target), { root, depth: 1, max: 30 });
+    const entries = listing.entries;
     return {
       command: "read",
       root,
       path: toRel(root, target),
       kind: "directory",
       mode,
-      agents,
+      document,
+      agents: docPath && basename(docPath) === "AGENTS.md" ? document : undefined,
       content: entries.map((entry) => `${entry.kind}: ${entry.path}`).join("\n"),
-      truncated: false,
+      truncated: (document?.truncated ?? false) || listing.truncated,
       staleSignals: collectStaleSignals(root, walk(root, target, { maxFiles: 300 })),
-      next: entries.slice(0, 5).map((entry) => `fractal-context read ${entry.path}`)
+      next: nextReads([...(docPath ? [toRel(root, docPath)] : []), ...entries.map((entry) => entry.path)])
     };
   }
 
   if (isLikelyBinary(target)) throw new Error(`Cannot read binary file: ${path}`);
   const header = parseHeader(target);
-  const shouldReadFull = mode === "full" || (mode === "auto" && basename(target) === "AGENTS.md") || basename(target) === "FRACTAL-DOCS.md";
+  const docPath = nearestDocument(target, root);
+  const document = mode === "docs" && !isMarkdown(target) && docPath ? parseDocument(root, docPath) : undefined;
+  const shouldReadFull = mode === "full" || ((mode === "auto" || mode === "docs") && isMarkdown(target));
   const full = shouldReadFull ? readText(target, FULL_READ_BYTES) : undefined;
 
   return {
@@ -475,11 +536,13 @@ export function readContext(path: string, options: BaseOptions & { mode?: ReadMo
     path: toRel(root, target),
     kind: "file",
     mode,
+    document,
+    agents: document && basename(document.path) === "AGENTS.md" ? document : undefined,
     header,
     content: full?.text,
-    truncated: full?.truncated ?? false,
-    staleSignals: collectStaleSignals(root, [target, ...(nearestAgents(target, root) ? [nearestAgents(target, root)!] : [])]),
-    next: [`fractal-context list ${toRel(root, dirname(target))}`, `fractal-context search ${basename(target).split(".")[0]}`]
+    truncated: (full?.truncated ?? false) || (document?.truncated ?? false),
+    staleSignals: collectStaleSignals(root, [...new Set([target, ...(docPath ? [docPath] : [])])]),
+    next: [...(docPath && docPath !== target ? nextReads([toRel(root, docPath)]) : []), `fractal-context list ${quoteArgument(toRel(root, dirname(target)))}`, `fractal-context search ${quoteArgument(basename(target).split(".")[0])}`]
   };
 }
 
@@ -493,23 +556,25 @@ export function searchContext(query: string, options: BaseOptions & { scope?: Se
   const max = options.max ?? 20;
   const files = walk(root, root, { maxFiles: SEARCH_SCAN_LIMIT });
   const results: SearchResultItem[] = [];
+  let truncated = files.length >= SEARCH_SCAN_LIMIT;
 
   for (const file of files) {
     if (results.length >= max) break;
     const rel = toRel(root, file);
     const name = basename(file);
-    if (name === "AGENTS.md") {
-      const agents = parseAgents(root, file);
-      if (!agents) continue;
-      for (const row of agents.businessRows) {
+    if (scope !== "headers" && isMarkdown(file)) {
+      const document = parseDocument(root, file);
+      if (!document) continue;
+      truncated ||= document.truncated;
+      for (const row of document.businessRows) {
         if (contains(row.raw, query)) {
           results.push({ path: rel, type: "business-domain-row", excerpt: row.raw, score: 100 });
         }
       }
-      for (const section of agents.sections) {
+      for (const section of document.sections) {
         const text = `${section.title}\n${section.body}`;
         if (contains(text, query)) {
-          results.push({ path: rel, type: "agents-section", excerpt: compactExcerpt(text, query), score: 90 });
+          results.push({ path: rel, type: name === "AGENTS.md" ? "agents-section" : "doc-section", excerpt: compactExcerpt(text, query), score: 90 });
         }
       }
     }
@@ -538,7 +603,8 @@ export function searchContext(query: string, options: BaseOptions & { scope?: Se
     for (const file of files) {
       if (results.length >= max) break;
       if (!isSourceLike(file) || isLikelyBinary(file)) continue;
-      const { text } = readText(file, HEADER_SCAN_BYTES);
+      const { text, truncated: sourceTruncated } = readText(file, HEADER_SCAN_BYTES);
+      truncated ||= sourceTruncated;
       if (contains(text, query)) {
         results.push({ path: toRel(root, file), type: "source", excerpt: compactExcerpt(text, query), score: 10 });
       }
@@ -553,8 +619,8 @@ export function searchContext(query: string, options: BaseOptions & { scope?: Se
     query,
     scope,
     results: results.slice(0, max),
-    truncated: results.length >= max,
-    next: results.slice(0, 5).map((item) => `fractal-context read ${item.path}`)
+    truncated: truncated || results.length >= max,
+    next: nextReads(results.map((item) => item.path))
   };
 }
 

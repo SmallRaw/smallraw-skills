@@ -1,16 +1,3 @@
-# {PROJECT_NAME}
+<!-- 仅在现有根 AGENTS.md 确实需要阅读提示时合并以下一句，保留其余用户规则；不要用本片段覆盖整个文件。实际文档路径应按项目调整。 -->
 
-> {PROJECT_DESCRIPTION}
-
-> **⚠ 本项目采用分形文档协议，必须严格遵守 [FRACTAL-DOCS.md](./FRACTAL-DOCS.md) 中定义的三层文档规范。**
-
----
-
-## 业务域清单
-
-| 名称 | 文件/子目录 | 职责 |
-|------|------------|------|
-| {DOMAIN_1} | `{PATH_1}` | {RESPONSIBILITY_1} |
-| {DOMAIN_2} | `{PATH_2}` | {RESPONSIBILITY_2} |
-
-<!-- 根据项目实际结构填写 -->
+修改模块行为或性能前，查看相关模块的 MODULE.md 或已有 README.md；跨目录模块从项目文档入口找到对应说明。
