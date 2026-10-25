@@ -1,43 +1,30 @@
 ---
 name: codex-delegate-worker
-description: Run a one-off Codex worker through the configured custom model node. Use only when the user explicitly requests the custom worker or custom node. Do not use for native Codex subagents, parallel agents, ChatGPT subscription usage, or OpenAI GPT models; those must use Codex's native agent path.
+description: Run Codex through a configured custom model node with native settings and session features. Configure Local or Global nodes privately. Use when the user requests the custom worker, custom node, or its setup.
 ---
 
 # Codex Delegate Worker
 
-Use this skill to hand work to the configured custom-node worker. The user only needs to express that intent, such as "让自定义节点做", "交给自定义 worker", or "use the custom node". Write the worker prompt from the user's intent.
+## Configure privately
 
-This is not a native Codex subagent role or application worker thread.
-
-## Provider Gate
-
-Before invoking the launcher, resolve the requested execution channel:
-
-- For a native Codex subagent, parallel agent, ChatGPT subscription, or OpenAI model such as `gpt-*`, do not use this skill. Use Codex's native subagent tools instead.
-- Use this skill only when the user explicitly wants the configured custom node.
-
-Do not infer the provider from the word "agent" or "subagent". If the user names both a native subagent and an OpenAI model, the native path wins.
-
-## Launcher
-
-Invoke the launcher with only the worker task:
+For provider setup or management, open the program's private terminal:
 
 ```bash
-node <skill-dir>/scripts/codex-delegate-worker.mjs "<worker task>"
+node <skill-dir>/scripts/codex-delegate-worker.mjs init
 ```
 
-Treat the launcher as an opaque boundary. Do not inspect its source, private setup, credential sources, environment, or user documentation. Do not add model, provider, authentication, or configuration overrides.
+The user enters the address, model, and Key there and manages Local or Global providers. Do not capture or automate the private input, ask for these values in chat, or read provider configuration or credential storage. Configuration changes go through the program. `status` returns configuration flags without private values; when configuration is missing, open `init` and wait for the user to finish.
 
-## Workflow
+## Run Codex
 
-1. Convert the user's intent into a focused worker prompt with the task, relevant files, constraints, expected output, and stopping condition.
-2. Invoke the launcher once with that prompt.
-3. Summarize what the custom-node worker did, including files changed or commands run.
+For an automated task:
 
-## Prompt Rules
+```bash
+node <skill-dir>/scripts/codex-delegate-worker.mjs "<task>"
+```
 
-Write a fresh prompt for every worker run. Do not rely on a generic default prompt, and do not ask the user to provide provider wiring or prompt mechanics unless the task is genuinely ambiguous.
+Use native Codex arguments for the task's permissions and features. `codex exec` defaults to read-only without permission settings; `--sandbox workspace-write` is the native mode for file edits. Preserve the user's selected permissions and profiles.
 
-Keep the worker prompt narrow. The worker is expected to do the delegated work, not make product decisions outside the user's request.
+Pass a complete native command after `--`, for example `-- exec resume --last`. For the user's normal interactive Codex, run `open`; arguments after `open` go to the CLI in a separate user terminal. The user can also run `interactive` in their own terminal or SSH session. These displays may contain private provider details, so leave their interaction to the user.
 
-If the launcher reports that the custom node is unavailable or misconfigured, return the sanitized error to the user. Do not investigate the private setup.
+The launcher changes the configured model connection, inherits normal Codex settings and session storage, and filters private values from captured task output. Summarize the result. For provider setup errors, use the configuration manager without exposing private settings.

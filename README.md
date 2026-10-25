@@ -89,7 +89,7 @@ cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 | [agent-farm-delegation](skills/agent-farm-delegation/) | 将范围明确的小任务委托给 ACPX、Pi、Codex 或本地 ACP worker | Manual |
 | [app-analyzer](skills/app-analyzer/) | 分析和逆向 macOS `.app` 的技术栈、Bundle、资源与二进制 | Manual |
 | [cc-setup](skills/cc-setup/) | 交互式配置 Claude Code 的 Skill 日志、HUD statusLine 等功能 | Manual |
-| [codex-delegate-worker](skills/codex-delegate-worker/) | 通过配置好的自定义模型节点运行一次性 Codex worker | Marketplace |
+| [codex-delegate-worker](skills/codex-delegate-worker/) | 通过私密配置的模型节点使用原生 Codex，支持 Local/Global 与会话恢复 | Marketplace |
 | [computer-use](skills/computer-use/) | 通过 Orca 操作本机可见窗口的 GUI，优先使用可完成任务的 CLI/API | Manual |
 | [excel-lite-cli](skills/excel-lite-cli/) | Excel 报表分析与数据清洗 - 处理复杂/乱序报表，自动清洗脏字符，查询/清洗/导出 | Marketplace |
 | [fractal-docs](skills/fractal-docs/) | 模块知识维护 - 保存非显然的运行约束、设计原因与验证依据，复用普通 Markdown | Marketplace |

@@ -64,7 +64,7 @@
     },
     {
       "name": "codex-delegate-worker",
-      "description": "把任务交给外部 Agent：用一次性 codex exec 启动隔离的 provider worker",
+      "description": "通过私密配置的模型节点使用原生 Codex，支持 Local/Global 与原生会话",
       "source": "./",
       "strict": false,
       "skills": [

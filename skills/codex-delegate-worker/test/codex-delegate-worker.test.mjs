@@ -1,503 +1,192 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const skillDir = path.resolve(__dirname, "..");
-const launcher = path.join(skillDir, "scripts", "codex-delegate-worker.mjs");
+const launcher = fileURLToPath(new URL("../scripts/codex-delegate-worker.mjs", import.meta.url));
 
-function runNode(args, env, options = {}) {
-  return new Promise((resolve) => {
-    const childEnv = { ...process.env };
-    for (const key of Object.keys(childEnv)) {
-      if (key.startsWith("CODEX_DELEGATE_WORKER_")) {
-        delete childEnv[key];
-      }
-    }
-    delete childEnv.CODEX_HOME;
-    if (!Object.prototype.hasOwnProperty.call(env, "CODEX_HOME")) {
-      childEnv.CODEX_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-home-"));
-    }
+function fixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "worker-native-test-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const codexHome = path.join(root, "codex-home");
+  fs.mkdirSync(codexHome);
+  const capturePath = path.join(root, "capture.json");
+  const fakeScript = path.join(root, "fake-codex.mjs");
+  fs.writeFileSync(fakeScript, `import fs from "node:fs";
+import path from "node:path";
+const configPath = path.join(process.env.CODEX_HOME, "config.toml");
+fs.writeFileSync(process.env.CODEX_DELEGATE_WORKER_CAPTURE_PATH, JSON.stringify({
+  args: process.argv.slice(2), codeHome: process.env.CODEX_HOME,
+  apiKey: process.env.CODEX_DELEGATE_WORKER_API_KEY,
+  hasApiKeyEnv: Object.hasOwn(process.env, "CODEX_DELEGATE_WORKER_API_KEY"),
+  config: fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "",
+}));
+fs.mkdirSync(path.join(process.env.CODEX_HOME, "sessions"), {recursive:true});
+fs.writeFileSync(path.join(process.env.CODEX_HOME, "sessions", "fixture.json"), "saved");
+const output = process.env.CODEX_DELEGATE_WORKER_TEST_OUTPUT;
+if (output) {
+  process.stdout.write(output.slice(0, 7));
+  process.stderr.write(output.slice(0, 9));
+  setTimeout(() => { process.stdout.write(output.slice(7)); process.stderr.write(output.slice(9)); }, 5);
+}
+`);
+  const fakeCodex = path.join(root, process.platform === "win32" ? "codex.cmd" : "codex");
+  if (process.platform === "win32") fs.writeFileSync(fakeCodex, `@echo off\r\n"${process.execPath}" "${fakeScript}" %*\r\n`);
+  else fs.writeFileSync(fakeCodex, `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' '${fakeScript.replaceAll("'", "'\\''")}' "$@"\n`, { mode: 0o755 });
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith("CODEX_DELEGATE_WORKER_")) delete env[key];
+  Object.assign(env, {
+    CODEX_HOME: codexHome,
+    CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
+    CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
+    CODEX_DELEGATE_WORKER_BASE_URL: "https://synthetic-node.example.test/v1",
+    CODEX_DELEGATE_WORKER_MODEL: "gpt-synthetic-alias",
+    CODEX_DELEGATE_WORKER_API_KEY: "synthetic-key-only",
+  });
+  return {
+    root, codexHome, env, capturePath,
+    run(args, overrides = {}) { return spawnSync(process.execPath, [launcher, ...args], { cwd: root, env: { ...env, ...overrides }, encoding: "utf8", timeout: 5000 }); },
+    capture() { return JSON.parse(fs.readFileSync(capturePath, "utf8")); },
+  };
+}
 
-    const child = spawn(process.execPath, args, {
-      cwd: options.cwd ?? skillDir,
-      env: { ...childEnv, ...env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+function nativeTail(capture, command) {
+  return capture.args.slice(capture.args.indexOf(command));
+}
 
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.on("close", (code) => {
-      resolve({ code, stdout, stderr });
-    });
+test("inherits normal Codex home and leaves configuration and saved sessions intact", (t) => {
+  const f = fixture(t);
+  const config = 'sandbox_mode="workspace-write"\napproval_policy="on-request"\n[features]\nmulti_agent=true\n[mcp_servers.fixture]\ncommand="fixture-mcp"\n';
+  const configPath = path.join(f.codexHome, "config.toml");
+  fs.writeFileSync(configPath, config);
+  const result = f.run(["edit this project"]);
+  assert.equal(result.status, 0, result.stderr);
+  const capture = f.capture();
+  assert.equal(capture.codeHome, f.codexHome);
+  assert.equal(capture.config, config);
+  assert.equal(fs.readFileSync(configPath, "utf8"), config);
+  assert.equal(fs.readFileSync(path.join(f.codexHome, "sessions", "fixture.json"), "utf8"), "saved");
+  assert.deepEqual(nativeTail(capture, "exec"), ["exec", "--skip-git-repo-check", "edit this project"]);
+  assert.ok(!capture.args.includes("--ephemeral"));
+  assert.ok(!capture.args.some((arg) => /sandbox_mode|approval_policy|default_permissions|shell_environment_policy|ignore-user-config|ignore-rules/.test(arg)));
+});
+
+for (const sandbox of ["read-only", "workspace-write", "danger-full-access"]) {
+  test(`forwards an explicitly selected native ${sandbox} mode`, (t) => {
+    const f = fixture(t);
+    const result = f.run(["--sandbox", sandbox, "task"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(nativeTail(f.capture(), "exec"), ["exec", "--skip-git-repo-check", "--sandbox", sandbox, "task"]);
   });
 }
 
-function makeFakeCodex(tmpdir) {
-  const fakeCodex = path.join(tmpdir, process.platform === "win32" ? "codex.cmd" : "codex");
-  const capturePath = path.join(tmpdir, "capture.json");
-
-  if (process.platform === "win32") {
-    fs.writeFileSync(
-      fakeCodex,
-      `@echo off\r\n"${process.execPath}" "${path.join(tmpdir, "fake-codex.mjs")}" %*\r\n`,
-    );
-  } else {
-    fs.writeFileSync(
-      fakeCodex,
-      `#!/usr/bin/env node
-import fs from "node:fs";
-import path from "node:path";
-const configPath = path.join(process.env.CODEX_HOME, "config.toml");
-fs.writeFileSync(process.env.CODEX_DELEGATE_WORKER_CAPTURE_PATH, JSON.stringify({
-  args: process.argv.slice(2),
-  codeHome: process.env.CODEX_HOME,
-  apiKey: process.env.CODEX_DELEGATE_WORKER_API_KEY,
-  hasApiKeyEnv: Object.prototype.hasOwnProperty.call(process.env, "CODEX_DELEGATE_WORKER_API_KEY"),
-  config: fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : ""
-}, null, 2));
-`,
-      { mode: 0o755 },
-    );
-  }
-
-  if (process.platform === "win32") {
-    fs.writeFileSync(
-      path.join(tmpdir, "fake-codex.mjs"),
-`import fs from "node:fs";
-import path from "node:path";
-const configPath = path.join(process.env.CODEX_HOME, "config.toml");
-fs.writeFileSync(process.env.CODEX_DELEGATE_WORKER_CAPTURE_PATH, JSON.stringify({
-  args: process.argv.slice(2),
-  codeHome: process.env.CODEX_HOME,
-  apiKey: process.env.CODEX_DELEGATE_WORKER_API_KEY,
-  hasApiKeyEnv: Object.prototype.hasOwnProperty.call(process.env, "CODEX_DELEGATE_WORKER_API_KEY"),
-  config: fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : ""
-}, null, 2));
-`,
-    );
-  }
-
-  return { fakeCodex, capturePath };
+for (const args of [
+  ["exec", "resume", "--last", "--json"],
+  ["--profile", "personal", "review", "--uncommitted"],
+  ["fork", "session-id", "--model", "any-model-alias"],
+  ["exec", "--worktree", "--add-dir", "/another project", "--image", "fixture.png", "task"],
+  ["features", "list"],
+  ["--help"],
+]) {
+  test(`native pass-through preserves ${args.join(" ")}`, (t) => {
+    const f = fixture(t);
+    const result = f.run(["--", ...args]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(f.capture().args.slice(-args.length), args);
+  });
 }
 
-test("launches codex exec with a temporary namespaced provider config", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode(
-      [
-        launcher,
-        "--sandbox",
-        "read-only",
-        "summarize the repo",
-      ],
-      {
-        CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-        CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-        CODEX_DELEGATE_WORKER_CONFIG_MODE: "temp-home",
-        CODEX_DELEGATE_WORKER_BASE_URL: "https://kapi.example.test/v1",
-        CODEX_DELEGATE_WORKER_API_KEY: "test-key",
-        CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
-        CODEX_DELEGATE_WORKER_PROVIDER_ID: "custom_node",
-        CODEX_DELEGATE_WORKER_PROVIDER_NAME: "Custom node worker",
-      },
-    );
-
-    assert.equal(result.code, 0, result.stderr);
-    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
-
-    assert.deepEqual(capture.args, [
-      "exec",
-      "--ephemeral",
-      "--sandbox",
-      "read-only",
-      "summarize the repo",
-    ]);
-    assert.equal(capture.apiKey, "test-key");
-    assert.match(capture.codeHome, /codex-delegate-worker-/);
-    assert.match(capture.config, /model = "custom-worker-model"/);
-    assert.match(capture.config, /model_provider = "custom_node"/);
-    assert.match(capture.config, /\[model_providers\.custom_node\]/);
-    assert.match(capture.config, /name = "Custom node worker"/);
-    assert.match(capture.config, /base_url = "https:\/\/kapi\.example\.test\/v1"/);
-    assert.match(capture.config, /env_key = "CODEX_DELEGATE_WORKER_API_KEY"/);
-    assert.match(capture.config, /\[shell_environment_policy\]/);
-    assert.match(capture.config, /exclude = \["CODEX_DELEGATE_WORKER_API_KEY"\]/);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("ephemeral operation is available only when explicitly requested", (t) => {
+  const f = fixture(t);
+  assert.equal(f.run(["--ephemeral", "task"]).status, 0);
+  assert.equal(f.capture().args.filter((arg) => arg === "--ephemeral").length, 1);
 });
 
-test("fails before spawning codex when the skill-scoped API key is missing", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode([launcher, "do work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-      CODEX_DELEGATE_WORKER_CONFIG_MODE: "temp-home",
-      CODEX_DELEGATE_WORKER_BASE_URL: "https://kapi.example.test/v1",
-      CODEX_DELEGATE_WORKER_API_KEY: "",
-      CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
-    });
-
-    assert.equal(result.code, 2);
-    assert.match(result.stderr, /missing CODEX_DELEGATE_WORKER_API_KEY/);
-    assert.equal(fs.existsSync(capturePath), false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("old temporary-home and wire settings no longer change runtime or reject launch", (t) => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, ".codex-delegate-worker.json"), JSON.stringify({ configMode: "obsolete", keepHome: "0", wireApi: "chat", wire_api: "responses" }));
+  const result = f.run(["task"], { CODEX_DELEGATE_WORKER_CONFIG_MODE: "temp-home", CODEX_DELEGATE_WORKER_KEEP_HOME: "0", CODEX_DELEGATE_WORKER_WIRE_API: "chat" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.capture().codeHome, f.codexHome);
+  assert.ok(!f.capture().args.some((arg) => /wire_api|configMode|keepHome/.test(arg)));
 });
 
-test("writes command-backed auth config without requiring an API key env var", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode([launcher, "do work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-      CODEX_DELEGATE_WORKER_CONFIG_MODE: "temp-home",
-      CODEX_DELEGATE_WORKER_BASE_URL: "https://kapi.example.test/v1",
-      CODEX_DELEGATE_WORKER_API_KEY: "",
-      CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
-      CODEX_DELEGATE_WORKER_AUTH_COMMAND: "op",
-      CODEX_DELEGATE_WORKER_AUTH_ARGS_JSON: JSON.stringify([
-        "read",
-        "op://Private/KAPI API Key/credential",
-      ]),
-    });
-
-    assert.equal(result.code, 0, result.stderr);
-    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
-
-    assert.match(capture.config, /\[model_providers\.codex_delegate_worker\.auth\]/);
-    assert.match(capture.config, /command = "op"/);
-    assert.match(capture.config, /args = \["read", "op:\/\/Private\/KAPI API Key\/credential"\]/);
-    assert.doesNotMatch(capture.config, /env_key/);
-    assert.equal(capture.hasApiKeyEnv, false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("accepts arbitrary provider labels through a stable internal id", (t) => {
+  const f = fixture(t);
+  const result = f.run(["task"], { CODEX_DELEGATE_WORKER_PROVIDER_ID: "custom/node.name" });
+  assert.equal(result.status, 0, result.stderr);
+  const id = `custom_${Buffer.from("custom/node.name").toString("base64url")}`;
+  assert.ok(f.capture().args.includes(`model_provider="${id}"`));
+  assert.ok(f.capture().args.includes(`model_providers.${id}.base_url="https://synthetic-node.example.test/v1"`));
 });
 
-test("reads local config file from the current working directory", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    fs.writeFileSync(
-      path.join(tmpdir, ".codex-delegate-worker.json"),
-      JSON.stringify({
-        baseUrl: "https://local-config.example.test/v1",
-        configMode: "temp-home",
-        model: "local-config-model",
-        providerId: "local_config_provider",
-        providerName: "Local config provider",
-        codexBin: fakeCodex,
-        auth: {
-          command: "op",
-          args: ["read", "op://Private/Local Provider/credential"],
-        },
-      }),
-    );
-
-    const result = await runNode([launcher, "do work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_API_KEY: "",
-    }, { cwd: tmpdir });
-
-    assert.equal(result.code, 0, result.stderr);
-    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
-    assert.match(capture.config, /model = "local-config-model"/);
-    assert.match(capture.config, /model_provider = "local_config_provider"/);
-    assert.match(capture.config, /base_url = "https:\/\/local-config\.example\.test\/v1"/);
-    assert.match(capture.config, /command = "op"/);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("no-auth nodes do not acquire a mandatory key requirement", (t) => {
+  const f = fixture(t);
+  const result = f.run(["task"], { CODEX_DELEGATE_WORKER_API_KEY: "" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.capture().hasApiKeyEnv, false);
+  assert.ok(!f.capture().args.some((arg) => arg.includes("env_key=")));
 });
 
-test("reads global config from CODEX_HOME when no local config exists", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const codexHome = path.join(tmpdir, "codex-home");
-    const workdir = path.join(tmpdir, "workdir");
-    fs.mkdirSync(codexHome);
-    fs.mkdirSync(workdir);
-    fs.writeFileSync(
-      path.join(codexHome, "codex-delegate-worker.json"),
-      JSON.stringify({
-        baseUrl: "https://global-config.example.test/v1",
-        configMode: "temp-home",
-        model: "global-config-model",
-        codexBin: fakeCodex,
-        auth: {
-          command: "bw",
-          args: ["get", "password", "Provider API Key"],
-        },
-      }),
-    );
-
-    const result = await runNode([launcher, "do work"], {
-      CODEX_HOME: codexHome,
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_API_KEY: "",
-    }, { cwd: workdir });
-
-    assert.equal(result.code, 0, result.stderr);
-    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
-    assert.match(capture.config, /model = "global-config-model"/);
-    assert.match(capture.config, /base_url = "https:\/\/global-config\.example\.test\/v1"/);
-    assert.match(capture.config, /command = "bw"/);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("command-backed authentication is forwarded without changing unrelated shell policy", (t) => {
+  const f = fixture(t);
+  const result = f.run(["task"], { CODEX_DELEGATE_WORKER_API_KEY: "", CODEX_DELEGATE_WORKER_AUTH_COMMAND: "fixture-helper", CODEX_DELEGATE_WORKER_AUTH_ARGS_JSON: '["read","fixture-reference"]' });
+  assert.equal(result.status, 0, result.stderr);
+  const capture = f.capture();
+  assert.ok(capture.args.some((arg) => arg.endsWith('auth.command="fixture-helper"')));
+  assert.ok(!capture.args.some((arg) => /shell_environment_policy|env_key=/.test(arg)));
 });
 
-test("reads direct apiKey from config without writing the secret to temporary Codex config", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    fs.writeFileSync(
-      path.join(tmpdir, ".codex-delegate-worker.json"),
-      JSON.stringify({
-        baseUrl: "https://direct-key.example.test/v1",
-        configMode: "temp-home",
-        model: "direct-key-model",
-        codexBin: fakeCodex,
-        apiKey: "secret-from-json",
-      }),
-    );
-
-    const result = await runNode([launcher, "do work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_API_KEY: "",
-    }, { cwd: tmpdir });
-
-    assert.equal(result.code, 0, result.stderr);
-    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
-    assert.equal(capture.apiKey, "secret-from-json");
-    assert.match(capture.config, /env_key = "CODEX_DELEGATE_WORKER_API_KEY"/);
-    assert.match(capture.config, /exclude = \["CODEX_DELEGATE_WORKER_API_KEY"\]/);
-    assert.doesNotMatch(capture.config, /secret-from-json/);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("legacy global and local provider configuration retains local precedence", (t) => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.codexHome, "codex-delegate-worker.json"), JSON.stringify({ baseUrl: "https://global.example.test/v1", model: "global-model" }));
+  fs.writeFileSync(path.join(f.root, ".codex-delegate-worker.json"), JSON.stringify({ model: "local-model" }));
+  const result = f.run(["task"], { CODEX_DELEGATE_WORKER_BASE_URL: "", CODEX_DELEGATE_WORKER_MODEL: "" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(f.capture().args.includes('model="local-model"'));
+  assert.ok(f.capture().args.some((arg) => arg.endsWith('.base_url="https://global.example.test/v1"')));
 });
 
-test("can pass provider config through codex -c overrides instead of temporary config.toml", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    fs.writeFileSync(
-      path.join(tmpdir, ".codex-delegate-worker.json"),
-      JSON.stringify({
-        configMode: "inline",
-        baseUrl: "https://inline-config.example.test/v1",
-        model: "inline-config-model",
-        providerId: "inline_provider",
-        providerName: "Inline provider",
-        codexBin: fakeCodex,
-        apiKey: "inline-secret",
-      }),
-    );
-
-    const result = await runNode([launcher, "do inline work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_API_KEY: "",
-    }, { cwd: tmpdir });
-
-    assert.equal(result.code, 0, result.stderr);
-    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
-    assert.equal(capture.apiKey, "inline-secret");
-    assert.deepEqual(capture.args, [
-      "exec",
-      "--ephemeral",
-      "-c",
-      'model="inline-config-model"',
-      "-c",
-      'model_provider="inline_provider"',
-      "-c",
-      'model_providers.inline_provider.name="Inline provider"',
-      "-c",
-      'model_providers.inline_provider.base_url="https://inline-config.example.test/v1"',
-      "-c",
-      'model_providers.inline_provider.env_key="CODEX_DELEGATE_WORKER_API_KEY"',
-      "-c",
-      'shell_environment_policy.exclude=["CODEX_DELEGATE_WORKER_API_KEY"]',
-      "do inline work",
-    ]);
-    assert.equal(fs.existsSync(path.join(capture.codeHome, "config.toml")), false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("model overrides remain native arguments without a provider-name blacklist", (t) => {
+  const f = fixture(t);
+  const args = ["-m", "openai/synthetic-model", "-c", 'model="another-alias"', "task"];
+  assert.equal(f.run(args).status, 0);
+  assert.deepEqual(f.capture().args.slice(-args.length), args);
 });
 
-test("uses inline config mode by default", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode([launcher, "default inline work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-      CODEX_DELEGATE_WORKER_BASE_URL: "https://default-inline.example.test/v1",
-      CODEX_DELEGATE_WORKER_API_KEY: "default-inline-secret",
-      CODEX_DELEGATE_WORKER_MODEL: "default-inline-model",
-    });
-
-    assert.equal(result.code, 0, result.stderr);
-    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
-    assert.ok(capture.args.includes("-c"));
-    assert.ok(capture.args.includes('model="default-inline-model"'));
-    assert.equal(fs.existsSync(path.join(capture.codeHome, "config.toml")), false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("the explicit skip-Git option is not duplicated", (t) => {
+  const f = fixture(t);
+  assert.equal(f.run(["--skip-git-repo-check", "task"]).status, 0);
+  assert.equal(f.capture().args.filter((arg) => arg === "--skip-git-repo-check").length, 1);
 });
 
-test("rejects an OpenAI model configured for the custom node", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode([launcher, "do work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-      CODEX_DELEGATE_WORKER_BASE_URL: "https://external.example.test/v1",
-      CODEX_DELEGATE_WORKER_API_KEY: "test-key",
-      CODEX_DELEGATE_WORKER_MODEL: "gpt-5.5",
-    });
-
-    assert.equal(result.code, 2);
-    assert.match(result.stderr, /gpt-5\.5/);
-    assert.match(result.stderr, /native Codex subagent/);
-    assert.match(result.stderr, /normal ChatGPT login/);
-    assert.equal(fs.existsSync(capturePath), false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
+test("privacy filtering survives native config inheritance and split child output", (t) => {
+  const f = fixture(t);
+  const privateValues = [f.env.CODEX_DELEGATE_WORKER_API_KEY, f.env.CODEX_DELEGATE_WORKER_BASE_URL, f.env.CODEX_DELEGATE_WORKER_MODEL];
+  const result = f.run(["task"], { CODEX_DELEGATE_WORKER_TEST_OUTPUT: `Result: ${privateValues.join(" ")}\nfinished` });
+  assert.equal(result.status, 0, result.stderr);
+  for (const value of privateValues) {
+    assert.ok(!result.stdout.includes(value));
+    assert.ok(!result.stderr.includes(value));
   }
+  assert.ok(result.stdout.includes("finished"));
 });
 
-test("allows gpt-oss through the custom node", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode([launcher, "do local work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-      CODEX_DELEGATE_WORKER_BASE_URL: "http://127.0.0.1:8000/v1",
-      CODEX_DELEGATE_WORKER_API_KEY: "test-key",
-      CODEX_DELEGATE_WORKER_MODEL: "gpt-oss-20b",
-    });
-
-    assert.equal(result.code, 0, result.stderr);
-    const capture = JSON.parse(fs.readFileSync(capturePath, "utf8"));
-    assert.ok(capture.args.includes('model="gpt-oss-20b"'));
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("native terminal execution restores the caller's real home and forwards session commands", (t) => {
+  const f = fixture(t);
+  const result = f.run(["_native-terminal", "--directory", f.root, "--global-config", path.join(f.codexHome, "codex-delegate-worker.json"), "--", "resume", "--last"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.capture().codeHome, f.codexHome);
+  assert.deepEqual(f.capture().args.slice(-2), ["resume", "--last"]);
 });
 
-test("rejects an OpenAI model passed as a codex model override", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode([launcher, "-m", "gpt-5.5", "do work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-      CODEX_DELEGATE_WORKER_BASE_URL: "https://external.example.test/v1",
-      CODEX_DELEGATE_WORKER_API_KEY: "test-key",
-      CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
-    });
-
-    assert.equal(result.code, 2);
-    assert.match(result.stderr, /gpt-5\.5/);
-    assert.match(result.stderr, /native Codex subagent/);
-    assert.equal(fs.existsSync(capturePath), false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
-});
-
-test("rejects a provider-qualified OpenAI model override", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode([launcher, "--model=openai/gpt-5.5", "do work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-      CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-      CODEX_DELEGATE_WORKER_BASE_URL: "https://external.example.test/v1",
-      CODEX_DELEGATE_WORKER_API_KEY: "test-key",
-      CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
-    });
-
-    assert.equal(result.code, 2);
-    assert.match(result.stderr, /openai\/gpt-5\.5/);
-    assert.match(result.stderr, /native Codex subagent/);
-    assert.equal(fs.existsSync(capturePath), false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
-});
-
-test("rejects an OpenAI model passed as a generic config override", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    const result = await runNode(
-      [launcher, "-c", 'model="gpt-5.5"', "do work"],
-      {
-        CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-        CODEX_DELEGATE_WORKER_CODEX_BIN: fakeCodex,
-        CODEX_DELEGATE_WORKER_BASE_URL: "https://external.example.test/v1",
-        CODEX_DELEGATE_WORKER_API_KEY: "test-key",
-        CODEX_DELEGATE_WORKER_MODEL: "custom-worker-model",
-      },
-    );
-
-    assert.equal(result.code, 2);
-    assert.match(result.stderr, /gpt-5\.5/);
-    assert.match(result.stderr, /normal ChatGPT login/);
-    assert.equal(fs.existsSync(capturePath), false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
-});
-
-test("rejects wireApi config because the launcher no longer exposes it", async () => {
-  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-test-"));
-  try {
-    const { fakeCodex, capturePath } = makeFakeCodex(tmpdir);
-    fs.writeFileSync(
-      path.join(tmpdir, ".codex-delegate-worker.json"),
-      JSON.stringify({
-        baseUrl: "https://custom-node.example.test/v1",
-        model: "custom-worker-model",
-        apiKey: "test-key",
-        codexBin: fakeCodex,
-        wireApi: "responses",
-      }),
-    );
-
-    const result = await runNode([launcher, "do work"], {
-      CODEX_DELEGATE_WORKER_CAPTURE_PATH: capturePath,
-    }, { cwd: tmpdir });
-
-    assert.equal(result.code, 2);
-    assert.match(result.stderr, /wireApi.*no longer supported/i);
-    assert.match(result.stderr, /remove/i);
-    assert.equal(fs.existsSync(capturePath), false);
-  } finally {
-    fs.rmSync(tmpdir, { recursive: true, force: true });
-  }
+test("direct interactive mode keeps private terminal output outside captured automation", (t) => {
+  const f = fixture(t);
+  const result = f.run(["interactive"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /own terminal/);
+  assert.equal(fs.existsSync(f.capturePath), false);
 });

@@ -1,30 +1,28 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { finished } from "node:stream/promises";
+import { configPaths, configurationStatus, loadWorkerConfig, makeProfileStore } from "./provider-config.mjs";
+import { configureInTerminal, openConfiguration } from "./configure.mjs";
+import { privateOutputStream, redactOutput } from "./private-output.mjs";
 
 const ENV_PREFIX = "CODEX_DELEGATE_WORKER_";
 const API_KEY_ENV = `${ENV_PREFIX}API_KEY`;
-const OPENAI_MODEL_PATTERN =
-  /^(?:openai[/:])?(?:gpt-(?!oss(?:-|$))|chatgpt(?:-|$)|codex(?:-|$)|o[134](?:-|$))/i;
 
 function usage() {
   return `Usage:
-  ${ENV_PREFIX}BASE_URL=https://provider.example/v1 ${API_KEY_ENV}=... node scripts/codex-delegate-worker.mjs "task"
+  node scripts/codex-delegate-worker.mjs init [--local | --global]
+  node scripts/codex-delegate-worker.mjs status
+  node scripts/codex-delegate-worker.mjs open [native Codex arguments]
+  node scripts/codex-delegate-worker.mjs interactive [native Codex arguments]
+  node scripts/codex-delegate-worker.mjs "task"
+  node scripts/codex-delegate-worker.mjs -- <native Codex arguments>
 
-Environment:
-  ${ENV_PREFIX}BASE_URL        Required provider base URL.
-  ${ENV_PREFIX}CONFIG_FILE     Optional JSON config file path.
-  ${API_KEY_ENV}         Provider API key for low-friction env-key mode.
-  ${ENV_PREFIX}AUTH_COMMAND    Secret helper command for high-security auth mode.
-  ${ENV_PREFIX}AUTH_ARGS_JSON  Optional JSON array of args for AUTH_COMMAND.
-  ${ENV_PREFIX}MODEL           Required model name exposed by the custom node.
-  ${ENV_PREFIX}PROVIDER_ID     Default: codex_delegate_worker.
-  ${ENV_PREFIX}PROVIDER_NAME   Default: Codex delegate worker.
-  ${ENV_PREFIX}CONFIG_MODE     inline (default) or temp-home.
-  ${ENV_PREFIX}CODEX_BIN       Optional codex executable path or command.
-  ${ENV_PREFIX}KEEP_HOME       Set to 1 to keep the temporary CODEX_HOME for debugging.
+init opens private provider management; configure runs it in your own terminal.
+open (or no arguments) opens normal interactive Codex in a separate terminal.
+interactive runs normal Codex directly in your own terminal.
+A task uses codex exec. Arguments after -- go directly to Codex.
+Native configuration, permissions, plugins, and session storage are inherited.
 `;
 }
 
@@ -34,358 +32,158 @@ function fail(message) {
 }
 
 function firstValue(...values) {
-  for (const value of values) {
-    if (value !== undefined && value !== null && value !== "") {
-      return value;
-    }
-  }
-  return "";
-}
-
-function hasValue(value) {
-  return value !== undefined && value !== null && value !== "";
+  return values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
 }
 
 function tomlString(value) {
-  return `"${String(value)
-    .replaceAll("\\", "\\\\")
-    .replaceAll('"', '\\"')
-    .replaceAll("\n", "\\n")
-    .replaceAll("\r", "\\r")
-    .replaceAll("\t", "\\t")}"`;
-}
-
-function tomlArray(values) {
-  return `[${values.map((value) => tomlString(value)).join(", ")}]`;
+  return `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n").replaceAll("\r", "\\r").replaceAll("\t", "\\t")}"`;
 }
 
 function configOverride(key, value) {
   return ["-c", `${key}=${value}`];
 }
 
-function isValidProviderId(value) {
-  return /^[A-Za-z0-9_-]+$/.test(value);
-}
-
-function normalizeConfigString(value) {
-  const trimmed = String(value).trim();
-  if (
-    trimmed.length >= 2 &&
-    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'")))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-}
-
-function isOpenAIModel(value) {
-  return OPENAI_MODEL_PATTERN.test(normalizeConfigString(value));
-}
-
-function requestedModelOverrides(args) {
-  const models = [];
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-
-    if (arg === "-m" || arg === "--model") {
-      if (index + 1 < args.length) {
-        models.push(args[index + 1]);
-        index += 1;
-      }
-      continue;
-    }
-
-    if (arg.startsWith("--model=")) {
-      models.push(arg.slice("--model=".length));
-      continue;
-    }
-
-    if (arg.startsWith("-m=")) {
-      models.push(arg.slice("-m=".length));
-      continue;
-    }
-
-    let override = "";
-    if (arg === "-c" || arg === "--config") {
-      if (index + 1 < args.length) {
-        override = args[index + 1];
-        index += 1;
-      }
-    } else if (arg.startsWith("--config=")) {
-      override = arg.slice("--config=".length);
-    }
-
-    const separator = override.indexOf("=");
-    if (separator !== -1 && override.slice(0, separator).trim() === "model") {
-      models.push(override.slice(separator + 1));
-    }
-  }
-
-  return models;
-}
-
-function failOpenAIModel(model) {
-  const normalizedModel = normalizeConfigString(model);
-  fail(
-    `OpenAI/ChatGPT model "${normalizedModel}" cannot use the custom-node worker; ` +
-      `use a native Codex subagent or run codex exec with the normal ChatGPT login`,
-  );
-}
-
 function parseArgsJson(value) {
-  if (!value) {
-    return [];
-  }
-
-  let parsed;
   try {
-    parsed = JSON.parse(value);
-  } catch (error) {
-    fail(`${ENV_PREFIX}AUTH_ARGS_JSON must be a JSON array of strings`);
-  }
-
-  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
-    fail(`${ENV_PREFIX}AUTH_ARGS_JSON must be a JSON array of strings`);
-  }
-  return parsed;
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) return parsed;
+  } catch { /* Report the expected shape without echoing the input. */ }
+  fail(`${ENV_PREFIX}AUTH_ARGS_JSON must be a JSON array of strings`);
 }
 
-function readJsonConfig(filePath) {
-  if (!filePath || !fs.existsSync(filePath)) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      fail(`config file must contain a JSON object: ${filePath}`);
-    }
-    return parsed;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      fail(`invalid JSON config file: ${filePath}`);
-    }
-    throw error;
-  }
-}
-
-function globalConfigPath() {
-  const home = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
-  return path.join(home, "codex-delegate-worker.json");
-}
-
-function loadConfig() {
-  return {
-    ...readJsonConfig(globalConfigPath()),
-    ...readJsonConfig(path.join(process.cwd(), ".codex-delegate-worker.json")),
-    ...readJsonConfig(process.env[`${ENV_PREFIX}CONFIG_FILE`] || ""),
-  };
-}
-
-function shouldUseShell(command) {
-  if (process.platform !== "win32") {
-    return false;
-  }
-  return /\.(cmd|bat)$/i.test(command) || !/[\\/]/.test(command);
-}
-
-function writeConfig(configPath, options) {
-  const lines = [
-    `model = ${tomlString(options.model)}`,
-    `model_provider = ${tomlString(options.providerId)}`,
-    "",
-    `[model_providers.${options.providerId}]`,
-    `name = ${tomlString(options.providerName)}`,
-    `base_url = ${tomlString(options.baseUrl)}`,
-  ];
-
-  if (options.authCommand) {
-    lines.push(
-      "",
-      `[model_providers.${options.providerId}.auth]`,
-      `command = ${tomlString(options.authCommand)}`,
-      `args = ${tomlArray(options.authArgs)}`,
-      "refresh_interval_ms = 0",
-    );
-  } else {
-    lines.push(`env_key = ${tomlString(API_KEY_ENV)}`);
-  }
-
-  if (!options.authCommand) {
-    lines.push(
-      "",
-      "[shell_environment_policy]",
-      `exclude = ${tomlArray([API_KEY_ENV])}`,
-    );
-  }
-
-  fs.writeFileSync(configPath, `${lines.join("\n")}\n`, "utf8");
-}
-
-function buildInlineConfigArgs(options) {
+function buildProviderArgs(options) {
+  const provider = `model_providers.${options.providerId}`;
   const args = [
     ...configOverride("model", tomlString(options.model)),
     ...configOverride("model_provider", tomlString(options.providerId)),
-    ...configOverride(`model_providers.${options.providerId}.name`, tomlString(options.providerName)),
-    ...configOverride(`model_providers.${options.providerId}.base_url`, tomlString(options.baseUrl)),
+    ...configOverride(`${provider}.name`, tomlString(options.providerName)),
+    ...configOverride(`${provider}.base_url`, tomlString(options.baseUrl)),
   ];
-
   if (options.authCommand) {
     args.push(
-      ...configOverride(`model_providers.${options.providerId}.auth.command`, tomlString(options.authCommand)),
-      ...configOverride(`model_providers.${options.providerId}.auth.args`, tomlArray(options.authArgs)),
-      ...configOverride(`model_providers.${options.providerId}.auth.refresh_interval_ms`, "0"),
+      ...configOverride(`${provider}.auth.command`, tomlString(options.authCommand)),
+      ...configOverride(`${provider}.auth.args`, `[${options.authArgs.map(tomlString).join(", ")}]`),
+      ...configOverride(`${provider}.auth.refresh_interval_ms`, "0"),
     );
-  } else {
-    args.push(
-      ...configOverride(`model_providers.${options.providerId}.env_key`, tomlString(API_KEY_ENV)),
-      ...configOverride("shell_environment_policy.exclude", tomlArray([API_KEY_ENV])),
-    );
+  } else if (options.apiKey) {
+    args.push(...configOverride(`${provider}.env_key`, tomlString(API_KEY_ENV)));
   }
-
   return args;
+}
+
+function shouldUseShell(command) {
+  return process.platform === "win32" && (/\.(cmd|bat)$/i.test(command) || !/[\\/]/.test(command));
+}
+
+async function runCodex(nativeArgs, { paths = configPaths(), interactive = false, codexHome } = {}) {
+  const fileConfig = loadWorkerConfig({ paths });
+  const fileAuth = fileConfig.auth && typeof fileConfig.auth === "object" ? fileConfig.auth : {};
+  const authArgs = process.env[`${ENV_PREFIX}AUTH_ARGS_JSON`]
+    ? parseArgsJson(process.env[`${ENV_PREFIX}AUTH_ARGS_JSON`])
+    : fileAuth.args ?? fileConfig.authArgs ?? [];
+  if (!Array.isArray(authArgs) || authArgs.some((item) => typeof item !== "string")) fail("config auth args must be an array of strings");
+  const options = {
+    baseUrl: firstValue(process.env[`${ENV_PREFIX}BASE_URL`], fileConfig.baseUrl),
+    model: firstValue(process.env[`${ENV_PREFIX}MODEL`], fileConfig.model),
+    apiKey: firstValue(process.env[API_KEY_ENV], fileConfig.apiKey),
+    authCommand: firstValue(process.env[`${ENV_PREFIX}AUTH_COMMAND`], fileAuth.command, fileConfig.authCommand),
+    authArgs,
+    providerId: firstValue(process.env[`${ENV_PREFIX}PROVIDER_ID`], fileConfig.providerId, "codex_delegate_worker"),
+    providerName: firstValue(process.env[`${ENV_PREFIX}PROVIDER_NAME`], fileConfig.providerName, "Codex delegate worker"),
+  };
+  // Codex's -c paths split on dots rather than parsing quoted TOML keys.
+  // Preserve ordinary ids and encode other labels instead of rejecting them.
+  if (!/^[A-Za-z0-9_-]+$/.test(options.providerId)) {
+    options.providerId = `custom_${Buffer.from(String(options.providerId)).toString("base64url")}`;
+  }
+  if (!options.baseUrl || !options.model) fail("Worker is not configured. Run init to add a provider in the private configuration terminal.");
+  const codexBin = firstValue(process.env[`${ENV_PREFIX}CODEX_BIN`], fileConfig.codexBin, "codex");
+  const childEnv = { ...process.env };
+  // A desktop terminal may start with a different shell environment. Restore the
+  // caller's actual Codex home there; never substitute a temporary home.
+  if (codexHome) childEnv.CODEX_HOME = codexHome;
+  if (options.apiKey) childEnv[API_KEY_ENV] = options.apiKey;
+  else delete childEnv[API_KEY_ENV];
+  const child = spawn(codexBin, [...buildProviderArgs(options), ...nativeArgs], {
+    env: childEnv,
+    shell: shouldUseShell(codexBin),
+    stdio: interactive ? "inherit" : ["inherit", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  const redact = redactOutput(options);
+  const outputs = interactive ? [] : [child.stdout.pipe(privateOutputStream(options)), child.stderr.pipe(privateOutputStream(options))];
+  if (outputs.length) {
+    outputs[0].pipe(process.stdout, { end: false });
+    outputs[1].pipe(process.stderr, { end: false });
+  }
+  const outputDone = Promise.all(outputs.map((stream) => finished(stream)));
+  return new Promise((resolve, reject) => {
+    child.on("error", (error) => {
+      for (const stream of outputs) stream.end();
+      process.stderr.write(`failed to launch codex: ${redact(error.message)}\n`);
+      resolve(127);
+    });
+    child.on("close", (code, signal) => {
+      outputDone.then(() => {
+        if (signal) process.stderr.write(`codex exited from signal ${signal}\n`);
+        resolve(code ?? 1);
+      }, reject);
+    });
+  });
+}
+
+function terminalContext(args) {
+  const boundary = args.indexOf("--");
+  const controls = boundary === -1 ? args : args.slice(0, boundary);
+  const value = (flag) => controls.includes(flag) ? controls[controls.indexOf(flag) + 1] : undefined;
+  const cwd = value("--directory") || process.cwd();
+  const paths = configPaths({ cwd });
+  if (value("--global-config")) paths.global = value("--global-config");
+  return { cwd, paths, nativeArgs: boundary === -1 ? [] : args.slice(boundary + 1) };
 }
 
 async function main() {
   const args = process.argv.slice(2);
-  if (args.includes("--help") || args.includes("-h")) {
+  if (args[0] === "--") return runCodex(args.slice(1));
+  if (["--help", "-h"].includes(args[0]) || (["init", "configure"].includes(args[0]) && args.includes("--help"))) {
     process.stdout.write(usage());
     return 0;
   }
-
-  if (args.length === 0) {
-    process.stderr.write(usage());
-    return 2;
+  if (args[0] === "init") {
+    const scope = args.includes("--local") ? "local" : args.includes("--global") ? "global" : undefined;
+    await openConfiguration({ scope });
+    process.stdout.write("Private configuration terminal opened. Enter provider details there, not in the AI conversation.\n");
+    return 0;
   }
-
-  const fileConfig = loadConfig();
-  const fileAuth = fileConfig.auth && typeof fileConfig.auth === "object"
-    ? fileConfig.auth
-    : {};
-
-  const baseUrl = firstValue(process.env[`${ENV_PREFIX}BASE_URL`], fileConfig.baseUrl);
-  const apiKey = firstValue(process.env[API_KEY_ENV], fileConfig.apiKey);
-  const authCommand = firstValue(
-    process.env[`${ENV_PREFIX}AUTH_COMMAND`],
-    fileAuth.command,
-    fileConfig.authCommand,
-  );
-  const authArgs = process.env[`${ENV_PREFIX}AUTH_ARGS_JSON`]
-    ? parseArgsJson(process.env[`${ENV_PREFIX}AUTH_ARGS_JSON`])
-    : Array.isArray(fileAuth.args)
-      ? fileAuth.args
-      : Array.isArray(fileConfig.authArgs)
-        ? fileConfig.authArgs
-        : [];
-  if (authArgs.some((item) => typeof item !== "string")) {
-    fail("config auth args must be an array of strings");
+  if (args[0] === "configure") {
+    const { paths } = terminalContext(args);
+    const scope = args.includes("--local") ? "local" : args.includes("--global") ? "global" : undefined;
+    await configureInTerminal({ scope, store: makeProfileStore({ paths }) });
+    return 0;
   }
-
-  const model = firstValue(process.env[`${ENV_PREFIX}MODEL`], fileConfig.model);
-  const providerId =
-    firstValue(process.env[`${ENV_PREFIX}PROVIDER_ID`], fileConfig.providerId, "codex_delegate_worker");
-  const providerName =
-    firstValue(process.env[`${ENV_PREFIX}PROVIDER_NAME`], fileConfig.providerName, "Codex delegate worker");
-  const configMode = firstValue(process.env[`${ENV_PREFIX}CONFIG_MODE`], fileConfig.configMode, "inline");
-  const codexBin = firstValue(process.env[`${ENV_PREFIX}CODEX_BIN`], fileConfig.codexBin, "codex");
-  const keepHome = firstValue(process.env[`${ENV_PREFIX}KEEP_HOME`], fileConfig.keepHome) === "1";
-
-  if (isOpenAIModel(model)) {
-    failOpenAIModel(model);
+  if (args[0] === "status") {
+    process.stdout.write(`${JSON.stringify(configurationStatus())}\n`);
+    return 0;
   }
-  const openAIModelOverride = requestedModelOverrides(args).find(isOpenAIModel);
-  if (openAIModelOverride) {
-    failOpenAIModel(openAIModelOverride);
+  if (args[0] === "open" || !args.length) {
+    await openConfiguration({ action: "native", nativeArgs: args.slice(1) });
+    process.stdout.write("Native Codex terminal opened with the configured model node.\n");
+    return 0;
   }
-  if (!baseUrl) {
-    fail(`missing ${ENV_PREFIX}BASE_URL`);
+  if (args[0] === "interactive") {
+    if (!process.stdin.isTTY || !process.stdout.isTTY) fail("Interactive Codex needs your own terminal. Use open to launch one.");
+    return runCodex(args.slice(1), { interactive: true });
   }
-  if (!apiKey && !authCommand) {
-    fail(`missing ${API_KEY_ENV}`);
+  if (args[0] === "_native-terminal") {
+    const { cwd, paths, nativeArgs } = terminalContext(args);
+    process.chdir(cwd);
+    return runCodex(nativeArgs, { paths, interactive: true, codexHome: path.dirname(paths.global) });
   }
-  if (!model) {
-    fail(`missing ${ENV_PREFIX}MODEL`);
-  }
-  if (!isValidProviderId(providerId)) {
-    fail(`${ENV_PREFIX}PROVIDER_ID must contain only letters, numbers, underscores, or hyphens`);
-  }
-  if (
-    hasValue(process.env[`${ENV_PREFIX}WIRE_API`]) ||
-    hasValue(fileConfig.wireApi) ||
-    hasValue(fileConfig.wire_api)
-  ) {
-    fail(`wireApi / ${ENV_PREFIX}WIRE_API is no longer supported; remove it and point baseUrl at a Responses-compatible endpoint`);
-  }
-  if (!["temp-home", "inline"].includes(configMode)) {
-    fail(`${ENV_PREFIX}CONFIG_MODE must be "temp-home" or "inline"`);
-  }
-
-  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "codex-delegate-worker-"));
-  const providerOptions = {
-    baseUrl,
-    model,
-    providerId,
-    providerName,
-    authCommand,
-    authArgs,
-  };
-  if (configMode === "temp-home") {
-    writeConfig(path.join(tempHome, "config.toml"), providerOptions);
-  }
-
-  const codexArgs = [
-    "exec",
-    "--ephemeral",
-    ...(configMode === "inline" ? buildInlineConfigArgs(providerOptions) : []),
-    ...args,
-  ];
-
-  const childEnv = {
-    ...process.env,
-    CODEX_HOME: tempHome,
-  };
-  if (apiKey) {
-    childEnv[API_KEY_ENV] = apiKey;
-  } else {
-    delete childEnv[API_KEY_ENV];
-  }
-
-  const child = spawn(codexBin, codexArgs, {
-    env: childEnv,
-    shell: shouldUseShell(codexBin),
-    stdio: "inherit",
-    windowsHide: true,
-  });
-
-  return await new Promise((resolve) => {
-    child.on("error", (error) => {
-      process.stderr.write(`failed to launch codex: ${error.message}\n`);
-      resolve(127);
-    });
-    child.on("close", (code, signal) => {
-      if (!keepHome) {
-        fs.rmSync(tempHome, { recursive: true, force: true });
-      } else {
-        process.stderr.write(`kept temporary CODEX_HOME: ${tempHome}\n`);
-      }
-
-      if (signal) {
-        process.stderr.write(`codex exited from signal ${signal}\n`);
-        resolve(1);
-        return;
-      }
-      resolve(code ?? 1);
-    });
-  });
+  const execArgs = ["exec", ...(args.includes("--skip-git-repo-check") ? [] : ["--skip-git-repo-check"]), ...args];
+  return runCodex(execArgs);
 }
 
-main()
-  .then((code) => {
-    process.exitCode = code;
-  })
-  .catch((error) => {
-    process.stderr.write(`${error.stack || error.message}\n`);
-    process.exitCode = 1;
-  });
+main().then((code) => { process.exitCode = code; }).catch((error) => {
+  process.stderr.write(`${error.message}\n`);
+  process.exitCode = 1;
+});
