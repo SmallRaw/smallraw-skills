@@ -176,6 +176,15 @@
       "skills": [
         "./skills/guardrails-agent-plugin"
       ]
+    },
+    {
+      "name": "codex-visual-gc",
+      "description": "Codex 专属智能视觉上下文与带宽守护插件：通过滑动窗口算法自动回收历史超重 Base64 图片，杜绝多轮看图与 Computer Use 流量爆炸",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/codex-visual-gc"
+      ]
     }
   ]
 }

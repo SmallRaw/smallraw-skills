@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "gc": {
+    "enabled": true,
+    "threshold_mb": 16,
+    "prune_ratio": 0.85,
+    "min_keep_images": 2,
+    "min_image_bytes": 100000
+  },
+  "capture": {
+    "max_dimension": 1280,
+    "jpeg_quality": 70
+  }
+}
