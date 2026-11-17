@@ -185,6 +185,15 @@
       "skills": [
         "./skills/codex-visual-gc"
       ]
+    },
+    {
+      "name": "claude-account-cleanup",
+      "description": "在 macOS 上完整审计、备份并彻底清理 Claude Code 与 Claude Desktop 的旧账户信息、登录凭据、本地身份 ID、缓存与遥测状态，防止新旧账号串号触发风控",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/claude-account-cleanup"
+      ]
     }
   ]
 }
