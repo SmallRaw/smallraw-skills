@@ -194,6 +194,24 @@
       "skills": [
         "./skills/claude-account-cleanup"
       ]
+    },
+    {
+      "name": "ui-design-filipiuk-style",
+      "description": "借鉴 Michael Filipiuk 的设计取舍，建立清晰、具体、有品牌表达的产品 UI 与落地页（从零设计、视觉美化与 deslop）",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/ui-design-filipiuk-style"
+      ]
+    },
+    {
+      "name": "ui-design-craft",
+      "description": "UI 工艺细节与 AI 界面纠偏 - 把模糊体感翻译为精确设计词汇与定向修复，覆盖 65 项视觉、动效、控件语义与 AI 界面模式",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/ui-design-craft"
+      ]
     }
   ]
 }
