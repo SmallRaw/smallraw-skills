@@ -1,10 +1,10 @@
-# 动效与交互组件语义参考（23 项）
+# 动效与交互组件语义参考（30 项）
 
-覆盖 Motion（8）与 Layout & UI（15）。重点纠偏 AI 常写的生硬动画与容易用反的交互控件。所有动效实现均应尊重 `prefers-reduced-motion: reduce`。
+覆盖 Motion（11）与 Layout & UI（19）。重点纠偏 AI 常写的生硬动画与容易用反的交互控件。所有动效实现均应尊重 `prefers-reduced-motion: reduce`。
 
 ---
 
-## 一、动效（Motion · 8）
+## 一、动效（Motion · 11）
 
 ### 1. Easing（缓动曲线）
 - **症状**：动效生硬（stiff）
@@ -47,81 +47,116 @@
 - **无障碍注意**：触屏无 hover，需保留点击展开或常驻轻量入口，不要让功能不可达。
 - **易混淆**：`Progressive Disclosure` 把低频设置折到点击入口后；`Hover Reveal` 在指针/焦点到达行时浮现高频行工具。
 
+### 9. Loading Button（加载态按钮）
+- **症状**：动效生硬、看着挤（stiff / cramped）
+- **Before → After**：点击提交后文字变成 `"Submitting..."` 把按钮撑宽，直接把旁边的取消按钮顶歪跳动 → 锁死按钮原宽度，文字原地淡出/上滑并居中切换旋转加载环，保持兄弟按钮纹丝不动（零布局偏移）。
+- **易混淆**：`Press State` 反馈按下的瞬间手感；`Skeleton` 占页面内容位；`Loading Button` 在异步提交期间稳住按钮几何并反馈进度。
+
+### 10. Exit Motion（退场动效）
+- **症状**：动效生硬、AI 界面（stiff / ai-ui）
+- **Before → After**：删除或关闭列表卡片时 `0ms` 瞬间消失，下方条目硬跳补位显得生硬 → 先让被移除项轻滑微缩淡出，再让相邻条目沿缓动曲线平滑上移接管空间。
+- **易混淆**：`Stagger` 编排多条目入场；`Exit Motion` 编排单条目退场与邻居平滑补位；`Undo Toast` 负责移除后的可撤销兜底。
+
+### 11. Scroll Snap（滚动吸附）
+- **症状**：动效生硬、发飘发脏、AI 界面（stiff / muddy / ai-ui）
+- **Before → After**：横向卡片轮播松手后惯性乱停，经常把卡片切在半截 → 加上 `scroll-snap-type: x mandatory` 与 `scroll-snap-align: center`（或 `start`），松手自动磁吸对齐并对称露出邻卡边缘。
+- **易混淆**：`Edge Fade` 柔化视觉裁切边界；`Scroll Snap` 控制惯性停靠位置，避免停在半截卡片上。
+
 ---
 
-## 二、布局与通用组件（Layout & UI · 15）
+## 二、布局与通用组件（Layout & UI · 19）
 
-### 9. Button Hierarchy（按钮主次）
+### 12. Button Hierarchy（按钮主次）
 - **症状**：没重点（no-hierarchy）
 - **Before → After**：同一区域并排两个同等重量的实心大按钮 → 一个区域只保留 **1 个**实心主按钮，次要动作退成描边按钮或纯文字链接。
 - **易混淆**：`Accent` 通常落在主按钮上；`Segmented Control` 是平级视图切换，不是主次按钮。
 
-### 10. Touch Target（点击热区）
+### 13. Touch Target（点击热区）
 - **症状**：看着挤、常见组件（cramped / hard-to-name）
 - **Before → After**：图标只有 `15–20px`，外框按钮也只有 `20×20px`，极易点空或误触 → 图标外观保持纤细，但可点热区扩大到至少 `40×40px`（移动端优先遵循 `44×44px`）。
 - **易混淆**：`Padding` 是容器呼吸感，`Gap` 是项间距，`Touch Target` 保障小控件的可点面积。
 
-### 11. Empty State（空状态）
+### 14. Empty State（空状态）
 - **症状**：常见组件（hard-to-name）
 - **Before → After**：光秃秃一行“暂无数据”让人不知道能干嘛 → 补齐三件套：轻量图标 + 一句话说明这里装什么 + 一个明确引导下一步的主动作（如“新建收藏夹”）。
 - **易混淆**：`Skeleton` 表示正在加载；`Empty State` 表示加载完确实没有数据；`Suggested Prompts` 是 AI 聊天的空状态。
 
-### 12. Inline Validation（即时校验）
+### 15. Inline Validation（即时校验）
 - **症状**：常见组件（hard-to-name）
 - **Before → After**：只在表单顶部堆一条报错汇总，用户得回头找哪个框错 → 校验确定出错时，把报错信息直接放在对应输入框正下方，并给该输入框语义红描边。
 - **易混淆**：避免用户刚打第一个字就刺眼报错，通常在失焦或提交后即时反馈，修改正确后立刻清除。
 
-### 13. Skeleton（骨架屏）
+### 16. Skeleton（骨架屏）
 - **症状**：常见组件（hard-to-name）
 - **Before → After**：空白卡片正中放一个孤零零的转圈 Spinner，加载完页面剧烈跳动 → 按最终真实布局画灰色占位（头像圆、标题条、两行正文），加载完成原位平滑替换。
 - **易混淆**：`Streaming Text` 是真实内容逐字到达；`Skeleton` 是内容到达前先稳住形状。
 
-### 14. Popover vs. Tooltip（浮层与提示）
+### 17. Popover vs. Tooltip（浮层与提示）
 - **症状**：常见组件（hard-to-name）
 - **Before → After**：把可点击的链接、复制按钮塞进鼠标移开就消失的 Tooltip → **Tooltip 只放一句纯文字说明**；凡是包含可点、可选、可复制控件的内容一律放进点击展开、常驻的 **Popover**。
 - **易混淆**：需要占更大空间或阻断页面时才升级成 `Drawer` 或 `Modal`。
 
-### 15. Modal vs. Drawer（弹窗与抽屉）
+### 18. Modal vs. Drawer（弹窗与抽屉）
 - **症状**：常见组件（hard-to-name）
 - **Before → After**：点开列表项详情直接弹居中 Modal 遮死整张列表 → 查看/编辑单条详情改用侧边滑出的 **Drawer**，让底层列表依然可见可对照；**Modal** 只留给必须中断流程的高权重确认或独立聚焦任务。
 - **易混淆**：`Scrim` 用于配合 Modal 压暗背景；`Shared Element` 也可在保留位置感的前提下打开详情。
 
-### 16. Tabs vs. Segmented（标签页与分段器）
+### 19. Tabs vs. Segmented（标签页与分段器）
 - **症状**：常见组件、没重点（hard-to-name / no-hierarchy）
 - **Before → After**：页面切换和 `7D / 30D / 90D` 筛选都画成两排一样的下划线 Tab，像两层重复导航 → **Tabs** 负责切换不同页面/频道；**Segmented Control** 负责切换同一份数据的视图或区间，就近放在数据旁。
 - **易混淆**：两者都是单选切换，区别在作用范围（页面层级 vs 同数据视图）。
 
-### 17. Switch vs. Checkbox（开关与复选框）
+### 20. Switch vs. Checkbox（开关与复选框）
 - **症状**：常见组件（hard-to-name）
 - **Before → After**：用复选框做“立即生效的自动保存”，或用开关做“点提交才算数的同意条款” → **Switch = 拨动立刻生效**；**Checkbox = 勾选后等待提交/保存按钮才生效**（或用于多选条目）。
 - **易混淆**：永远按“是否即时生效”来选，而不是按外观好看与否。
 
-### 18. Command Palette（命令面板）
+### 21. Command Palette（命令面板）
 - **症状**：常见组件（hard-to-name）
 - **Before → After**：常用动作埋在 `File ▸ Export ▸ As PDF` 多层菜单里翻半天 → 提供 `⌘K`（Windows `Ctrl+K`）全局可搜命令面板，打几个字按回车直达动作，并展示对应 `Shortcut Hint`。
 - **易混淆**：`Combobox` 只过滤某一个字段的选项；`Slash Command` 在编辑器光标处触发；`Command Palette` 面向全局应用动作。
 
-### 19. Bento Grid（便当盒布局）
+### 22. Bento Grid（便当盒布局）
 - **症状**：没重点、常见组件（no-hierarchy / hard-to-name）
 - **Before → After**：4 个同等大小的仪表盘方格看不出谁最重要 → 按重要性分配格子跨度（如核心收入占大主格，团队/在线率/结算占侧边小格），用面积直接建立层级。
 - **易混淆**：保持便当格内部扁平，不要在格子里再做 `Nested Cards`。
 
-### 20. Progressive Disclosure（渐进式披露）
+### 23. Progressive Disclosure（渐进式披露）
 - **症状**：看着挤、没重点（cramped / no-hierarchy）
 - **Before → After**：设置页或导出弹窗首屏铺满 5–8 个参数（含低频高级项） → 首屏只保留最核心的 2–3 项，把缩放、色彩配置、元数据等低频设置收进安静的 `Advanced options` 折叠入口。
 - **易混淆**：`Thinking Disclosure` 折叠的是 AI 推理过程；`Progressive Disclosure` 折叠的是产品表单与设置中的低频控件。
 
-### 21. Combobox（可搜下拉框）
+### 24. Combobox（可搜下拉框）
 - **症状**：常见组件、看着挤（hard-to-name / cramped）
 - **Before → After**：几十个选项的普通下拉菜单只能靠滚轮肉眼翻找 → 换成顶部固定实时搜索框的 **Combobox**，输入关键词即时过滤并高亮匹配项，支持键盘上下选择。
 - **易混淆**：`Command Palette` 搜全局操作，`Combobox` 搜单个表单字段的候选值。
 
-### 22. Input Affix（输入框前后缀）
+### 25. Input Affix（输入框前后缀）
 - **症状**：看着挤、常见组件（cramped / hard-to-name）
 - **Before → After**：把单位或协议写在标签括号里（`价格（USD）`、`网址（含 https://）`），用户仍反复填错或重复输入 → 做成输入框内部固定的浅灰前缀/后缀槽位（`$` / `USD`、`https://`），让用户只填核心值。
 - **易混淆**：`Inline Validation` 是填错后补救；`Input Affix` 是填之前锁定格式防错。
 
-### 23. Split Button（组合按钮）
+### 26. Split Button（组合按钮）
 - **症状**：看着挤、没重点、常见组件（cramped / no-hierarchy / hard-to-name）
 - **Before → After**：工具栏并排 5 个按钮（预览、保存草稿、发布、定时发布、导出）挤到折成两行 → 保留独立次级常用键（如 Preview / Save draft），把属于同一主动作的变体收进右侧主按钮下拉（`Publish | ▾`）。
 - **易混淆**：`Button Hierarchy` 区分不同操作的权重；`Split Button` 折叠同一个主动作的多个变体。
+
+### 27. Breadcrumb（面包屑导航）
+- **症状**：没重点、常见组件（no-hierarchy / hard-to-name）
+- **Before → After**：深层子页只放一个孤立标题，用户不知身处哪一级也无从快速退回 → 在顶部加轻量层级路径（如 `Workspace › Billing › Permissions`），上级路径弱化可点、当前页加粗定位。
+- **易混淆**：`Tabs` 切换同级兄弟页面；`Breadcrumb` 展示垂直父子嵌套层级并提供返回路径。
+
+### 28. Step Indicator（步骤条）
+- **症状**：没重点、AI 界面（no-hierarchy / ai-ui）
+- **Before → After**：多步流程的每个节点粗细颜色全一样，看不清已完成和当前步 → 明确区分三态：已完成用浅灰对勾退让、当前步用强调进度环聚焦、待办步用浅虚线细环弱化，并用 `1px` 细轨串联。
+- **易混淆**：`Breadcrumb` 表达页面嵌套深度；`Tabs` 允许平级自由切换；`Step Indicator` 引导线性多步进度。
+
+### 29. Selection Card（选项卡片）
+- **症状**：没重点、常见组件、AI 界面（no-hierarchy / hard-to-name / ai-ui）
+- **Before → After**：带副标题、配额或价格的单选项只用裸露小圆点，热区极小且对比弱 → 包成整块可点的选项卡片：选中项给浅强调底、清晰 `1px` 边框与实心点，未选项保持白底极细边。
+- **易混淆**：`Nested Cards` 给静态内容套多余盒子；`Selection Card` 的边框与表面承担明确的交互热区和选中态职责。
+
+### 30. OTP Input（分格验证码）
+- **症状**：看着挤、常见组件、AI 界面（cramped / hard-to-name / ai-ui）
+- **Before → After**：6 位验证码挤在普通单行输入框里，核对位数费劲 → 拆成 `3 + 3` 分组的独立单字圆角字格，给当前输入格加轻强调聚焦环，并支持粘贴整串自动填充与退格回退。
+- **易混淆**：`Input Affix` 在单个输入框内固定单位/协议；`OTP Input` 把定长验证码拆成分组字槽便于逐位核对。

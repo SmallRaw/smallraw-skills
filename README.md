@@ -107,7 +107,7 @@ cp -r /tmp/smallraw-skills/skills/rule-gardener ~/.config/opencode/skills/
 | [rule-gardener](skills/rule-gardener/) | 项目规则园丁 - 培育项目规范有机生长 | Marketplace |
 | [skill-writing-guide](skills/skill-writing-guide/) | 配合 skill-creator 使用的 Skill 编写约束与最佳实践 | Manual |
 | [artifact-design](skills/artifact-design/) | 将技术稿、截图、调研、事件与流程设计成长文档、对比画板、时间线、Deck、原型和动效等视觉产物 | Manual |
-| [ui-design-craft](skills/ui-design-craft/) | UI 工艺细节与 AI 界面纠偏 - 把模糊体感翻译为精确设计词汇与定向修复，覆盖 65 项视觉、动效、控件语义与 AI 界面模式 | Marketplace |
+| [ui-design-craft](skills/ui-design-craft/) | UI 工艺细节与 AI 界面纠偏 - 把模糊体感翻译为精确设计词汇与定向修复，覆盖 80 项视觉、动效、控件语义与 AI 界面模式 | Marketplace |
 | [ui-design-filipiuk-style](skills/ui-design-filipiuk-style/) | 借鉴 Michael Filipiuk 的设计取舍，建立清晰、具体、有品牌表达的产品 UI 与落地页 | Marketplace |
 
 ## CLI Packages

@@ -206,7 +206,7 @@
     },
     {
       "name": "ui-design-craft",
-      "description": "UI 工艺细节与 AI 界面纠偏 - 把模糊体感翻译为精确设计词汇与定向修复，覆盖 65 项视觉、动效、控件语义与 AI 界面模式",
+      "description": "UI 工艺细节与 AI 界面纠偏 - 把模糊体感翻译为精确设计词汇与定向修复，覆盖 80 项视觉、动效、控件语义与 AI 界面模式",
       "source": "./",
       "strict": false,
       "skills": [

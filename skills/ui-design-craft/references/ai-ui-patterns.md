@@ -1,6 +1,6 @@
-# AI 产品界面模式参考（11 项）
+# AI 产品界面模式参考（12 项）
 
-覆盖 Chat、Copilot、AI 编辑器与 Agent 产品中最常被 AI 自己写粗糙的 11 个交互模式。核心原则：**让输入结构化、让生成过程透明但不抢答案、让执行按可逆性分级确认**。
+覆盖 Chat、Copilot、AI 编辑器与 Agent 产品中最常被 AI 自己写粗糙的 12 个交互模式。核心原则：**让输入结构化、让生成过程透明但不抢答案、让执行按可逆性分级确认**。
 
 ---
 
@@ -28,7 +28,7 @@
 
 ---
 
-## 二、流式生成与过程透明（Streaming & Observability · 4）
+## 二、流式生成与过程透明（Streaming & Observability · 5）
 
 ### 5. Streaming Text（流式输出）
 - **症状**：AI 界面、动效生硬（ai-ui / stiff）
@@ -50,21 +50,26 @@
 - **Before → After**：正文里塞满折行的长 URL，打断阅读又难核对 → 正文句末改用小编号胶囊（如 `[1]`），悬停/点击可预览，回答下方配带标题与站点名的来源卡片方便核验。
 - **易混淆**：来源预览适合放进 `Popover`；`Diff View` 标的是修改变化，`Citation Pill` 标的是事实出处。
 
+### 9. Structured Output（结构化输出）
+- **症状**：AI 界面、没重点（ai-ui / no-hierarchy）
+- **Before → After**：AI 提取日程、账单或联系人时吐一大段客套废话，用户还得自己挑字段复制 → 直接渲染成字段层级清晰、附带一键操作按钮（如“加入日历 / 保存”）的结构化卡片。
+- **易混淆**：`Tool Call Steps` 展示 Agent 抓取过程；`Approval Gate` 拦截高危执行；`Structured Output` 把结果本身变成可扫读、可直接操作的 UI 对象。
+
 ---
 
 ## 三、编辑审阅与风险控制（Review & Control · 3）
 
-### 9. Diff View（行内对比）
+### 10. Diff View（行内对比）
 - **症状**：AI 界面、没重点（ai-ui / no-hierarchy）
 - **Before → After**：左右或上下两段全文并排，靠用户肉眼逐字找 AI 改了哪儿 → 合并为单行行内对比：删除词用语义红底/划线，新增词用语义绿标出，紧接清晰的 `Reject` / `Accept` 操作。
 - **易混淆**：这里的红/绿是典型的 `Semantic Color`，仅用于表达增删变更，不与装饰色混用。
 
-### 10. Undo Toast（可撤销提示）
+### 11. Undo Toast（可撤销提示）
 - **症状**：AI 界面、动效生硬（ai-ui / stiff）
 - **Before → After**：归档、忽略建议、应用轻量修改等可逆动作每次都先弹 `"Are you sure?"` 弹窗打断节奏 → 直接执行，并弹出停留约 `5s` 的轻提示附带 `Undo` 按钮，保持流式心流。
 - **易混淆**：仅用于**可逆操作**；真正无法撤回或会对外产生副作用的动作必须交给 `Approval Gate` 或 `Modal`。
 
-### 11. Approval Gate（人工确认节点）
+### 12. Approval Gate（人工确认节点）
 - **症状**：AI 界面、没重点（ai-ui / no-hierarchy）
 - **Before → After**：把“即将发邮件给 42 位客户 / 删除生产表”埋在一段普通对话文字里，极易漏看或误放行 → 在不可逆或外部生效动作执行前暂停 Agent，弹出独立结构化确认卡片，明确列出**动作、目标对象与影响范围**，并提供清晰的 `Reject` / `Approve` 按钮。
 - **易混淆**：`Undo Toast` 是可逆操作的事后兜底；`Approval Gate` 是高危/外发动作的事前闸门。
